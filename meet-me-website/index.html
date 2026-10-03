@@ -4,14 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Meet Me</title>
-<link rel="manifest" href="manifest.json">
+<link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#0c0c0e">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Meet Me">
-<link rel="icon" href="icon-192.png">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=Karla:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -438,6 +433,16 @@
     border-radius:12px;
     padding:3px 10px;
   }
+  .post-action.stand-trigger.open{ background:var(--gold-light); }
+  .stand-panel{ margin-top:10px; padding-top:10px; border-top:1px solid var(--card-border); display:flex; flex-direction:column; gap:8px; }
+  .stand-item{ font-size:12.5px; line-height:1.5; color:var(--ivory); }
+  .stand-item .stand-name{ color:var(--gold-text); margin-right:6px; }
+  .stand-item .stand-del{ color:var(--muted-dim); margin-left:8px; font-size:11px; cursor:pointer; }
+  .stand-empty{ font-size:12px; color:var(--muted-dim); font-style:italic; }
+  .stand-row{ display:flex; gap:8px; align-items:center; }
+  .stand-input{ flex:1; background:transparent; border:1px solid var(--card-border); border-radius:14px; padding:8px 12px; color:var(--ivory); font-size:13px; font-family:inherit; outline:none; }
+  .stand-input:focus{ border-color:var(--gold-dim); }
+  .stand-send{ color:var(--bg); background:var(--gold-dim); border-radius:12px; padding:6px 12px; font-size:12px; cursor:pointer; }
   .post-action.friend-trigger:active{ color:var(--gold-light); }
   .like-btn{ display:flex; align-items:center; gap:5px; font-size:12px; color:var(--muted-dim); cursor:pointer; }
   .like-btn .heart{ font-size:13px; transition:transform 0.2s ease; }
@@ -3345,12 +3350,6 @@ document.getElementById('feed').addEventListener('click', async (e)=>{
   if(replyBtn){ e.stopPropagation(); openActionSheet(replyBtn.dataset.receiverId, replyBtn.dataset.postId, replyBtn.dataset.name); return; }
   const followBtn = e.target.closest('.follow-trigger');
   if(followBtn){ e.stopPropagation(); const nowFollowing = followBtn.classList.toggle('following'); followBtn.textContent = nowFollowing ? 'following' : 'follow'; return; }
-  const standBtn = e.target.closest('.stand-trigger');
-  if(standBtn){
-    e.stopPropagation();
-    toast.textContent = 'an official statement from an organization.';
-    toast.classList.add('show'); setTimeout(()=>{ toast.classList.remove('show'); }, 2000);
-  }
 });
 
 /* ============================================================
@@ -3696,7 +3695,7 @@ document.getElementById('action-sheet-block').addEventListener('click', async ()
    ============================================================ */
 const postRepliesSheet = document.getElementById('post-replies-sheet');
 const OWN_POST_SELECTOR = '.post[data-post-id], .spill-card[data-post-id], .yp-post[data-post-id]';
-const POST_INTERACTIVE_SELECTOR = '.post-action, .like-btn, .user-link, .sticker-tap, .text-tap, .voice-play-btn, .reply-trigger, .follow-trigger, .stand-trigger, .bookmark-trigger, .delete-post-trigger, .community-interest-trigger, .inspired-trigger, .inspired-source-link, .message-trigger, .friend-trigger, .share-trigger, .happening-pill, a, button, input, textarea';
+const POST_INTERACTIVE_SELECTOR = '.post-action, .like-btn, .user-link, .sticker-tap, .text-tap, .voice-play-btn, .reply-trigger, .follow-trigger, .stand-trigger, .stand-panel, .bookmark-trigger, .delete-post-trigger, .community-interest-trigger, .inspired-trigger, .inspired-source-link, .message-trigger, .friend-trigger, .share-trigger, .happening-pill, a, button, input, textarea';
 
 document.addEventListener('click', (e)=>{
   const trigger = e.target.closest('.own-replies-trigger');
@@ -5078,11 +5077,46 @@ document.addEventListener('click', async (e)=>{
     e.stopPropagation();
     if(!confirm('Delete this post? This can\'t be undone.')) return;
     const postId = deleteBtn.dataset.postId;
-    await sb.from('posts').delete().eq('id', postId);
+    const { data: gone, error: delErr } = await sb.from('posts').delete().eq('id', postId).select('id');
+    if(delErr || !gone || !gone.length){ console.error('Delete post failed:', delErr); showNavToast('Couldn\'t delete that post.'); return; }
     const postEl = deleteBtn.closest('.post, .spill-card, .yp-post');
     if(postEl) postEl.remove();
   }
 });
+
+// ADMIN: long-press any post in the feed to delete it (keeps the action row
+// uncluttered -- the delete button is only for your own posts).
+(function(){
+  const LONG_MS = 1500;
+  let timer = null, startX = 0, startY = 0, fired = false;
+  const FEED_POST_SELECTOR = '.post[data-post-id], .spill-card[data-post-id]';
+  function cancel(){ if(timer){ clearTimeout(timer); timer = null; } }
+  document.addEventListener('touchstart', (e)=>{
+    if(!isAdmin) return;
+    const postEl = e.target.closest(FEED_POST_SELECTOR);
+    if(!postEl || e.target.closest('input, textarea, .stand-panel')) return;
+    fired = false;
+    startX = e.touches[0].clientX; startY = e.touches[0].clientY;
+    cancel();
+    timer = setTimeout(async ()=>{
+      timer = null; fired = true;
+      if(navigator.vibrate) navigator.vibrate(30);
+      if(!confirm('Delete this post as admin? This can\'t be undone.')) return;
+      const { data: gone, error } = await sb.from('posts').delete().eq('id', postEl.dataset.postId).select('id');
+      if(error || !gone || !gone.length){ console.error('Admin delete failed:', error); showNavToast('Couldn\'t delete that post.'); return; }
+      postEl.remove();
+    }, LONG_MS);
+  }, { passive:true });
+  document.addEventListener('touchmove', (e)=>{
+    if(!timer) return;
+    if(Math.abs(e.touches[0].clientX - startX) > 10 || Math.abs(e.touches[0].clientY - startY) > 10) cancel();
+  }, { passive:true });
+  document.addEventListener('touchend', cancel);
+  document.addEventListener('touchcancel', cancel);
+  // no text-selection menu / ghost tap after a long press
+  document.addEventListener('contextmenu', (e)=>{ if(isAdmin && e.target.closest(FEED_POST_SELECTOR)) e.preventDefault(); });
+  document.addEventListener('click', (e)=>{ if(fired){ fired = false; e.stopPropagation(); e.preventDefault(); } }, true);
+})();
 
 // Returns the HTML for a post's action row -- like, share, and either
 // "message" (if you're already friends with the author) or "reply" +
@@ -5303,7 +5337,7 @@ function repliesBlockHtml(replies){
     </div>`).join('') + '</div>';
 }
 
-function postActionsHtml(postId, authorId, content, stickerUrl, audioUrl, durationSeconds, displayName, spaceLabel, userLiked, likeCount, includeShare, communityId){
+function postActionsHtml(postId, authorId, content, stickerUrl, audioUrl, durationSeconds, displayName, spaceLabel, userLiked, likeCount, includeShare, communityId, isOrgPost){
   if(includeShare === undefined) includeShare = true;
   // Like counts are shown publicly only in Rant -- Spill
   // keeps likes as a private signal to the poster, with no visible
@@ -5318,7 +5352,7 @@ function postActionsHtml(postId, authorId, content, stickerUrl, audioUrl, durati
   const canInspire = ['Rant','Spill'].includes(spaceLabel);
   const inspiredHtml = canInspire ? `<span class="post-action inspired-trigger" data-post-id="${postId}" data-space="${spaceLabel}" data-name="${escapeHtml(displayName)}">inspired by this</span>` : '';
   const isOwn = authorId && currentUserId && authorId === currentUserId;
-  const deleteHtml = (isOwn || isAdmin) ? `<span class="post-action delete-post-trigger" data-post-id="${postId}">delete</span>` : '';
+  const deleteHtml = isOwn ? `<span class="post-action delete-post-trigger" data-post-id="${postId}">delete</span>` : '';
   const ownRepliesHtml = isOwn ? `<span class="post-action own-replies-trigger" data-post-id="${postId}">replies &amp; likes</span>` : '';
   // Shown on a community's own Rant posts, only to people who aren't
   // members of that community yet -- lets someone act on a post they
@@ -5326,6 +5360,13 @@ function postActionsHtml(postId, authorId, content, stickerUrl, audioUrl, durati
   const interestHtml = (communityId && !myCommunityIds.has(communityId))
     ? `<span class="post-action community-interest-trigger" data-community-id="${communityId}" data-community-name="${escapeHtml(displayName)}">interested</span>`
     : '';
+
+  // Organization posts (Meet Founder / communities): likes + the stand -- a public
+  // thread of mini-rants that stays hidden until someone taps "stand".
+  if(isOrgPost){
+    const standHtml = `<span class="post-action stand-trigger" data-post-id="${postId}">stand</span>`;
+    return likeHtml + bookmarkHtml + deleteHtml + standHtml + inspiredHtml + interestHtml + shareHtml;
+  }
 
   if(!authorId || isOwn){
     // Community/organization-authored post, or your own -- no one to reply/friend/block.
@@ -5346,6 +5387,63 @@ function postActionsHtml(postId, authorId, content, stickerUrl, audioUrl, durati
     + inspiredHtml
     + shareHtml;
 }
+
+// THE STAND -- public mini-rants under an organization post (Meet Founder or a
+// community). Hidden until someone taps "stand". Lives in its own table so the
+// private replies table stays private. See stand_replies.sql.
+async function loadStandPanel(panel, postId){
+  const { data, error } = await sb.from('stand_replies')
+    .select('id, content, created_at, user_id, users(meet_number)')
+    .eq('post_id', postId).order('created_at', { ascending: true });
+  const list = panel.querySelector('.stand-list');
+  if(error){ console.error('Error loading stand:', error); list.innerHTML = '<div class="stand-empty">couldn\'t load the stand.</div>'; return; }
+  list.innerHTML = (data && data.length)
+    ? data.map(r => `<div class="stand-item"><span class="stand-name">${escapeHtml(r.users?.meet_number || 'Someone')}</span>${escapeHtml(r.content)}${(r.user_id === currentUserId || isAdmin) ? `<span class="stand-del" data-id="${r.id}">delete</span>` : ''}</div>`).join('')
+    : '<div class="stand-empty">no one has taken a stand yet.</div>';
+}
+
+document.addEventListener('click', async (e)=>{
+  const del = e.target.closest('.stand-del');
+  if(del){
+    e.stopPropagation();
+    const panel = del.closest('.stand-panel');
+    const { error } = await sb.from('stand_replies').delete().eq('id', del.dataset.id);
+    if(error){ console.error('Error deleting stand reply:', error); return; }
+    loadStandPanel(panel, panel.dataset.postId);
+    return;
+  }
+  const send = e.target.closest('.stand-send');
+  if(send){
+    e.stopPropagation();
+    const panel = send.closest('.stand-panel');
+    const input = panel.querySelector('.stand-input');
+    const content = input.value.trim();
+    if(!content) return;
+    if(!requireSecuredAccount('the stand')) return;
+    send.style.opacity = '0.5';
+    const { error } = await sb.from('stand_replies').insert({ post_id: panel.dataset.postId, user_id: currentUserId, content });
+    send.style.opacity = '';
+    if(error){ console.error('Error saving stand reply:', error); showNavToast('That didn\'t go through. Try again.'); return; }
+    input.value = '';
+    loadStandPanel(panel, panel.dataset.postId);
+    return;
+  }
+  const btn = e.target.closest('.stand-trigger');
+  if(!btn) return;
+  e.stopPropagation();
+  const postEl = btn.closest('.post');
+  if(!postEl) return;
+  const existing = postEl.querySelector('.stand-panel');
+  if(existing){ existing.remove(); btn.classList.remove('open'); return; }
+  const panel = document.createElement('div');
+  panel.className = 'stand-panel';
+  panel.dataset.postId = btn.dataset.postId;
+  panel.innerHTML = '<div class="stand-list"><div class="stand-empty">…</div></div>'
+    + '<div class="stand-row"><input class="stand-input" maxlength="280" placeholder="take a stand…"><span class="stand-send">stand</span></div>';
+  postEl.appendChild(panel);
+  btn.classList.add('open');
+  loadStandPanel(panel, btn.dataset.postId);
+});
 
 // Joining straight from a community's post in Rant, without a trip to
 // the Communities tab first. Communities that post here are always
@@ -5705,7 +5803,7 @@ function renderRantPost(post, userLiked, likeCount, inspirationLabels){
   const div = document.createElement('div');
   div.className = 'post' + ((isCommunity || isFounder) ? ' org-post' : '');
   div.dataset.postId = post.id;
-  div.dataset.isOwn = isOwn ? 'true' : 'false';
+  div.dataset.isOwn = (isOwn && !isFounder) ? 'true' : 'false';
   div.innerHTML = `
     <div class="post-head">
       <span class="post-id">${isCommunity ? escapeHtml(displayName) + ' <span class="org-badge">community</span>' : isFounder ? '<span class="org-crest-dot crest-founder"></span>Meet Founder' : `<span class="user-link" data-user-id="${post.user_id}">${escapeHtml(displayName)}</span>`}</span>
@@ -5716,7 +5814,7 @@ function renderRantPost(post, userLiked, likeCount, inspirationLabels){
     ${happeningPillHtml(post)}
     ${bodyHtml}
     <div class="post-foot">
-      ${postActionsHtml(post.id, isCommunity ? null : (isFounder ? (isOwn ? post.user_id : null) : post.user_id), post.content, post.sticker_url, post.audio_url, post.duration_seconds, displayName, 'Rant', userLiked, likeCount, false, isCommunity ? post.community_id : null)}
+      ${postActionsHtml(post.id, isCommunity ? null : (isFounder ? (isOwn ? post.user_id : null) : post.user_id), post.content, post.sticker_url, post.audio_url, post.duration_seconds, displayName, 'Rant', userLiked, likeCount, false, isCommunity ? post.community_id : null, (isCommunity || isFounder))}
     </div>`;
   return div;
 }
