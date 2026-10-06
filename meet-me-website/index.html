@@ -423,22 +423,28 @@
   /* ===== ORGANISATIONS ===== */
   .org-dot{
     display:inline-block; width:9px; height:9px; border-radius:50%;
-    background:var(--oc,#D4AF37); margin-right:7px; vertical-align:middle; flex-shrink:0;
+    background:var(--muted-dim); margin-right:7px; vertical-align:middle; flex-shrink:0;
   }
-  .org-dot.fresh{ animation:orgBlink 1.5s ease-in-out infinite; box-shadow:0 0 7px var(--oc,#D4AF37); }
+  .org-dot.fresh{ background:var(--oc,#D4AF37); animation:orgBlink 1.5s ease-in-out infinite; box-shadow:0 0 7px var(--oc,#D4AF37); }
   @keyframes orgBlink{ 0%,100%{ opacity:1; } 50%{ opacity:0.2; } }
   @media (prefers-reduced-motion: reduce){
     .org-dot.fresh{ animation:none; }
   }
   .org-tag{
     display:inline-block; font-size:9.5px; letter-spacing:0.04em;
-    color:var(--oc,#D4AF37); border:1px solid var(--oc,#D4AF37);
+    color:var(--gold-dim); border:1px solid color-mix(in srgb, var(--gold) 30%, transparent);
     border-radius:6px; padding:1px 6px; margin-left:8px; vertical-align:middle;
   }
   .org-name-link{ cursor:pointer; }
-  .post.org-card{
-    border-left:2px solid var(--oc,#D4AF37);
-    background:linear-gradient(180deg, color-mix(in srgb, var(--oc,#D4AF37) 7%, var(--card)) 0%, var(--card) 70%);
+  /* Organisation card = a normal rant card plus one thin accent line on the left.
+     That line is the only colour; everything else stays as quiet as a human rant. */
+  .post.org-card{ position:relative; }
+  .post.org-card::before{
+    content:''; position:absolute; left:-1px; top:16px; bottom:16px; width:2px; border-radius:2px;
+    background:linear-gradient(180deg,
+      color-mix(in srgb, var(--oc,#D4AF37) 55%, #fff) 0%,
+      var(--oc,#D4AF37) 40%,
+      color-mix(in srgb, var(--oc,#D4AF37) 55%, #000) 100%);
   }
   .org-header{
     font-family:'Fraunces',serif; font-weight:700; font-size:18px; line-height:1.28;
@@ -516,9 +522,8 @@
 
   /* ===== THE STAND: brick wall ===== */
   .post-action.stand-trigger{
-    color:var(--bg); background:var(--gold-dim); border-radius:12px; padding:3px 10px;
+    color:var(--muted); background:transparent; border:1px solid var(--card-border); border-radius:12px; padding:2px 10px;
   }
-  .post-action.stand-trigger.open{ background:var(--gold-light); }
   .stand-panel{
     margin:12px -2px 0; padding:12px 10px; border-radius:12px; display:flex; flex-direction:column; gap:8px;
     background-color:#171110;
@@ -553,6 +558,43 @@
   .stand-send{ color:var(--bg); background:var(--gold-dim); border-radius:12px; padding:7px 13px; font-size:12px; cursor:pointer; }
   .stand-as{ display:none; align-self:flex-start; align-items:center; font-size:11.5px; color:var(--muted); border:1px solid rgba(240,230,210,0.14); border-radius:12px; padding:4px 10px; cursor:pointer; }
   .stand-as.on{ color:var(--oc); border-color:var(--oc); }
+
+  /* ---- The stand, full screen (same brick wall as "Your post") ---- */
+  #stand-screen{ position:absolute; inset:0; z-index:90; opacity:0; pointer-events:none; transition:opacity 0.25s ease; }
+  #stand-screen.show{ opacity:1; pointer-events:auto; }
+  #stand-wall{ width:100%; height:100%; box-sizing:border-box; display:flex; flex-direction:column; padding:24px 16px 0; }
+  #stand-head{ display:flex; justify-content:space-between; align-items:center; flex-shrink:0; padding-top:env(safe-area-inset-top,0); margin-bottom:14px;
+    font-size:13px; letter-spacing:0.08em; text-transform:uppercase; color:rgba(255,255,255,0.85); text-shadow:0 1px 2px rgba(0,0,0,0.4); }
+  #stand-close{ cursor:pointer; padding:6px 0 6px 12px; }
+  #stand-host{ flex:1; min-height:0; display:flex; flex-direction:column; }
+  #stand-screen .stand-panel{ margin:0; padding:0; background:none; flex:1; min-height:0; gap:0; border-radius:0; }
+  #stand-screen .stand-scroll{ flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; display:flex; flex-direction:column; gap:12px; padding:0 0 14px; }
+  #stand-screen .stand-pinned{ background:#f4ede1; border:1px solid rgba(0,0,0,0.1); border-radius:14px; padding:14px 16px; box-shadow:0 3px 10px rgba(0,0,0,0.25); color:#2a1d16; flex-shrink:0; }
+  #stand-screen .stand-pinned-who{ display:flex; align-items:center; font-size:11.5px; color:#8a6a4a; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:6px; }
+  #stand-screen .stand-pinned-who .org-tag{ color:#8a6a4a; border-color:#d9c8a8; text-transform:none; }
+  #stand-screen .stand-pinned .org-header{ color:#2a1d16; font-size:19px; margin:0 0 6px; }
+  #stand-screen .stand-pinned .post-body, #stand-screen .stand-pinned .text-tap{ color:#2a1d16; font-size:14.5px; line-height:1.5; }
+  #stand-screen .stand-list{ gap:10px; padding-left:2px; }
+  #stand-screen .stand-plate{ background:#f4ede1; border:1px solid rgba(0,0,0,0.1); border-radius:12px; padding:11px 14px 9px; box-shadow:0 3px 10px rgba(0,0,0,0.22); }
+  #stand-screen .stand-plate.armed{ border-color:#8a6a4a; }
+  #stand-screen .stand-plate::before{ color:#fff; left:-20px; }
+  #stand-screen .stand-name{ color:#8a6a4a; text-transform:uppercase; letter-spacing:0.04em; }
+  #stand-screen .stand-name.org{ color:#2a1d16; text-transform:none; letter-spacing:0; }
+  #stand-screen .stand-text{ color:#2a1d16; font-size:14px; }
+  #stand-screen .stand-quote{ border-left-color:#b89968; background:rgba(0,0,0,0.06); color:#6b5846; }
+  #stand-screen .stand-quote-who{ color:#8a6a4a; }
+  #stand-screen .stand-act{ color:#8a7a6c; }
+  #stand-screen .stand-act:active{ color:#2a1d16; }
+  #stand-screen .stand-empty{ color:rgba(255,255,255,0.8); text-align:center; padding:18px 4px; text-shadow:0 1px 2px rgba(0,0,0,0.4); }
+  #stand-screen .stand-dock{ flex-shrink:0; display:flex; flex-direction:column; gap:8px; padding:10px 0 calc(16px + env(safe-area-inset-bottom,0)); }
+  #stand-screen .stand-chip{ background:rgba(0,0,0,0.3); border-left-color:#f4ede1; color:rgba(255,255,255,0.8); }
+  #stand-screen .stand-chip b{ color:#fff; }
+  #stand-screen .stand-chip .stand-chip-x{ color:rgba(255,255,255,0.7); }
+  #stand-screen .stand-as{ color:rgba(255,255,255,0.8); border-color:rgba(255,255,255,0.3); background:rgba(0,0,0,0.2); }
+  #stand-screen .stand-as.on{ color:#fff; border-color:#fff; }
+  #stand-screen .stand-open{ align-self:stretch; background:#f4ede1; color:#8a7a6c; border:1px solid rgba(0,0,0,0.1); border-radius:20px; padding:12px 16px; font-size:14px; box-shadow:0 3px 10px rgba(0,0,0,0.25); }
+  #stand-screen .stand-input{ border-radius:20px; padding:11px 16px; font-size:14px; box-shadow:0 3px 10px rgba(0,0,0,0.25); }
+  #stand-screen .stand-send{ background:rgba(0,0,0,0.3); color:#fff; border:1px solid rgba(255,255,255,0.25); border-radius:20px; padding:10px 16px; font-size:13px; }
   .post-action.friend-trigger:active{ color:var(--gold-light); }
   .like-btn{ display:flex; align-items:center; gap:5px; font-size:12px; color:var(--muted-dim); cursor:pointer; }
   .like-btn .heart{ font-size:13px; transition:transform 0.2s ease; }
@@ -2565,6 +2607,16 @@
       </div>
       <div id="action-sheet-note">A friend request only opens Chat once they accept. Nothing is assumed either way.</div>
       <div id="action-sheet-block" style="text-align:center; margin-top:12px; font-size:11px; letter-spacing:0.06em; text-transform:uppercase; color:var(--muted-dim); cursor:pointer;">block this person</div>
+    </div>
+  </div>
+
+  <div id="stand-screen">
+    <div id="stand-wall" class="brick-panel">
+      <div id="stand-head">
+        <span>The stand</span>
+        <span id="stand-close">‹ Back</span>
+      </div>
+      <div id="stand-host"></div>
     </div>
   </div>
 
@@ -5546,7 +5598,7 @@ function standPlateHtml(r, byId){
     <div class="stand-acts">${acts}</div>
   </div>`;
 }
-async function loadStandPanel(panel, postId){
+async function loadStandPanel(panel, postId, toBottom){
   await ensureOrgs();
   const { data, error } = await sb.from('stand_replies')
     .select('id, content, created_at, user_id, organization_id, reply_to_id, users(meet_number)')
@@ -5560,6 +5612,7 @@ async function loadStandPanel(panel, postId){
   list.innerHTML = rows.length
     ? rows.map(r => standPlateHtml(r, byId)).join('')
     : '<div class="stand-empty">no one has taken a stand yet.</div>';
+  if(toBottom){ const sc = panel.querySelector('.stand-scroll'); if(sc) sc.scrollTop = sc.scrollHeight; }
 }
 function standClearReply(panel){
   delete panel.dataset.replyTo;
@@ -5658,7 +5711,7 @@ document.addEventListener('click', async (e)=>{
     if(error){ console.error('Error saving stand reply:', error); showNavToast(orgErrorMessage(error) || "That didn't go through. Try again."); return; }
     input.value = '';
     standClearReply(panel);
-    loadStandPanel(panel, panel.dataset.postId);
+    loadStandPanel(panel, panel.dataset.postId, true);
     return;
   }
   const btn = e.target.closest('.stand-trigger');
@@ -5666,21 +5719,41 @@ document.addEventListener('click', async (e)=>{
   e.stopPropagation();
   const postEl = btn.closest('.post');
   if(!postEl) return;
-  const existing = postEl.querySelector('.stand-panel');
-  if(existing){ existing.remove(); btn.classList.remove('open'); return; }
   await ensureOrgs();
+  openStandScreen(postEl, btn.dataset.postId);
+});
+
+function openStandScreen(postEl, postId){
+  const screen = document.getElementById('stand-screen');
+  const host = document.getElementById('stand-host');
+  host.innerHTML = '';
   const panel = document.createElement('div');
   panel.className = 'stand-panel';
-  panel.dataset.postId = btn.dataset.postId;
+  panel.dataset.postId = postId;
   if(postEl.dataset.orgId) panel.dataset.orgId = postEl.dataset.orgId;
-  panel.innerHTML = '<div class="stand-list"><div class="stand-empty">…</div></div>'
+  panel.innerHTML = '<div class="stand-scroll"><div class="stand-pinned"></div><div class="stand-list"><div class="stand-empty">…</div></div></div>'
+    + '<div class="stand-dock">'
     + '<div class="stand-chip"></div>'
     + '<div class="stand-open">take a stand…</div>'
     + '<div class="stand-as"></div>'
-    + `<div class="stand-row"><input class="stand-input" maxlength="${STAND_MAX}" placeholder="say it short"><span class="stand-send">stand</span></div>`;
-  postEl.appendChild(panel);
-  btn.classList.add('open');
-  loadStandPanel(panel, btn.dataset.postId);
+    + `<div class="stand-row"><input class="stand-input" maxlength="${STAND_MAX}" placeholder="say it short"><span class="stand-send">stand</span></div>`
+    + '</div>';
+  host.appendChild(panel);
+  // Pin the post at the top of the wall.
+  const pinned = panel.querySelector('.stand-pinned');
+  const who = postEl.querySelector('.post-id');
+  const whoDiv = document.createElement('div');
+  whoDiv.className = 'stand-pinned-who';
+  whoDiv.innerHTML = who ? who.innerHTML.replace(/ fresh/g, '') : '';
+  pinned.appendChild(whoDiv);
+  const hd = postEl.querySelector('.org-header');
+  if(hd) pinned.appendChild(hd.cloneNode(true));
+  postEl.querySelectorAll('.post-body').forEach(b => pinned.appendChild(b.cloneNode(true)));
+  screen.classList.add('show');
+  loadStandPanel(panel, postId);
+}
+document.getElementById('stand-close').addEventListener('click', ()=>{
+  document.getElementById('stand-screen').classList.remove('show');
 });
 
 // Swipe a plate to the right to reply to it (same gesture as chat).
