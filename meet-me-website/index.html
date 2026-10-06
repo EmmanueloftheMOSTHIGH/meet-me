@@ -147,7 +147,7 @@
   #notif-btn{
     position:relative;
     cursor:pointer;
-    margin-left:10px;
+    margin-left:-4px;
     width:30px; height:30px;
     border-radius:50%;
     background:var(--bg-elevated);
@@ -193,7 +193,7 @@
     position:relative;
     cursor:pointer;
     flex-shrink:0;
-    margin-left:10px;
+    margin-left:-4px;
     display:flex;
     align-items:center;
     justify-content:center;
@@ -404,13 +404,6 @@
   .crest-arsenal{ background:linear-gradient(135deg,#c9302c,#8a1f1c); }
   .crest-spotify{ background:linear-gradient(135deg,#1db954,#12793a); }
   .crest-founder{ background:linear-gradient(135deg,var(--gold-light),var(--gold-dim)); box-shadow:0 0 6px rgba(212,168,87,0.55); }
-  #compose-founder-row{ display:none; margin:-6px 0 14px; }
-  #compose-founder-toggle{
-    display:inline-flex; align-items:center; height:38px; padding:0 14px; border-radius:19px;
-    background:var(--card); border:1px solid var(--card-border);
-    color:var(--gold-dim); font-size:12.5px; cursor:pointer; white-space:nowrap;
-  }
-  #compose-founder-toggle.on{ border-color:var(--gold-dim); color:var(--gold-light); background:rgba(212,168,87,0.10); }
 
   .follow-badge{
     display:inline-block;
@@ -427,22 +420,139 @@
     color:var(--bg);
     background:var(--gold-dim);
   }
+  /* ===== ORGANISATIONS ===== */
+  .org-dot{
+    display:inline-block; width:9px; height:9px; border-radius:50%;
+    background:var(--oc,#D4AF37); margin-right:7px; vertical-align:middle; flex-shrink:0;
+  }
+  .org-dot.fresh{ animation:orgBlink 1.5s ease-in-out infinite; box-shadow:0 0 7px var(--oc,#D4AF37); }
+  @keyframes orgBlink{ 0%,100%{ opacity:1; } 50%{ opacity:0.2; } }
+  @media (prefers-reduced-motion: reduce){
+    .org-dot.fresh{ animation:none; }
+  }
+  .org-tag{
+    display:inline-block; font-size:9.5px; letter-spacing:0.04em;
+    color:var(--oc,#D4AF37); border:1px solid var(--oc,#D4AF37);
+    border-radius:6px; padding:1px 6px; margin-left:8px; vertical-align:middle;
+  }
+  .org-name-link{ cursor:pointer; }
+  .post.org-card{
+    border-left:2px solid var(--oc,#D4AF37);
+    background:linear-gradient(180deg, color-mix(in srgb, var(--oc,#D4AF37) 7%, var(--card)) 0%, var(--card) 70%);
+  }
+  .org-header{
+    font-family:'Fraunces',serif; font-weight:700; font-size:18px; line-height:1.28;
+    color:var(--ivory); margin:2px 0 8px; letter-spacing:-0.005em;
+  }
+
+  /* compose: Post as pill + header field */
+  #compose-org-row{ display:none; margin:-6px 0 12px; }
+  #compose-org-pill{
+    display:inline-flex; align-items:center; height:38px; padding:0 14px; border-radius:19px;
+    background:var(--card); border:1px solid var(--card-border);
+    color:var(--muted); font-size:12.5px; cursor:pointer; white-space:nowrap; gap:2px;
+  }
+  #compose-org-pill.on{ border-color:var(--oc); color:var(--oc); background:color-mix(in srgb, var(--oc) 10%, transparent); }
+  #compose-org-pill .org-dot{ background:var(--muted-dim); }
+  #compose-org-pill.on .org-dot{ background:var(--oc); }
+  #compose-org-header-wrap{ display:none; align-items:center; gap:8px; margin:-6px 0 12px; }
+  #compose-org-header{
+    flex:1; min-width:0; background:var(--card); border:1px solid var(--card-border);
+    border-radius:10px; padding:11px 13px; color:var(--ivory);
+    font-family:'Fraunces',serif; font-weight:700; font-size:16px; outline:none;
+  }
+  #compose-org-header:focus{ border-color:var(--gold-dim); }
+  #compose-org-header-count{ font-size:11px; color:var(--muted-dim); min-width:34px; text-align:right; }
+  #compose-org-msg{ display:none; font-size:12px; color:#d98a7e; margin:-4px 0 10px; }
+  #compose-submit-btn.blocked{ opacity:0.4; }
+
+  /* organisation sheet (tap an organisation name) */
+  #org-sheet-overlay{
+    position:absolute; inset:0; background:rgba(6,6,7,0.75); z-index:78;
+    display:flex; align-items:flex-end; opacity:0; pointer-events:none; transition:opacity 0.3s ease;
+  }
+  #org-sheet-overlay.show{ opacity:1; pointer-events:auto; }
+  #org-sheet-panel{
+    width:100%; background:var(--bg-elevated); border-radius:20px 20px 0 0;
+    padding:22px 20px 26px; transform:translateY(16px); transition:transform 0.35s cubic-bezier(.2,.9,.3,1);
+  }
+  #org-sheet-overlay.show #org-sheet-panel{ transform:translateY(0); }
+  #org-sheet-title{ font-family:'Fraunces',serif; font-size:19px; color:var(--ivory); margin-bottom:2px; display:flex; align-items:center; }
+  #org-sheet-sub{ font-size:11.5px; color:var(--muted-dim); margin-bottom:16px; }
+  .org-sheet-row{
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:13px 4px; border-top:1px solid var(--card-border); font-size:14px; color:var(--ivory); cursor:pointer;
+  }
+  .org-sheet-row small{ display:block; font-size:11px; color:var(--muted-dim); margin-top:2px; }
+  .org-sheet-row .org-state{ font-size:12px; color:var(--muted); }
+  .org-sheet-row.on .org-state{ color:var(--gold-light); }
+  .org-switch{ width:34px; height:20px; border-radius:10px; background:var(--card); border:1px solid var(--card-border); position:relative; flex-shrink:0; }
+  .org-switch::after{ content:''; position:absolute; top:3px; left:3px; width:12px; height:12px; border-radius:50%; background:var(--muted); transition:transform 0.15s ease, background 0.15s ease; }
+  .org-sheet-row.on .org-switch{ background:rgba(212,168,87,0.25); border-color:var(--gold-dim); }
+  .org-sheet-row.on .org-switch::after{ transform:translateX(14px); background:var(--gold-light); }
+  #org-sheet-close{ text-align:center; margin-top:14px; font-size:12px; letter-spacing:0.1em; text-transform:uppercase; color:var(--muted-dim); padding:10px; cursor:pointer; }
+
+  /* profile: organisation settings */
+  .org-own{ padding:14px 0 16px; border-bottom:1px solid var(--card-border); }
+  .org-own-name{ font-family:'Fraunces',serif; font-size:17px; color:var(--ivory); display:flex; align-items:center; }
+  .org-own-meta{ font-size:12px; color:var(--muted); margin:4px 0 12px; }
+  .org-swatches{ display:grid; grid-template-columns:repeat(8,1fr); gap:7px; margin-bottom:10px; }
+  .org-swatch{ aspect-ratio:1; border-radius:50%; background:var(--sw); border:2px solid transparent; cursor:pointer; position:relative; }
+  .org-swatch.current::after{ content:''; position:absolute; inset:-5px; border-radius:50%; border:1px solid var(--muted-dim); }
+  .org-swatch.picked{ border-color:var(--ivory); }
+  .org-swatches.locked .org-swatch{ opacity:0.35; cursor:default; }
+  .org-lock-msg{ font-size:11.5px; color:var(--muted); line-height:1.5; margin-bottom:10px; }
+  .org-save-color{ display:none; text-align:center; padding:10px; border-radius:12px; font-size:13px; border:1px solid var(--gold-dim); color:var(--gold-light); cursor:pointer; }
+  .org-follow-title{ font-size:12px; color:var(--muted); margin:16px 0 4px; }
+  .org-list-row .org-mini-btn{ margin-left:auto; font-size:11.5px; color:var(--muted); border:1px solid var(--card-border); border-radius:10px; padding:4px 10px; cursor:pointer; }
+  #org-list-body{ max-height:62vh; overflow-y:auto; }
+  .org-claim{ margin-top:18px; padding-top:14px; border-top:1px solid var(--card-border); }
+  .org-claim-link{ font-size:13px; color:var(--gold-text); cursor:pointer; }
+  .org-claim-form{ display:none; gap:8px; align-items:center; margin-top:10px; }
+  .org-claim-input{ flex:1; min-width:0; background:var(--card); border:1px solid var(--card-border); border-radius:10px; padding:10px 12px; color:var(--ivory); font-size:14px; letter-spacing:0.06em; outline:none; text-transform:uppercase; }
+  .org-claim-input:focus{ border-color:var(--gold-dim); }
+  .org-claim-go{ padding:10px 14px; border-radius:12px; border:1px solid var(--gold-dim); color:var(--gold-light); font-size:13px; cursor:pointer; }
+  .org-claim-note{ font-size:11.5px; color:var(--muted-dim); line-height:1.5; margin-top:8px; }
+
+  /* ===== THE STAND: brick wall ===== */
   .post-action.stand-trigger{
-    color:var(--bg);
-    background:var(--gold-dim);
-    border-radius:12px;
-    padding:3px 10px;
+    color:var(--bg); background:var(--gold-dim); border-radius:12px; padding:3px 10px;
   }
   .post-action.stand-trigger.open{ background:var(--gold-light); }
-  .stand-panel{ margin-top:10px; padding-top:10px; border-top:1px solid var(--card-border); display:flex; flex-direction:column; gap:8px; }
-  .stand-item{ font-size:12.5px; line-height:1.5; color:var(--ivory); }
-  .stand-item .stand-name{ color:var(--gold-text); margin-right:6px; }
-  .stand-item .stand-del{ color:var(--muted-dim); margin-left:8px; font-size:11px; cursor:pointer; }
-  .stand-empty{ font-size:12px; color:var(--muted-dim); font-style:italic; }
-  .stand-row{ display:flex; gap:8px; align-items:center; }
-  .stand-input{ flex:1; background:transparent; border:1px solid var(--card-border); border-radius:14px; padding:8px 12px; color:var(--ivory); font-size:13px; font-family:inherit; outline:none; }
-  .stand-input:focus{ border-color:var(--gold-dim); }
-  .stand-send{ color:var(--bg); background:var(--gold-dim); border-radius:12px; padding:6px 12px; font-size:12px; cursor:pointer; }
+  .stand-panel{
+    margin:12px -2px 0; padding:12px 10px; border-radius:12px; display:flex; flex-direction:column; gap:8px;
+    background-color:#171110;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='32'%3E%3Crect width='64' height='32' fill='%230f0b0a'/%3E%3Crect x='1' y='1' width='30' height='14' rx='1' fill='%23241a17'/%3E%3Crect x='33' y='1' width='30' height='14' rx='1' fill='%23211714'/%3E%3Crect x='17' y='17' width='30' height='14' rx='1' fill='%23211715'/%3E%3Crect x='-15' y='17' width='30' height='14' rx='1' fill='%23261c18'/%3E%3Crect x='49' y='17' width='30' height='14' rx='1' fill='%23261c18'/%3E%3C/svg%3E");
+    background-size:64px 32px;
+  }
+  .stand-list{ display:flex; flex-direction:column; gap:7px; }
+  .stand-plate{
+    position:relative; background:#2b211d; border:1px solid rgba(240,230,210,0.10);
+    border-radius:8px; padding:9px 11px 8px; touch-action:pan-y;
+    box-shadow:0 2px 0 rgba(0,0,0,0.45); transition:transform 0.18s ease;
+  }
+  .stand-plate.armed{ border-color:var(--gold-dim); }
+  .stand-plate::before{ content:'↩'; position:absolute; left:-24px; top:50%; transform:translateY(-50%); color:var(--gold-light); opacity:0; font-size:15px; }
+  .stand-plate.armed::before{ opacity:1; }
+  .stand-who{ display:flex; align-items:center; margin-bottom:3px; font-size:11.5px; }
+  .stand-name{ color:var(--gold-text); }
+  .stand-name.org{ color:var(--ivory); font-weight:600; }
+  .stand-text{ font-size:13px; line-height:1.5; color:var(--ivory); word-break:break-word; }
+  .stand-quote{ border-left:2px solid var(--gold-dim); background:rgba(0,0,0,0.25); border-radius:4px; padding:4px 8px; margin-bottom:6px; font-size:11.5px; color:var(--muted); line-height:1.4; }
+  .stand-quote-who{ display:block; color:var(--gold-text); font-size:10.5px; }
+  .stand-acts{ display:flex; gap:14px; margin-top:6px; }
+  .stand-act{ font-size:11px; color:var(--muted-dim); cursor:pointer; }
+  .stand-act:active{ color:var(--gold-light); }
+  .stand-empty{ font-size:12.5px; color:var(--muted); font-style:italic; padding:6px 2px; }
+  .stand-chip{ display:none; align-items:center; gap:8px; background:rgba(0,0,0,0.35); border-left:2px solid var(--gold-light); border-radius:6px; padding:6px 10px; font-size:11.5px; color:var(--muted); }
+  .stand-chip b{ color:var(--gold-text); font-weight:normal; }
+  .stand-chip .stand-chip-x{ margin-left:auto; cursor:pointer; color:var(--muted-dim); padding:0 4px; }
+  .stand-open{ align-self:flex-start; font-size:12px; color:var(--ivory); background:rgba(0,0,0,0.4); border:1px solid rgba(240,230,210,0.14); border-radius:14px; padding:7px 14px; cursor:pointer; }
+  .stand-row{ display:none; gap:8px; align-items:center; }
+  .stand-input{ flex:1; min-width:0; background:#fbf7ee; border:none; border-radius:14px; padding:8px 12px; color:#17130f; font-size:13px; font-family:inherit; outline:none; }
+  .stand-send{ color:var(--bg); background:var(--gold-dim); border-radius:12px; padding:7px 13px; font-size:12px; cursor:pointer; }
+  .stand-as{ display:none; align-self:flex-start; align-items:center; font-size:11.5px; color:var(--muted); border:1px solid rgba(240,230,210,0.14); border-radius:12px; padding:4px 10px; cursor:pointer; }
+  .stand-as.on{ color:var(--oc); border-color:var(--oc); }
   .post-action.friend-trigger:active{ color:var(--gold-light); }
   .like-btn{ display:flex; align-items:center; gap:5px; font-size:12px; color:var(--muted-dim); cursor:pointer; }
   .like-btn .heart{ font-size:13px; transition:transform 0.2s ease; }
@@ -1722,7 +1832,7 @@
       </div>
       <div id="wordmark">Meet Me</div>
       <div id="screen-label-text">Rant</div>
-      <div id="search-btn">🔍</div>
+      <div id="search-btn" role="button" aria-label="Search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="15.5" y1="15.5" x2="21" y2="21"/></svg></div>
       <div id="notif-btn">
         <span id="notif-icon">🔔</span>
         <span id="notif-dot"></span>
@@ -1793,6 +1903,10 @@
         <div id="profile-number">—</div>
         <div id="profile-since">present since this year</div>
       </div>
+      <div class="profile-row" id="profile-install-row">
+        <span class="profile-row-label">Install Meet Me app</span>
+        <span class="profile-row-value" id="profile-install-value">install ›</span>
+      </div>
       <div class="profile-row" id="profile-yourposts-row">
         <span class="profile-row-label">Your posts</span>
         <span class="profile-row-value">›</span>
@@ -1834,8 +1948,8 @@
         <span class="profile-row-value">›</span>
       </div>
       <div class="profile-row" id="profile-org-row">
-        <span class="profile-row-label">Organizations</span>
-        <span class="profile-row-value">2 verified ›</span>
+        <span class="profile-row-label">Organisations</span>
+        <span class="profile-row-value">›</span>
       </div>
       <div class="profile-row" id="profile-contact-row">
         <span class="profile-row-label">Contact us</span>
@@ -1888,17 +2002,21 @@
 
   <div id="org-list-overlay">
     <div id="org-list-panel">
-      <div id="org-list-title">Organizations</div>
-      <div id="org-list-sub">verified, paid presence — their rants live in your feed, same as everyone else's</div>
-      <div class="org-list-row">
-        <span class="org-list-badge badge-arsenal">business</span>
-        <span class="org-list-name">Meet Arsenal <span class="org-list-verified">✓</span></span>
-      </div>
-      <div class="org-list-row">
-        <span class="org-list-badge badge-spotify">business</span>
-        <span class="org-list-name">Meet Spotify <span class="org-list-verified">✓</span></span>
-      </div>
+      <div id="org-list-title">Organisations</div>
+      <div id="org-list-sub">Newscasts and creators who broadcast into Rant. Follow or mute them here.</div>
+      <div id="org-list-body"></div>
       <div id="org-list-close">close</div>
+    </div>
+  </div>
+
+  <div id="org-sheet-overlay">
+    <div id="org-sheet-panel">
+      <div id="org-sheet-title"></div>
+      <div id="org-sheet-sub"></div>
+      <div class="org-sheet-row" id="org-sheet-follow"><span>Follow</span><span class="org-state"></span></div>
+      <div class="org-sheet-row" id="org-sheet-notify"><span>Notifications<small>Tell me when they post</small></span><span class="org-switch"></span></div>
+      <div class="org-sheet-row" id="org-sheet-mute"><span>Mute<small>Hide their posts from Rant</small></span><span class="org-state"></span></div>
+      <div id="org-sheet-close">close</div>
     </div>
   </div>
 
@@ -1979,6 +2097,15 @@
       <input id="delete-account-confirm-input" class="account-input" type="text" placeholder="type DELETE to confirm">
       <div class="account-btn primary" id="delete-account-confirm-btn" style="border-color:#c9736a; color:#c9736a;">Permanently delete</div>
       <div class="account-close" id="delete-account-cancel">cancel</div>
+    </div>
+  </div>
+
+  <div id="install-overlay" class="account-overlay">
+    <div class="account-panel">
+      <div class="account-title">Install Meet Me</div>
+      <div class="account-sub" id="install-sub">Add Meet Me to your home screen so it opens like a real app.</div>
+      <div id="install-steps" style="font-size:13px; line-height:1.7; color:var(--ivory); margin-top:10px;"></div>
+      <div class="account-close" id="install-close" style="margin-top:16px;">close</div>
     </div>
   </div>
 
@@ -2087,6 +2214,11 @@
     <div class="compose-panel">
       <div class="compose-title" id="compose-title">What's true right now?</div>
       <textarea id="compose-textarea" placeholder="Say it plainly."></textarea>
+      <div id="compose-org-header-wrap">
+        <input id="compose-org-header" type="text" maxlength="60" placeholder="Header" autocomplete="off">
+        <span id="compose-org-header-count">0/60</span>
+      </div>
+      <div id="compose-org-msg">Add a header.</div>
 
       <div id="compose-voice-row" style="display:flex; align-items:center; gap:10px; margin:-6px 0 14px;">
         <div id="compose-mic-btn" title="Record a voice note" style="width:38px; height:38px; border-radius:50%; background:var(--card); border:1px solid var(--card-border); display:flex; align-items:center; justify-content:center; font-size:15px; cursor:pointer; flex-shrink:0; color:var(--gold-dim);">🎙</div>
@@ -2107,8 +2239,8 @@
         </div>
         <div id="happening-autocomplete"></div>
       </div>
-      <div id="compose-founder-row">
-        <div id="compose-founder-toggle"><span class="org-crest-dot crest-founder"></span>Post as Meet Founder</div>
+      <div id="compose-org-row">
+        <div id="compose-org-pill"><span class="org-dot"></span><span id="compose-org-pill-label">Posting as you</span></div>
       </div>
 
       <div class="account-btn primary" id="compose-submit-btn">Post</div>
@@ -2587,7 +2719,7 @@ let currentMeetNumber = null;
 // isMeet8 just decides whether the toggle is shown.
 const FOUNDER_ORG_ID = 1;
 let isMeet8 = false;
-let postAsFounder = false;
+let postAsOrgId = null;
 let accountSecured = false;
 let accountCreatedAt = null;
 let isAdmin = false;
@@ -2683,7 +2815,7 @@ document.getElementById('profile-online-count-row').addEventListener('click', ()
 
 const orgListOverlay = document.getElementById('org-list-overlay');
 const orgListClose = document.getElementById('org-list-close');
-const profileOrgRow = document.getElementById('profile-org-row');function openOrgList(){ orgListOverlay.classList.add('show'); }
+const profileOrgRow = document.getElementById('profile-org-row');function openOrgList(){ renderOrgList(); orgListOverlay.classList.add('show'); }
 function closeOrgList(){ orgListOverlay.classList.remove('show'); }
 
 logoBtn.addEventListener('click', ()=>goToScreen('twin'));
@@ -3695,7 +3827,7 @@ document.getElementById('action-sheet-block').addEventListener('click', async ()
    ============================================================ */
 const postRepliesSheet = document.getElementById('post-replies-sheet');
 const OWN_POST_SELECTOR = '.post[data-post-id], .spill-card[data-post-id], .yp-post[data-post-id]';
-const POST_INTERACTIVE_SELECTOR = '.post-action, .like-btn, .user-link, .sticker-tap, .text-tap, .voice-play-btn, .reply-trigger, .follow-trigger, .stand-trigger, .stand-panel, .bookmark-trigger, .delete-post-trigger, .community-interest-trigger, .inspired-trigger, .inspired-source-link, .message-trigger, .friend-trigger, .share-trigger, .happening-pill, a, button, input, textarea';
+const POST_INTERACTIVE_SELECTOR = '.post-action, .like-btn, .user-link, .sticker-tap, .text-tap, .voice-play-btn, .reply-trigger, .follow-trigger, .stand-trigger, .stand-panel, .org-name-link, .bookmark-trigger, .delete-post-trigger, .community-interest-trigger, .inspired-trigger, .inspired-source-link, .message-trigger, .friend-trigger, .share-trigger, .happening-pill, a, button, input, textarea';
 
 document.addEventListener('click', (e)=>{
   const trigger = e.target.closest('.own-replies-trigger');
@@ -4893,7 +5025,8 @@ async function initUser(){
     loadMyBlockedSet(),
     loadMyStickers(),
     loadMyBookmarkIds(),
-    loadMyCommunityIds()
+    loadMyCommunityIds(),
+    ensureOrgs(true)
   ]);
   await maybeSendSecureNudgeNotification();
 }
@@ -5388,18 +5521,84 @@ function postActionsHtml(postId, authorId, content, stickerUrl, audioUrl, durati
     + shareHtml;
 }
 
-// THE STAND -- public mini-rants under an organization post (Meet Founder or a
-// community). Hidden until someone taps "stand". Lives in its own table so the
-// private replies table stays private. See stand_replies.sql.
+// THE STAND -- public mini-rants under an organisation post (or a
+// community post). Hidden until someone taps "stand". Replies sit on solid
+// plates over a brick wall; swipe a plate (or tap "reply") to answer it as a
+// quote. Lives in its own table so the private replies table stays private.
+const STAND_MAX = 140;
+function standWho(r){ return r.organization_id ? orgInfo(r.organization_id).name : (r.users?.meet_number || 'Someone'); }
+function standPlateHtml(r, byId){
+  const org = r.organization_id ? orgInfo(r.organization_id) : null;
+  const quoted = r.reply_to_id ? byId[r.reply_to_id] : null;
+  const quoteHtml = quoted
+    ? `<div class="stand-quote"><span class="stand-quote-who">${escapeHtml(standWho(quoted))}</span>${escapeHtml((quoted.content || '').slice(0, 100))}</div>` : '';
+  const whoHtml = org
+    ? `<span class="org-dot" style="--oc:${org.color}"></span><span class="stand-name org">${escapeHtml(org.name)}</span>`
+    : `<span class="stand-name">${escapeHtml(standWho(r))}</span>`;
+  const mine = r.user_id === currentUserId;
+  const acts = `<span class="stand-act stand-reply-act" data-id="${r.id}">reply</span>`
+    + (mine ? '' : `<span class="stand-act stand-report" data-id="${r.id}">report</span>`)
+    + ((mine || isAdmin) ? `<span class="stand-act stand-del" data-id="${r.id}">delete</span>` : '');
+  return `<div class="stand-plate" data-id="${r.id}">
+    <div class="stand-who">${whoHtml}</div>
+    ${quoteHtml}
+    <div class="stand-text">${escapeHtml(r.content)}</div>
+    <div class="stand-acts">${acts}</div>
+  </div>`;
+}
 async function loadStandPanel(panel, postId){
+  await ensureOrgs();
   const { data, error } = await sb.from('stand_replies')
-    .select('id, content, created_at, user_id, users(meet_number)')
+    .select('id, content, created_at, user_id, organization_id, reply_to_id, users(meet_number)')
     .eq('post_id', postId).order('created_at', { ascending: true });
   const list = panel.querySelector('.stand-list');
   if(error){ console.error('Error loading stand:', error); list.innerHTML = '<div class="stand-empty">couldn\'t load the stand.</div>'; return; }
-  list.innerHTML = (data && data.length)
-    ? data.map(r => `<div class="stand-item"><span class="stand-name">${escapeHtml(r.users?.meet_number || 'Someone')}</span>${escapeHtml(r.content)}${(r.user_id === currentUserId || isAdmin) ? `<span class="stand-del" data-id="${r.id}">delete</span>` : ''}</div>`).join('')
+  const rows = data || [];
+  const byId = {};
+  rows.forEach(r => { byId[r.id] = r; });
+  panel._byId = byId;
+  list.innerHTML = rows.length
+    ? rows.map(r => standPlateHtml(r, byId)).join('')
     : '<div class="stand-empty">no one has taken a stand yet.</div>';
+}
+function standClearReply(panel){
+  delete panel.dataset.replyTo;
+  const chip = panel.querySelector('.stand-chip');
+  chip.style.display = 'none'; chip.innerHTML = '';
+}
+function setStandReply(panel, replyId){
+  const r = panel._byId && panel._byId[replyId];
+  if(!r) return;
+  panel.dataset.replyTo = replyId;
+  const chip = panel.querySelector('.stand-chip');
+  chip.innerHTML = `<span>Replying to <b>${escapeHtml(standWho(r))}</b></span><span class="stand-chip-x">✕</span>`;
+  chip.style.display = 'flex';
+  openStandInput(panel);
+}
+function standAsRender(panel){
+  const el = panel.querySelector('.stand-as');
+  if(!myOrgs.length){ el.style.display = 'none'; return; }
+  el.style.display = 'inline-flex';
+  const id = panel.dataset.asOrg ? Number(panel.dataset.asOrg) : null;
+  if(id){
+    const o = orgInfo(id);
+    el.classList.add('on'); el.style.setProperty('--oc', o.color);
+    el.innerHTML = `<span class="org-dot" style="--oc:${o.color}"></span>Reply as ${escapeHtml(o.name)}`;
+  } else {
+    el.classList.remove('on'); el.style.removeProperty('--oc');
+    el.textContent = 'Reply as you';
+  }
+}
+function openStandInput(panel){
+  panel.querySelector('.stand-open').style.display = 'none';
+  panel.querySelector('.stand-row').style.display = 'flex';
+  if(panel.dataset.asOrg === undefined){
+    // Default to the organisation when this is the owner's own organisation post.
+    const own = Number(panel.dataset.orgId);
+    panel.dataset.asOrg = (own && myOrgIds.has(own)) ? String(own) : '';
+  }
+  standAsRender(panel);
+  panel.querySelector('.stand-input').focus();
 }
 
 document.addEventListener('click', async (e)=>{
@@ -5412,6 +5611,36 @@ document.addEventListener('click', async (e)=>{
     loadStandPanel(panel, panel.dataset.postId);
     return;
   }
+  const rep = e.target.closest('.stand-report');
+  if(rep){
+    e.stopPropagation();
+    if(!currentUserId) return;
+    const { error } = await sb.from('stand_reports').insert({ reply_id: Number(rep.dataset.id), reporter_id: currentUserId });
+    if(error && error.code !== '23505'){ console.error('Error reporting stand reply:', error); showNavToast("Couldn't send the report. Try again."); return; }
+    showNavToast(error ? 'You already reported this.' : 'Reported. A person will review it.');
+    return;
+  }
+  const replyAct = e.target.closest('.stand-reply-act');
+  if(replyAct){
+    e.stopPropagation();
+    setStandReply(replyAct.closest('.stand-panel'), Number(replyAct.dataset.id));
+    return;
+  }
+  const chipX = e.target.closest('.stand-chip-x');
+  if(chipX){ e.stopPropagation(); standClearReply(chipX.closest('.stand-panel')); return; }
+  const openBtn = e.target.closest('.stand-open');
+  if(openBtn){ e.stopPropagation(); openStandInput(openBtn.closest('.stand-panel')); return; }
+  const asBtn = e.target.closest('.stand-as');
+  if(asBtn){
+    e.stopPropagation();
+    const panel = asBtn.closest('.stand-panel');
+    const cur = panel.dataset.asOrg ? Number(panel.dataset.asOrg) : null;
+    const idx = myOrgs.findIndex(o => o.id === cur);
+    const next = cur === null ? myOrgs[0] : (myOrgs[idx + 1] || null);
+    panel.dataset.asOrg = next ? String(next.id) : '';
+    standAsRender(panel);
+    return;
+  }
   const send = e.target.closest('.stand-send');
   if(send){
     e.stopPropagation();
@@ -5421,10 +5650,14 @@ document.addEventListener('click', async (e)=>{
     if(!content) return;
     if(!requireSecuredAccount('the stand')) return;
     send.style.opacity = '0.5';
-    const { error } = await sb.from('stand_replies').insert({ post_id: panel.dataset.postId, user_id: currentUserId, content });
+    const row = { post_id: panel.dataset.postId, user_id: currentUserId, content: content.slice(0, STAND_MAX) };
+    if(panel.dataset.replyTo) row.reply_to_id = Number(panel.dataset.replyTo);
+    if(panel.dataset.asOrg) row.organization_id = Number(panel.dataset.asOrg);
+    const { error } = await sb.from('stand_replies').insert(row);
     send.style.opacity = '';
-    if(error){ console.error('Error saving stand reply:', error); showNavToast('That didn\'t go through. Try again.'); return; }
+    if(error){ console.error('Error saving stand reply:', error); showNavToast(orgErrorMessage(error) || "That didn't go through. Try again."); return; }
     input.value = '';
+    standClearReply(panel);
     loadStandPanel(panel, panel.dataset.postId);
     return;
   }
@@ -5435,15 +5668,57 @@ document.addEventListener('click', async (e)=>{
   if(!postEl) return;
   const existing = postEl.querySelector('.stand-panel');
   if(existing){ existing.remove(); btn.classList.remove('open'); return; }
+  await ensureOrgs();
   const panel = document.createElement('div');
   panel.className = 'stand-panel';
   panel.dataset.postId = btn.dataset.postId;
+  if(postEl.dataset.orgId) panel.dataset.orgId = postEl.dataset.orgId;
   panel.innerHTML = '<div class="stand-list"><div class="stand-empty">…</div></div>'
-    + '<div class="stand-row"><input class="stand-input" maxlength="280" placeholder="take a stand…"><span class="stand-send">stand</span></div>';
+    + '<div class="stand-chip"></div>'
+    + '<div class="stand-open">take a stand…</div>'
+    + '<div class="stand-as"></div>'
+    + `<div class="stand-row"><input class="stand-input" maxlength="${STAND_MAX}" placeholder="say it short"><span class="stand-send">stand</span></div>`;
   postEl.appendChild(panel);
   btn.classList.add('open');
   loadStandPanel(panel, btn.dataset.postId);
 });
+
+// Swipe a plate to the right to reply to it (same gesture as chat).
+(function setupStandSwipe(){
+  let plate = null, sx = 0, sy = 0, horiz = false;
+  const THRESHOLD = 56;
+  document.addEventListener('touchstart', (e)=>{
+    const p = e.target.closest('.stand-plate');
+    if(!p){ plate = null; return; }
+    plate = p; sx = e.touches[0].clientX; sy = e.touches[0].clientY; horiz = false;
+    p.style.transition = 'none';
+  }, { passive: true });
+  document.addEventListener('touchmove', (e)=>{
+    if(!plate) return;
+    const x = e.touches[0].clientX - sx, y = e.touches[0].clientY - sy;
+    if(!horiz){
+      if(Math.abs(x) > 8 && Math.abs(x) > Math.abs(y)) horiz = true;
+      else if(Math.abs(y) > 10){ plate.style.transition = ''; plate = null; return; }
+    }
+    if(!horiz) return;
+    const dx = Math.max(0, Math.min(x, 80));
+    plate.style.transform = `translateX(${dx}px)`;
+    plate.classList.toggle('armed', dx >= THRESHOLD);
+  }, { passive: true });
+  function finish(commit){
+    if(!plate) return;
+    const p = plate; plate = null;
+    p.style.transition = ''; p.style.transform = '';
+    const armed = p.classList.contains('armed');
+    p.classList.remove('armed');
+    if(commit && horiz && armed){
+      const panel = p.closest('.stand-panel');
+      if(panel) setStandReply(panel, Number(p.dataset.id));
+    }
+  }
+  document.addEventListener('touchend', ()=> finish(true), { passive: true });
+  document.addEventListener('touchcancel', ()=> finish(false), { passive: true });
+})();
 
 // Joining straight from a community's post in Rant, without a trip to
 // the Communities tab first. Communities that post here are always
@@ -5768,7 +6043,373 @@ document.getElementById('set-new-pin-submit-btn').addEventListener('click', asyn
 /* ============================================================
    RANT
    ============================================================ */
-async function saveRant(content, communityId, audio, inspiredByPostId, stickerUrl, happeningId, doorQuestionId, doorRouteScore, asFounder){
+/* ============================================================
+   ORGANISATIONS -- Newscast / Creator / Official accounts that broadcast
+   into Rant. An organisation is a normal account with a "Post as" switch.
+   The database enforces ownership, headers, daily limits and the colour
+   lock; this is only the app side. See the Organisations spec.
+   ============================================================ */
+const ORG_PALETTE = [['Red','#E5484D'],['Orange','#F2994A'],['Green','#46B96B'],['Teal','#2BB5A6'],['Blue','#4C9BE8'],['Violet','#9B7BE8'],['Pink','#E86FA8'],['Silver','#C9C9C9']];
+const ORG_FRESH_MS = 2 * 60 * 60 * 1000;   // a post blinks for about 2 hours, until it has been seen
+const ORG_SPACING_GAP = 4;                 // at least 4 other posts between unfollowed organisation posts
+const ORG_SEEN_KEY = 'mm_seen_org_posts';
+let orgMap = {};
+let myOrgs = [];
+let myOrgIds = new Set();
+let myFollows = {};            // organisation id -> { notify }
+let myMutedOrgIds = new Set();
+let orgsPromise = null;
+
+function safeOrgColor(c){ return /^#[0-9a-fA-F]{6}$/.test(c || '') ? c : '#D4AF37'; }
+function orgInfo(id){
+  const o = orgMap[id];
+  return o ? { id:o.id, name:o.name, type:o.type, color:safeOrgColor(o.crest_color) } : { id, name:'Organisation', type:null, color:'#D4AF37' };
+}
+function orgTypeLabel(t){ return t === 'newscast' ? 'Newscast' : t === 'creator' ? 'Creator' : t === 'official' ? 'Official' : ''; }
+function fmtOrgDate(ms){ return new Date(ms).toLocaleDateString(undefined, { day:'numeric', month:'long', year:'numeric' }); }
+
+function ensureOrgs(force){
+  if(force) orgsPromise = null;
+  if(orgsPromise) return orgsPromise;
+  const p = (async ()=>{
+    try{
+      const [o, mine, f, m] = await Promise.all([
+        sb.from('organizations').select('id, name, crest_color, type'),
+        currentUserId ? sb.rpc('my_organizations') : Promise.resolve({ data: [] }),
+        currentUserId ? sb.from('follows').select('organization_id, notify').eq('user_id', currentUserId) : Promise.resolve({ data: [] }),
+        currentUserId ? sb.from('org_mutes').select('organization_id').eq('user_id', currentUserId) : Promise.resolve({ data: [] })
+      ]);
+      if(o.error) console.error('Loading organisations failed:', o.error);
+      orgMap = {};
+      (o.data || []).forEach(r => { orgMap[r.id] = r; });
+      myOrgs = mine.data || [];
+      myOrgs.forEach(r => { orgMap[r.id] = Object.assign({}, orgMap[r.id] || {}, { id:r.id, name:r.name, type:r.type, crest_color:r.crest_color }); });
+      myOrgIds = new Set(myOrgs.map(r => r.id));
+      myFollows = {};
+      (f.data || []).forEach(r => { myFollows[r.organization_id] = { notify: !!r.notify }; });
+      myMutedOrgIds = new Set((m.data || []).map(r => r.organization_id));
+    }catch(e){ console.error('Loading organisations failed:', e); orgsPromise = null; }
+  })();
+  orgsPromise = p;
+  if(!currentUserId) p.then(()=>{ orgsPromise = null; });
+  return p;
+}
+
+function orgErrorMessage(err){
+  const m = (err && err.message) || '';
+  if(m.includes('org_daily_limit')) return "You've reached today's post limit. It resets at midnight.";
+  if(m.includes('org_header_required')) return 'Add a header to post.';
+  if(m.includes('org_not_owner')) return 'Only the owner can do that as this organisation.';
+  if(m.includes('org_color_locked')){ const d = (m.match(/\d{4}-\d{2}-\d{2}/) || [])[0]; return d ? 'Colour is locked until ' + d + '.' : 'Colour is locked.'; }
+  if(m.includes('org_bad_color')) return 'Pick one of the palette colours.';
+  if(m.includes('invite_rate')) return 'Too many tries. Try again in an hour.';
+  if(m.includes('invite_invalid')) return "That code isn't valid, or it has already been used.";
+  return null;
+}
+
+/* ---------- fresh-post blink: stops once the post has been seen ---------- */
+function orgSeenSet(){
+  try{ return new Set(JSON.parse(localStorage.getItem(ORG_SEEN_KEY) || '[]')); }catch(e){ return new Set(); }
+}
+function markOrgSeen(id){
+  try{
+    const set = orgSeenSet(); set.add(String(id));
+    localStorage.setItem(ORG_SEEN_KEY, JSON.stringify([...set].slice(-300)));
+  }catch(e){}
+}
+let orgSeenObserver = null;
+function watchFreshOrgPost(el){
+  if(!('IntersectionObserver' in window)) return;
+  if(!orgSeenObserver){
+    orgSeenObserver = new IntersectionObserver((entries)=>{
+      entries.forEach(en => {
+        const target = en.target;
+        if(en.isIntersecting){
+          clearTimeout(target._seenTimer);
+          target._seenTimer = setTimeout(()=>{
+            markOrgSeen(target.dataset.postId);
+            const d = target.querySelector('.org-dot'); if(d) d.classList.remove('fresh');
+            orgSeenObserver.unobserve(target);
+          }, 1500);
+        } else {
+          clearTimeout(target._seenTimer);
+        }
+      });
+    }, { threshold: 0.6 });
+  }
+  orgSeenObserver.observe(el);
+}
+
+/* ---------- feed shaping: hide muted, keep organisation posts from crowding people out ---------- */
+function isCappedOrgPost(p){
+  return !!p.organization_id && !p.community_id && !myFollows[p.organization_id] && !myOrgIds.has(p.organization_id);
+}
+function shapeFeedPosts(rows){
+  const kept = (rows || []).filter(p => !(p.organization_id && !p.community_id && myMutedOrgIds.has(p.organization_id)));
+  const out = [], held = [];
+  let since = ORG_SPACING_GAP;
+  for(const p of kept){
+    if(isCappedOrgPost(p)){
+      if(since >= ORG_SPACING_GAP){ out.push(p); since = 0; } else held.push(p);
+    } else {
+      out.push(p); since++;
+      if(held.length && since >= ORG_SPACING_GAP){ out.push(held.shift()); since = 0; }
+    }
+  }
+  return out.concat(held);
+}
+
+/* ---------- compose: the "Post as" pill + header ---------- */
+function composeOrgSetup(isPlainRant){
+  composeOrgReset();
+  if(!isPlainRant) return;
+  ensureOrgs().then(()=>{
+    if(!myOrgs.length) return;
+    document.getElementById('compose-org-row').style.display = 'block';
+    composeOrgRender();
+  });
+}
+function composeOrgReset(){
+  postAsOrgId = null;
+  document.getElementById('compose-org-row').style.display = 'none';
+  document.getElementById('compose-org-header').value = '';
+  composeOrgRender();
+}
+function composeOrgCycle(){
+  if(!myOrgs.length) return;
+  const idx = myOrgs.findIndex(o => o.id === postAsOrgId);
+  postAsOrgId = (idx === -1) ? myOrgs[0].id : (myOrgs[idx + 1] ? myOrgs[idx + 1].id : null);
+  composeOrgRender();
+}
+function composeOrgRender(){
+  const pill = document.getElementById('compose-org-pill');
+  const label = document.getElementById('compose-org-pill-label');
+  const wrap = document.getElementById('compose-org-header-wrap');
+  const input = document.getElementById('compose-org-header');
+  if(postAsOrgId){
+    const o = orgInfo(postAsOrgId);
+    pill.classList.add('on'); pill.style.setProperty('--oc', o.color);
+    label.textContent = 'Post as ' + o.name;
+    wrap.style.display = 'flex';
+    input.placeholder = o.type === 'newscast' ? 'Header (required)' : 'Header (optional)';
+  } else {
+    pill.classList.remove('on'); pill.style.removeProperty('--oc');
+    label.textContent = 'Post as you';
+    wrap.style.display = 'none';
+  }
+  composeOrgRefresh();
+}
+function composeOrgRefresh(){
+  const input = document.getElementById('compose-org-header');
+  document.getElementById('compose-org-header-count').textContent = input.value.length + '/60';
+  const need = !!postAsOrgId && orgInfo(postAsOrgId).type === 'newscast' && !input.value.trim();
+  document.getElementById('compose-submit-btn').classList.toggle('blocked', need);
+  document.getElementById('compose-org-msg').style.display = need ? 'block' : 'none';
+}
+
+/* ---------- organisation sheet: follow / notifications / mute ---------- */
+let orgSheetId = null;
+function openOrgSheet(id){
+  ensureOrgs().then(()=>{
+    orgSheetId = id;
+    const o = orgInfo(id);
+    document.getElementById('org-sheet-title').innerHTML =
+      `<span class="org-dot" style="--oc:${o.color}"></span>${escapeHtml(o.name)}<span class="org-tag" style="--oc:${o.color}">${orgTypeLabel(o.type)}</span>`;
+    document.getElementById('org-sheet-sub').textContent =
+      myOrgIds.has(id) ? 'This is your organisation.' :
+      o.type === 'newscast' ? 'Shares news and reports.' :
+      o.type === 'creator' ? 'Shares their own work.' : 'Posts from the Meet Me team.';
+    renderOrgSheetState();
+    document.getElementById('org-sheet-overlay').classList.add('show');
+  });
+}
+function renderOrgSheetState(){
+  const id = orgSheetId;
+  const mine = myOrgIds.has(id);
+  const f = myFollows[id], muted = myMutedOrgIds.has(id);
+  const followRow = document.getElementById('org-sheet-follow');
+  const notifyRow = document.getElementById('org-sheet-notify');
+  const muteRow = document.getElementById('org-sheet-mute');
+  followRow.style.display = muteRow.style.display = mine ? 'none' : 'flex';
+  followRow.classList.toggle('on', !!f);
+  followRow.querySelector('.org-state').textContent = f ? 'Following' : '';
+  notifyRow.style.display = (f && !mine) ? 'flex' : 'none';
+  notifyRow.classList.toggle('on', !!(f && f.notify));
+  muteRow.classList.toggle('on', muted);
+  muteRow.querySelector('.org-state').textContent = muted ? 'Muted' : '';
+}
+document.getElementById('org-sheet-close').addEventListener('click', ()=> document.getElementById('org-sheet-overlay').classList.remove('show'));
+document.getElementById('org-sheet-overlay').addEventListener('click', (e)=>{ if(e.target.id === 'org-sheet-overlay') e.currentTarget.classList.remove('show'); });
+document.getElementById('org-sheet-follow').addEventListener('click', async ()=>{
+  const id = orgSheetId; if(!id || !currentUserId) return;
+  if(myFollows[id]){
+    const { error } = await sb.from('follows').delete().eq('user_id', currentUserId).eq('organization_id', id);
+    if(error){ console.error(error); showNavToast("That didn't go through. Try again."); return; }
+    delete myFollows[id];
+  } else {
+    const { error } = await sb.from('follows').insert({ user_id: currentUserId, organization_id: id });
+    if(error && error.code !== '23505'){ console.error(error); showNavToast("That didn't go through. Try again."); return; }
+    myFollows[id] = { notify: false };
+    if(myMutedOrgIds.has(id)){
+      await sb.from('org_mutes').delete().eq('user_id', currentUserId).eq('organization_id', id);
+      myMutedOrgIds.delete(id);
+    }
+  }
+  renderOrgSheetState();
+});
+document.getElementById('org-sheet-notify').addEventListener('click', async ()=>{
+  const id = orgSheetId; if(!id || !myFollows[id]) return;
+  const next = !myFollows[id].notify;
+  const { error } = await sb.from('follows').update({ notify: next }).eq('user_id', currentUserId).eq('organization_id', id);
+  if(error){ console.error(error); showNavToast("That didn't go through. Try again."); return; }
+  myFollows[id].notify = next;
+  renderOrgSheetState();
+});
+document.getElementById('org-sheet-mute').addEventListener('click', async ()=>{
+  const id = orgSheetId; if(!id || !currentUserId) return;
+  if(myMutedOrgIds.has(id)){
+    const { error } = await sb.from('org_mutes').delete().eq('user_id', currentUserId).eq('organization_id', id);
+    if(error){ console.error(error); showNavToast("That didn't go through. Try again."); return; }
+    myMutedOrgIds.delete(id);
+    showNavToast('Unmuted. Their posts will show on your next refresh.');
+  } else {
+    const { error } = await sb.from('org_mutes').insert({ user_id: currentUserId, organization_id: id });
+    if(error && error.code !== '23505'){ console.error(error); showNavToast("That didn't go through. Try again."); return; }
+    myMutedOrgIds.add(id);
+    document.querySelectorAll(`.post[data-org-id="${id}"]`).forEach(el => el.remove());
+    showNavToast('Muted. Unmute any time in Profile, under Organisations.');
+  }
+  renderOrgSheetState();
+});
+document.addEventListener('click', (e)=>{
+  const link = e.target.closest('.org-name-link');
+  if(!link) return;
+  e.stopPropagation();
+  openOrgSheet(Number(link.dataset.orgId));
+});
+
+/* ---------- Profile > Organisations: owner settings + follows/mutes ---------- */
+function orgColorState(o){
+  if(!o.color_changed_at) return { mode:'free', msg:'Your first colour is free. After you save it you have 48 hours to change it, then it locks for a year.' };
+  const t = new Date(o.color_changed_at).getTime(), now = Date.now();
+  const grace = t + 48 * 3600e3, next = t + 365 * 86400e3;
+  if(now < grace){ const h = Math.max(1, Math.ceil((grace - now) / 3600e3)); return { mode:'grace', msg:`You can still change this colour for ${h} more hour${h === 1 ? '' : 's'}. After that it locks until ${fmtOrgDate(next)}.` }; }
+  if(now < next) return { mode:'locked', msg:`Colour is locked until ${fmtOrgDate(next)}.` };
+  return { mode:'free', msg:'Your colour lock has ended. You can pick a new colour.' };
+}
+function ownOrgBlockHtml(o, count){
+  const c = safeOrgColor(o.crest_color);
+  const st = orgColorState(o);
+  let colourHtml;
+  if(o.type === 'official'){
+    colourHtml = '<div class="org-lock-msg">Gold is reserved for Meet Me.</div>';
+  } else {
+    colourHtml = `<div class="org-swatches ${st.mode === 'locked' ? 'locked' : ''}" data-mode="${st.mode}">`
+      + ORG_PALETTE.map(([n, hex]) => `<div class="org-swatch ${hex.toLowerCase() === c.toLowerCase() ? 'current' : ''}" style="--sw:${hex}" data-hex="${hex}" role="button" aria-label="${n}"></div>`).join('')
+      + `</div><div class="org-lock-msg">${escapeHtml(st.msg)}</div><div class="org-save-color">Save colour</div>`;
+  }
+  const countLine = (count === null || count === undefined) ? '' : `${count} follower${count === 1 ? '' : 's'}. Only you can see this.`;
+  return `<div class="org-own" data-org-id="${o.id}">
+    <div class="org-own-name"><span class="org-dot" style="--oc:${c}"></span>${escapeHtml(o.name)}<span class="org-tag" style="--oc:${c}">${orgTypeLabel(o.type)}</span></div>
+    <div class="org-own-meta">${countLine}</div>
+    ${colourHtml}
+  </div>`;
+}
+async function renderOrgList(){
+  const body = document.getElementById('org-list-body');
+  body.innerHTML = '<div class="stand-empty">…</div>';
+  await ensureOrgs(true);
+  const counts = await Promise.all(myOrgs.map(async o => {
+    const { data, error } = await sb.rpc('org_follower_count', { p_org_id: o.id });
+    return error ? null : data;
+  }));
+  let html = myOrgs.map((o, i) => ownOrgBlockHtml(orgMap[o.id] ? Object.assign({}, orgMap[o.id], { color_changed_at:o.color_changed_at }) : o, counts[i])).join('');
+  const ids = new Set([...Object.keys(myFollows).map(Number), ...myMutedOrgIds]);
+  myOrgIds.forEach(id => ids.delete(id));
+  html += '<div class="org-follow-title">Following and muted</div>';
+  if(!ids.size){
+    html += '<div class="stand-empty">Nobody yet. Tap an organisation\'s name on a post to follow or mute it.</div>';
+  } else {
+    html += [...ids].map(id => {
+      const o = orgInfo(id);
+      const btns = (myFollows[id] ? `<span class="org-mini-btn" data-act="unfollow" data-id="${id}">Unfollow</span>` : '')
+        + (myMutedOrgIds.has(id) ? `<span class="org-mini-btn" data-act="unmute" data-id="${id}" style="margin-left:${myFollows[id] ? 6 : 'auto'}px">Unmute</span>` : '');
+      return `<div class="org-list-row"><span class="org-dot" style="--oc:${o.color}"></span><span class="org-list-name">${escapeHtml(o.name)}</span>${btns}</div>`;
+    }).join('');
+  }
+  html += `<div class="org-claim">
+    <div class="org-claim-link">Have an invite code?</div>
+    <div class="org-claim-form"><input class="org-claim-input" maxlength="20" placeholder="MM-XXXXX-XXXXX" autocomplete="off" autocapitalize="characters"><span class="org-claim-go">Claim</span></div>
+    <div class="org-claim-note" style="display:none">Your Meet number stays private. The organisation becomes linked to this account, so secure your account first so you never lose it.</div>
+  </div>`;
+  body.innerHTML = html;
+}
+document.getElementById('org-list-body').addEventListener('click', async (e)=>{
+  const claimLink = e.target.closest('.org-claim-link');
+  if(claimLink){
+    const box = claimLink.closest('.org-claim');
+    box.querySelector('.org-claim-form').style.display = 'flex';
+    box.querySelector('.org-claim-note').style.display = 'block';
+    claimLink.style.display = 'none';
+    box.querySelector('.org-claim-input').focus();
+    return;
+  }
+  const claimGo = e.target.closest('.org-claim-go');
+  if(claimGo){
+    const input = claimGo.closest('.org-claim').querySelector('.org-claim-input');
+    const code = input.value.trim();
+    if(!code) return;
+    if(!requireSecuredAccount('an organisation')) return;
+    claimGo.style.opacity = '0.5';
+    const { data, error } = await sb.rpc('claim_org_invite', { p_code: code });
+    claimGo.style.opacity = '';
+    if(error){ console.error(error); showNavToast(orgErrorMessage(error) || "That didn't go through. Try again."); return; }
+    if(!data || !data.length){ showNavToast("That code isn't valid, or it has already been used."); return; }
+    showNavToast('You now own ' + data[0].name + '.');
+    await ensureOrgs(true);
+    renderOrgList();
+    return;
+  }
+  const sw = e.target.closest('.org-swatch');
+  if(sw){
+    const wrap = sw.closest('.org-swatches');
+    if(wrap.classList.contains('locked')){ showNavToast(wrap.nextElementSibling ? wrap.nextElementSibling.textContent : 'Colour is locked.'); return; }
+    wrap.querySelectorAll('.org-swatch').forEach(x => x.classList.remove('picked'));
+    sw.classList.add('picked');
+    const btn = sw.closest('.org-own').querySelector('.org-save-color');
+    btn.style.display = sw.classList.contains('current') ? 'none' : 'block';
+    return;
+  }
+  const save = e.target.closest('.org-save-color');
+  if(save){
+    const block = save.closest('.org-own');
+    const picked = block.querySelector('.org-swatch.picked');
+    if(!picked) return;
+    const id = Number(block.dataset.orgId), hex = picked.dataset.hex;
+    const { error } = await sb.rpc('set_org_color', { p_org_id: id, p_color: hex });
+    if(error){ console.error(error); showNavToast(orgErrorMessage(error) || "That didn't go through. Try again."); return; }
+    document.querySelectorAll(`.post[data-org-id="${id}"]`).forEach(el => el.style.setProperty('--oc', hex));
+    showNavToast('Colour saved.');
+    renderOrgList();
+    return;
+  }
+  const mini = e.target.closest('.org-mini-btn');
+  if(mini){
+    const id = Number(mini.dataset.id);
+    if(mini.dataset.act === 'unfollow'){
+      const { error } = await sb.from('follows').delete().eq('user_id', currentUserId).eq('organization_id', id);
+      if(error){ showNavToast("That didn't go through. Try again."); return; }
+      delete myFollows[id];
+    } else {
+      const { error } = await sb.from('org_mutes').delete().eq('user_id', currentUserId).eq('organization_id', id);
+      if(error){ showNavToast("That didn't go through. Try again."); return; }
+      myMutedOrgIds.delete(id);
+    }
+    renderOrgList();
+  }
+});
+
+async function saveRant(content, communityId, audio, inspiredByPostId, stickerUrl, happeningId, doorQuestionId, doorRouteScore, asOrg){
   if(!currentUserId) return console.error('No user');
   const base = communityId ? { community_id: communityId } : { user_id: currentUserId };
   const row = { ...base, content: content || null, post_type: 'rant' };
@@ -5777,9 +6418,9 @@ async function saveRant(content, communityId, audio, inspiredByPostId, stickerUr
   if(stickerUrl) row.sticker_url = stickerUrl;
   if(happeningId) row.happening_id = happeningId;
   if(doorQuestionId){ row.door_question_id = doorQuestionId; row.door_route_score = doorRouteScore; }
-  if(asFounder && isMeet8 && !communityId) row.organization_id = FOUNDER_ORG_ID;
+  if(asOrg && !communityId){ row.organization_id = asOrg.id; row.header = asOrg.header || null; }
   const { error } = await sb.from('posts').insert(row);
-  if(error){ console.error('Error saving rant:', error); showNavToast(error.message && error.message.includes('founder') ? 'Only Meet 8 can post as the founder.' : 'Your post didn\'t go through. Try again.'); return; }
+  if(error){ console.error('Error saving rant:', error); showNavToast(orgErrorMessage(error) || 'Your post didn\'t go through. Try again.'); return; }
   if(inspiredByPostId) await notifyInspiredBy(inspiredByPostId);
 }
 
@@ -5790,32 +6431,42 @@ let feedLoadingMore = false;
 
 function renderRantPost(post, userLiked, likeCount, inspirationLabels){
   const isCommunity = !!post.community_id;
-  const isFounder = !isCommunity && !!post.organization_id;
+  const isOrg = !isCommunity && !!post.organization_id;
   const isOwn = !isCommunity && post.user_id === currentUserId;
+  const org = isOrg ? orgInfo(post.organization_id) : null;
   const displayName = isCommunity
     ? (post.communities?.icon || '🌀') + ' ' + (post.communities?.name || 'Community')
-    : isFounder
-      ? 'Meet Founder'
+    : isOrg
+      ? org.name
       : (post.users?.meet_number || ('Meet ' + post.user_id.slice(0,6)));
   const bodyHtml = postBodyHtml(post, 'post-body', 150);
   const inspiredLine = post.inspired_by_post_id && inspirationLabels[post.inspired_by_post_id]
     ? `<div class="post-action inspired-source-link" data-source-id="${post.inspired_by_post_id}" style="font-size:11px; color:var(--muted-dim); margin-bottom:8px;">↻ inspired by ${escapeHtml(inspirationLabels[post.inspired_by_post_id])}</div>` : '';
+  const fresh = isOrg && (Date.now() - new Date(post.created_at).getTime() < ORG_FRESH_MS) && !orgSeenSet().has(String(post.id));
+  const headHtml = isCommunity
+    ? escapeHtml(displayName) + ' <span class="org-badge">community</span>'
+    : isOrg
+      ? `<span class="org-dot${fresh ? ' fresh' : ''}"></span><span class="org-name-link" data-org-id="${org.id}">${escapeHtml(org.name)}</span><span class="org-tag">${orgTypeLabel(org.type)}</span>`
+      : `<span class="user-link" data-user-id="${post.user_id}">${escapeHtml(displayName)}</span>`;
   const div = document.createElement('div');
-  div.className = 'post' + ((isCommunity || isFounder) ? ' org-post' : '');
+  div.className = 'post' + (isCommunity ? ' org-post' : '') + (isOrg ? ' org-post org-card' : '');
   div.dataset.postId = post.id;
-  div.dataset.isOwn = (isOwn && !isFounder) ? 'true' : 'false';
+  if(isOrg){ div.dataset.orgId = org.id; div.style.setProperty('--oc', org.color); }
+  div.dataset.isOwn = (isOwn && !isOrg) ? 'true' : 'false';
   div.innerHTML = `
     <div class="post-head">
-      <span class="post-id">${isCommunity ? escapeHtml(displayName) + ' <span class="org-badge">community</span>' : isFounder ? '<span class="org-crest-dot crest-founder"></span>Meet Founder' : `<span class="user-link" data-user-id="${post.user_id}">${escapeHtml(displayName)}</span>`}</span>
+      <span class="post-id">${headHtml}</span>
       <span class="post-head-right"><span class="post-time">${formatRelativeTime(post.created_at)}</span><span class="post-action share-trigger post-head-share" data-content="${escapeHtml(post.content || '')}" data-sticker-url="${escapeHtml(post.sticker_url || '')}" data-audio-url="${escapeHtml(post.audio_url || '')}" data-duration="${post.duration_seconds || ''}" data-name="${escapeHtml(displayName)}" data-space="Rant">share</span></span>
     </div>
+    ${isOrg && post.header ? `<div class="org-header">${escapeHtml(post.header)}</div>` : ''}
     ${doorTagHtml(post)}
     ${inspiredLine}
     ${happeningPillHtml(post)}
     ${bodyHtml}
     <div class="post-foot">
-      ${postActionsHtml(post.id, isCommunity ? null : (isFounder ? (isOwn ? post.user_id : null) : post.user_id), post.content, post.sticker_url, post.audio_url, post.duration_seconds, displayName, 'Rant', userLiked, likeCount, false, isCommunity ? post.community_id : null, (isCommunity || isFounder))}
+      ${postActionsHtml(post.id, isCommunity ? null : (isOrg ? (isOwn ? post.user_id : null) : post.user_id), post.content, post.sticker_url, post.audio_url, post.duration_seconds, displayName, 'Rant', userLiked, likeCount, false, isCommunity ? post.community_id : null, (isCommunity || isOrg))}
     </div>`;
+  if(fresh) watchFreshOrgPost(div);
   return div;
 }
 
@@ -5828,15 +6479,17 @@ function renderFeedBoundary(){
 async function loadFeed(){
   feedOffset = 0;
   feedHasMore = true;
-  const { data: posts, error } = await sb
+  const { data: rawPosts, error } = await sb
     .from('posts')
-    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, inspired_by_post_id, door_question_id, happening_id, happenings(name), users(meet_number), communities(name, icon)')
+    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, inspired_by_post_id, door_question_id, happening_id, happenings(name), users(meet_number), communities(name, icon)')
     .eq('post_type', 'rant')
     .order('created_at', { ascending: false })
     .range(0, FEED_PAGE_SIZE - 1);
   if(error){ console.error('Error loading feed:', error); return; }
-  feedOffset = posts.length;
-  feedHasMore = posts.length === FEED_PAGE_SIZE;
+  await ensureOrgs();
+  feedOffset = rawPosts.length;
+  feedHasMore = rawPosts.length === FEED_PAGE_SIZE;
+  const posts = shapeFeedPosts(rawPosts);
 
   const [likedIds, likeCounts, inspirationLabels] = await Promise.all([
     (async ()=>{
@@ -5878,18 +6531,20 @@ async function loadMoreFeed(){
   const boundary = document.getElementById('boundary-marker');
   if(boundary) boundary.textContent = 'loading more…';
 
-  const { data: posts, error } = await sb
+  const { data: rawPosts, error } = await sb
     .from('posts')
-    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, inspired_by_post_id, door_question_id, happening_id, happenings(name), users(meet_number), communities(name, icon)')
+    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, inspired_by_post_id, door_question_id, happening_id, happenings(name), users(meet_number), communities(name, icon)')
     .eq('post_type', 'rant')
     .order('created_at', { ascending: false })
     .range(feedOffset, feedOffset + FEED_PAGE_SIZE - 1);
 
   feedLoadingMore = false;
   if(error){ console.error('Error loading more rants:', error); renderFeedBoundary(); return; }
+  await ensureOrgs();
 
-  feedOffset += posts.length;
-  feedHasMore = posts.length === FEED_PAGE_SIZE;
+  feedOffset += rawPosts.length;
+  feedHasMore = rawPosts.length === FEED_PAGE_SIZE;
+  const posts = shapeFeedPosts(rawPosts);
 
   if(posts.length){
     const postIds = posts.map(p => p.id);
@@ -6777,7 +7432,7 @@ async function navigateToPost(postId){
   if(!postId) return;
   const { data: post, error } = await sb
     .from('posts')
-    .select('id, post_type, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, inspired_by_post_id, door_question_id, happening_id, happenings(name), users(meet_number), communities(name, icon)')
+    .select('id, post_type, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, inspired_by_post_id, door_question_id, happening_id, happenings(name), users(meet_number), communities(name, icon)')
     .eq('id', postId)
     .single();
   if(error || !post){
@@ -6806,6 +7461,7 @@ async function navigateToPost(postId){
 async function ensureRantPostLoaded(post){
   const feed = document.getElementById('feed');
   if(feed.querySelector(`.post[data-post-id="${post.id}"]`)) return;
+  await ensureOrgs();
   let userLiked = false;
   if(currentUserId){
     const { data: likeRow } = await sb.from('likes').select('post_id').eq('user_id', currentUserId).eq('post_id', post.id).maybeSingle();
@@ -7599,17 +8255,15 @@ function openComposeOverlay(){
   happeningRow.style.display = isPlainRant ? 'flex' : 'none';
   if(isPlainRant) loadActiveHappenings();
 
-  // Founder toggle: Meet 8 only, plain Rant posts only.
-  postAsFounder = false;
-  document.getElementById('compose-founder-toggle').classList.remove('on');
-  document.getElementById('compose-founder-row').style.display = (isMeet8 && isPlainRant) ? 'block' : 'none';
+  // Post as: anyone who owns an organisation, plain Rant posts only.
+  composeOrgSetup(isPlainRant);
 
   document.getElementById('compose-overlay').classList.add('show');
   setTimeout(()=>textarea.focus(), 100);
 }
 function closeComposeOverlay(){
   document.getElementById('compose-overlay').classList.remove('show');
-  postAsFounder = false;
+  composeOrgReset();
   currentPostAsCommunityId = null;
   currentInspiredByPostId = null;
   currentInspiredBySpace = null;
@@ -8075,15 +8729,16 @@ document.getElementById('compose-overlay').addEventListener('click', (e)=>{
   if(e.target.id === 'compose-overlay') closeComposeOverlay();
 });
 
-document.getElementById('compose-founder-toggle').addEventListener('click', ()=>{
-  if(!isMeet8) return;
-  postAsFounder = !postAsFounder;
-  document.getElementById('compose-founder-toggle').classList.toggle('on', postAsFounder);
-});
+document.getElementById('compose-org-pill').addEventListener('click', composeOrgCycle);
+document.getElementById('compose-org-header').addEventListener('input', composeOrgRefresh);
 
 document.getElementById('compose-submit-btn').addEventListener('click', async ()=>{
-  const founderToUse = postAsFounder && isMeet8; // captured before closeComposeOverlay() clears it
+  const orgToUse = postAsOrgId ? { id: postAsOrgId, header: document.getElementById('compose-org-header').value.trim() } : null; // captured before closeComposeOverlay() clears it
   const content = document.getElementById('compose-textarea').value.trim();
+  if(orgToUse && orgInfo(orgToUse.id).type === 'newscast' && !orgToUse.header){
+    composeOrgRefresh(true);
+    return;
+  }
   const blobToUpload = recordedBlob;      // capture before closeComposeOverlay discards it
   const durationToUpload = recordedDurationSeconds;
   const stickerToUse = selectedStickerUrl; // same -- captured before closeComposeOverlay clears it
@@ -8143,7 +8798,7 @@ document.getElementById('compose-submit-btn').addEventListener('click', async ()
     cachedSpills = spills;
     renderSpills(spills);
   } else {
-    await saveRant(content, null, audio, null, stickerToUse, happeningToUse, null, null, founderToUse);
+    await saveRant(content, null, audio, null, stickerToUse, happeningToUse, null, null, orgToUse);
     await loadFeed();
   }
   await refreshYourPostsIfOpen();
@@ -9857,6 +10512,38 @@ function startGameBannerWatcher(){
 }
 
 // [overlay id, id of its own close/back control] -- checked top-most first by z-index
+// INSTALL THE APP -- one tap where the browser allows it (Android/Chrome),
+// short instructions where it doesn't (iPhone Safari, other browsers).
+let deferredInstallPrompt = null;
+const installRow = document.getElementById('profile-install-row');
+const isInstalled = () => window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+function refreshInstallRow(){ installRow.style.display = isInstalled() ? 'none' : ''; }
+refreshInstallRow();
+window.addEventListener('beforeinstallprompt', (e)=>{ e.preventDefault(); deferredInstallPrompt = e; });
+window.addEventListener('appinstalled', ()=>{ deferredInstallPrompt = null; refreshInstallRow(); });
+installRow.addEventListener('click', async ()=>{
+  closeProfile();
+  if(deferredInstallPrompt){
+    const promptEvent = deferredInstallPrompt; deferredInstallPrompt = null;
+    setTimeout(async ()=>{
+      promptEvent.prompt();
+      try{ await promptEvent.userChoice; }catch(_){}
+      refreshInstallRow();
+    }, 250);
+    return;
+  }
+  const ua = navigator.userAgent || '';
+  const isIOS = /iPhone|iPad|iPod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const steps = document.getElementById('install-steps');
+  steps.innerHTML = isIOS
+    ? '1. Tap the <b>Share</b> button at the bottom of Safari.<br>2. Scroll and tap <b>Add to Home Screen</b>.<br>3. Tap <b>Add</b>.<br><span style="color:var(--muted-dim); font-size:12px;">This only works in Safari, not inside other apps.</span>'
+    : '1. Open your browser menu (the <b>⋮</b> or <b>…</b> button).<br>2. Tap <b>Install app</b> or <b>Add to Home screen</b>.<br>3. Confirm.<br><span style="color:var(--muted-dim); font-size:12px;">If you don\'t see it, open Meet Me in Chrome or Safari.</span>';
+  setTimeout(()=>{ document.getElementById('install-overlay').classList.add('show'); }, 250);
+});
+document.getElementById('install-close').addEventListener('click', ()=>{
+  document.getElementById('install-overlay').classList.remove('show');
+});
+
 const BACK_LAYERS = [
   ['sticker-viewer-overlay','sticker-viewer-close'], ['text-viewer-overlay','text-viewer-close'],
   ['post-replies-sheet','post-replies-close'], ['action-sheet',null],
@@ -9864,11 +10551,11 @@ const BACK_LAYERS = [
   ['compose-overlay','compose-overlay-close'], ['create-happening-overlay','happening-create-close'],
   ['report-overlay','report-overlay-close'], ['secure-overlay','secure-overlay-close'],
   ['login-phrase-overlay','login-phrase-close'], ['reset-phrase-overlay','reset-overlay-close'],
-  ['delete-account-overlay','delete-account-cancel'], ['contact-us-overlay','contact-us-close'],
+  ['delete-account-overlay','delete-account-cancel'], ['contact-us-overlay','contact-us-close'], ['install-overlay','install-close'],
   ['door-admin-overlay','door-admin-close'], ['moment-admin-overlay','moment-admin-close'],
   ['admin-code-overlay','admin-code-close'], ['admin-dashboard-overlay','admin-dashboard-close'], ['daily-visitors-overlay','daily-visitors-close'],
   ['community-invite-overlay','community-invite-close'], ['new-community-overlay','new-community-close'],
-  ['org-list-overlay','org-list-close'], ['notif-overlay','notif-close'],
+  ['org-sheet-overlay','org-sheet-close'], ['org-list-overlay','org-list-close'], ['notif-overlay','notif-close'],
   ['moment', null], ['crisis-overlay','crisis-close'], ['anon-review-overlay','anon-review-close'], ['anon-report-overlay','anon-report-close'],
   ['anon-replies-overlay','anon-replies-close'], ['anon-reply-overlay','anon-reply-close'], ['anon-overlay','anon-back'],
   ['game-overlay','game-back'], ['room-overlay','room-back'], ['chat-thread-overlay','chat-thread-back'],
