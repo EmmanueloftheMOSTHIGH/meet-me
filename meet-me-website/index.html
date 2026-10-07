@@ -6796,6 +6796,21 @@ document.getElementById('watch-stand').addEventListener('click', async ()=>{
   await ensureOrgs();
   openStandScreen(postEl, watchState.postId);
 });
+// "Open on <platform>": on Android, ask the phone to open the platform's own app (falls back to the normal link if it isn't installed).
+const VIDEO_APP_PACKAGES = { TikTok:'com.zhiliaoapp.musically', Instagram:'com.instagram.android', X:'com.twitter.android', Facebook:'com.facebook.katana', YouTube:'com.google.android.youtube', Vimeo:'com.vimeo.android.videoapp' };
+function appIntentUrl(v){
+  const pkg = VIDEO_APP_PACKAGES[v.platform];
+  if(!pkg || !/android/i.test(navigator.userAgent)) return null;
+  let u; try{ u = new URL(v.url); }catch(e){ return null; }
+  return `intent://${u.host}${u.pathname}${u.search}#Intent;scheme=https;package=${pkg};S.browser_fallback_url=${encodeURIComponent(v.url)};end`;
+}
+document.getElementById('watch-open').addEventListener('click', (e)=>{
+  if(!watchState) return;
+  const intent = appIntentUrl(watchState.v);
+  if(!intent) return;          // iPhone/desktop: the plain link already hands off to the app or browser
+  e.preventDefault();
+  window.location.href = intent;
+});
 document.addEventListener('keydown', (e)=>{ if(e.key === 'Escape') closeWatchScreen(); });
 
 function renderRantPost(post, userLiked, likeCount, inspirationLabels){
