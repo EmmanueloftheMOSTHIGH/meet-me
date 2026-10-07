@@ -437,11 +437,19 @@
     display:inline-block; width:9px; height:9px; border-radius:50%;
     background:var(--muted-dim); margin-right:7px; vertical-align:middle; flex-shrink:0;
   }
-  .org-dot.fresh{ background:var(--oc,#D4AF37); animation:orgBlink 1.5s ease-in-out 5; box-shadow:0 0 7px var(--oc,#D4AF37); }
+  .org-dot.fresh{ background:var(--oc,#D4AF37); box-shadow:0 0 7px var(--oc,#D4AF37); }
+  .org-dot.fresh.blinking{ animation:orgBlink 1.5s ease-in-out 5; }
   @keyframes orgBlink{ 0%,100%{ opacity:1; } 50%{ opacity:0.2; } }
   @media (prefers-reduced-motion: reduce){
-    .org-dot.fresh{ animation:none; }
+    .org-dot.fresh.blinking{ animation:none; }
   }
+  /* organisation posts: a pasted video link becomes a tappable card (nothing is stored -- it just opens the link) */
+  .org-link-card{ display:block; margin:8px 0 4px; border:1px solid var(--gold-dim); border-radius:12px; overflow:hidden; text-decoration:none; color:inherit; background:rgba(0,0,0,0.12); }
+  .org-link-thumb{ display:block; width:100%; aspect-ratio:16/9; object-fit:cover; background:#000; }
+  .org-link-meta{ display:flex; align-items:center; gap:8px; padding:9px 12px; font-size:12.5px; }
+  .org-link-play{ color:var(--gold-light); font-size:11px; }
+  .org-link-label{ color:var(--gold-text); font-weight:600; }
+  .org-link-host{ margin-left:auto; color:var(--muted-dim); font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:45%; }
   .org-tag{
     display:inline-block; font-size:9.5px; letter-spacing:0.04em;
     color:var(--gold-dim); border:1px solid color-mix(in srgb, var(--gold) 30%, transparent);
@@ -539,6 +547,44 @@
   .org-claim-input:focus{ border-color:var(--gold-dim); }
   .org-claim-go{ padding:10px 14px; border-radius:12px; border:1px solid var(--gold-dim); color:var(--gold-light); font-size:13px; cursor:pointer; }
   .org-claim-note{ font-size:11.5px; color:var(--muted-dim); line-height:1.5; margin-top:8px; }
+
+  /* ===== WATCH SCREEN: a Meet Me page for any linked video (nothing is stored; the video plays from its own platform) ===== */
+  .org-link-card{ position:relative; }
+  .org-link-thumbwrap{ position:relative; display:block; }
+  .org-link-playbtn{ position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:46px; height:46px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px; padding-left:3px; color:#fff; background:color-mix(in srgb, var(--oc, #D4AF37) 80%, #000); border:1px solid rgba(255,255,255,0.35); box-shadow:0 6px 22px rgba(0,0,0,0.5); }
+  .org-link-nothumb{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; aspect-ratio:16/8; background:radial-gradient(120% 140% at 50% 0%, color-mix(in srgb, var(--oc, #D4AF37) 28%, #0c0c0e), #0c0c0e 70%); }
+  .org-link-nothumb .org-link-playbtn{ position:static; transform:none; }
+  .org-link-nothumb-name{ font-family:'Fraunces',serif; font-style:italic; font-weight:300; font-size:15px; color:var(--muted); }
+
+  #watch-screen{ position:absolute; inset:0; z-index:89; background:var(--bg); display:flex; flex-direction:column; opacity:0; pointer-events:none; transform:translateY(14px); transition:opacity .25s ease, transform .25s ease; }
+  #watch-screen.show{ opacity:1; pointer-events:auto; transform:none; }
+  #watch-head{ display:flex; align-items:center; justify-content:space-between; flex-shrink:0; padding:calc(16px + env(safe-area-inset-top,0)) 18px 10px; font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:var(--muted-dim); }
+  #watch-close{ cursor:pointer; color:var(--muted); font-size:14px; letter-spacing:0; text-transform:none; padding:6px 14px 6px 0; }
+  #watch-scroll{ flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:6px 18px 34px; display:flex; flex-direction:column; gap:16px; }
+  #watch-scroll::-webkit-scrollbar{ width:0; }
+  #watch-who{ display:flex; align-items:center; gap:9px; font-size:13.5px; color:var(--ivory); }
+  #watch-dot{ width:9px; height:9px; border-radius:50%; background:var(--oc, #D4AF37); box-shadow:0 0 10px var(--oc, #D4AF37); flex-shrink:0; }
+  #watch-header{ font-family:'Fraunces',serif; font-weight:500; font-size:25px; line-height:1.2; color:var(--ivory); }
+  #watch-stage{ position:relative; width:100%; border-radius:16px; overflow:hidden; background:#000; border:1px solid color-mix(in srgb, var(--oc, #D4AF37) 45%, transparent); box-shadow:0 18px 50px -20px color-mix(in srgb, var(--oc, #D4AF37) 60%, transparent); }
+  #watch-stage.wide{ aspect-ratio:16/9; }
+  #watch-stage.tall{ height:min(70vh, 580px); }
+  #watch-stage iframe{ position:absolute; inset:0; width:100%; height:100%; border:0; background:#000; }
+  #watch-loading{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:'Fraunces',serif; font-style:italic; font-weight:300; font-size:15px; color:var(--muted); animation:watchPulse 1.8s ease-in-out infinite; pointer-events:none; }
+  @keyframes watchPulse{ 0%,100%{ opacity:.35; } 50%{ opacity:1; } }
+  #watch-stage.fallback{ padding:0; }
+  #watch-stage.fallback img{ display:block; width:100%; aspect-ratio:16/9; object-fit:cover; opacity:.55; }
+  .watch-fb{ display:flex; flex-direction:column; align-items:center; gap:8px; text-align:center; padding:26px 20px; background:radial-gradient(120% 140% at 50% 0%, color-mix(in srgb, var(--oc, #D4AF37) 26%, #0c0c0e), #0c0c0e 75%); }
+  .watch-fb-title{ font-family:'Fraunces',serif; font-size:19px; color:var(--ivory); }
+  .watch-fb-sub{ font-size:12.5px; line-height:1.5; color:var(--muted); }
+  #watch-hint{ display:none; font-size:12.5px; line-height:1.5; color:var(--muted); text-align:center; }
+  #watch-hint.show{ display:block; }
+  #watch-body{ font-size:15px; font-weight:300; line-height:1.55; color:var(--ivory); white-space:pre-wrap; word-break:break-word; }
+  #watch-body:empty{ display:none; }
+  #watch-actions{ display:flex; flex-direction:column; gap:10px; }
+  .watch-btn{ display:block; text-align:center; text-decoration:none; cursor:pointer; padding:13px 16px; border-radius:14px; font-size:14px; color:var(--ivory); background:var(--card); border:1px solid var(--card-border); }
+  .watch-btn.primary{ border-color:var(--gold-dim); color:var(--gold-light); }
+  .watch-btn:active{ opacity:.7; }
+  #watch-note{ font-size:11px; line-height:1.5; text-align:center; color:var(--muted-dim); }
 
   /* ===== THE STAND: brick wall ===== */
   .post-action.stand-trigger{
@@ -2373,6 +2419,10 @@
         <div id="share-card-media-note" style="font-size:11px; color:var(--muted-dim); line-height:1.5;"></div>
         <div class="account-btn primary" id="share-card-media-btn" style="margin-bottom:0;"></div>
       </div>
+      <div id="share-card-link-row" style="display:none; align-items:center; gap:8px; margin-top:12px;">
+        <div id="share-card-link-text" style="flex:1; min-width:0; font-size:11px; color:var(--muted-dim); text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></div>
+        <div class="account-btn primary" id="share-card-link-btn" style="margin-bottom:0; flex:0 0 auto; padding:8px 14px; width:auto;">Copy link</div>
+      </div>
       <div class="account-close" id="share-card-close">close</div>
     </div>
   </div>
@@ -2641,6 +2691,25 @@
       </div>
       <div id="action-sheet-note">A friend request only opens Chat once they accept. Nothing is assumed either way.</div>
       <div id="action-sheet-block" style="text-align:center; margin-top:12px; font-size:11px; letter-spacing:0.06em; text-transform:uppercase; color:var(--muted-dim); cursor:pointer;">block this person</div>
+    </div>
+  </div>
+
+  <div id="watch-screen">
+    <div id="watch-head">
+      <span id="watch-close">‹ Back</span>
+      <span id="watch-platform"></span>
+    </div>
+    <div id="watch-scroll">
+      <div id="watch-who"><span id="watch-dot"></span><span id="watch-org"></span></div>
+      <div id="watch-header"></div>
+      <div id="watch-stage"></div>
+      <div id="watch-hint"></div>
+      <div id="watch-body"></div>
+      <div id="watch-actions">
+        <div class="watch-btn primary" id="watch-stand">Take a stand</div>
+        <a class="watch-btn" id="watch-open" target="_blank" rel="noopener noreferrer"></a>
+      </div>
+      <div id="watch-note"></div>
     </div>
   </div>
 
@@ -5569,7 +5638,7 @@ function postActionsHtml(postId, authorId, content, stickerUrl, audioUrl, durati
   const likeHtml = `<span class="like-btn ${userLiked ? 'liked' : ''}" data-post-id="${postId}" data-name="${escapeHtml(displayName)}"><span class="heart">${userLiked ? '♥' : '♡'}</span>${countHtml}</span>`;
   const isBookmarked = myBookmarkIds.has(postId);
   const bookmarkHtml = `<span class="post-action bookmark-trigger ${isBookmarked ? 'bookmarked' : ''}" data-post-id="${postId}">${isBookmarked ? '★ saved' : '☆ save'}</span>`;
-  const shareHtml = includeShare ? `<span class="post-action share-trigger" data-content="${escapeHtml(content || '')}" data-sticker-url="${escapeHtml(stickerUrl || '')}" data-audio-url="${escapeHtml(audioUrl || '')}" data-duration="${durationSeconds || ''}" data-name="${escapeHtml(displayName)}" data-space="${spaceLabel}">share</span>` : '';
+  const shareHtml = includeShare ? `<span class="post-action share-trigger" data-content="${escapeHtml(content || '')}" data-sticker-url="${escapeHtml(stickerUrl || '')}" data-audio-url="${escapeHtml(audioUrl || '')}" data-duration="${durationSeconds || ''}" data-name="${escapeHtml(displayName)}" data-space="${spaceLabel}" data-share-id="${postId}">share</span>` : '';
   const canInspire = ['Rant','Spill'].includes(spaceLabel);
   const inspiredHtml = canInspire ? `<span class="post-action inspired-trigger" data-post-id="${postId}" data-space="${spaceLabel}" data-name="${escapeHtml(displayName)}">inspired by this</span>` : '';
   const isOwn = authorId && currentUserId && authorId === currentUserId;
@@ -5780,7 +5849,7 @@ function openStandScreen(postEl, postId){
   const who = postEl.querySelector('.post-id');
   const whoDiv = document.createElement('div');
   whoDiv.className = 'stand-pinned-who';
-  whoDiv.innerHTML = who ? who.innerHTML.replace(/ fresh/g, '') : '';
+  whoDiv.innerHTML = who ? who.innerHTML.replace(/ (fresh|blinking)/g, '') : '';
   pinned.appendChild(whoDiv);
   const hd = postEl.querySelector('.org-header');
   if(hd) pinned.appendChild(hd.cloneNode(true));
@@ -6227,21 +6296,36 @@ function markOrgSeen(id){
   }catch(e){}
 }
 let orgSeenObserver = null;
+// A fresh organisation post glows until it is on screen, then its dot blinks 5 times and the post counts as seen.
+// Scrolling away mid-blink resets it, so the blinks are never wasted off-screen.
 function watchFreshOrgPost(el){
   if(!('IntersectionObserver' in window)) return;
+  const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   if(!orgSeenObserver){
     orgSeenObserver = new IntersectionObserver((entries)=>{
       entries.forEach(en => {
         const target = en.target;
+        const d = target.querySelector('.org-dot');
+        if(!d) return;
+        const finish = ()=>{
+          markOrgSeen(target.dataset.postId);
+          d.classList.remove('fresh', 'blinking');
+          orgSeenObserver.unobserve(target);
+        };
         if(en.isIntersecting){
-          clearTimeout(target._seenTimer);
-          target._seenTimer = setTimeout(()=>{
-            markOrgSeen(target.dataset.postId);
-            const d = target.querySelector('.org-dot'); if(d) d.classList.remove('fresh');
-            orgSeenObserver.unobserve(target);
-          }, 1500);
+          if(reduceMotion){
+            clearTimeout(target._seenTimer);
+            target._seenTimer = setTimeout(finish, 1500);
+            return;
+          }
+          if(!target._blinkBound){
+            target._blinkBound = true;
+            d.addEventListener('animationend', finish);
+          }
+          d.classList.add('blinking');
         } else {
           clearTimeout(target._seenTimer);
+          d.classList.remove('blinking');
         }
       });
     }, { threshold: 0.6 });
@@ -6571,6 +6655,149 @@ const FEED_PAGE_SIZE = 20;
 let feedHasMore = true;
 let feedLoadingMore = false;
 
+/* ---------- organisation video links: paste any link (YouTube, TikTok, Instagram...) and it shows as a card ---------- */
+const VIDEO_PLATFORMS = [
+  [/(^|\.)youtube\.com$|^youtu\.be$/, 'YouTube', true],
+  [/(^|\.)tiktok\.com$/, 'TikTok', true],
+  [/(^|\.)instagram\.com$/, 'Instagram', true],
+  [/(^|\.)facebook\.com$|^fb\.watch$/, 'Facebook', true],
+  [/(^|\.)vimeo\.com$/, 'Vimeo', true],
+  [/(^|\.)(x|twitter)\.com$/, 'X', true]
+];
+function extractVideoLink(text){
+  if(!text) return null;
+  const m = text.match(/https?:\/\/[^\s<>"']+/i);
+  if(!m) return null;
+  const raw = m[0].replace(/[.,;:!?)\]]+$/, '');
+  let u;
+  try{ u = new URL(raw); }catch(e){ return null; }
+  if(u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+  const host = u.hostname.toLowerCase().replace(/^www\./, '');
+  let platform = host, isVideo = false;
+  for(const [re, name, vid] of VIDEO_PLATFORMS){ if(re.test(host)){ platform = name; isVideo = vid; break; } }
+  let ytId = null;
+  if(platform === 'YouTube'){
+    const idm = (host === 'youtu.be' ? u.pathname.slice(1) : (u.searchParams.get('v') || (u.pathname.match(/^\/(?:shorts|embed|live)\/([\w-]{11})/) || [])[1] || '')).match(/^[\w-]{11}/);
+    ytId = idm ? idm[0] : null;
+  }
+  return { url: u.href, host, platform, isVideo, ytId, rest: text.replace(m[0], '').trim() };
+}
+function videoLinkCardHtml(v, post){
+  const oid = post && post.organization_id ? post.organization_id : '';
+  const pid = post && post.id ? post.id : '';
+  const thumb = v.ytId
+    ? `<span class="org-link-thumbwrap"><img class="org-link-thumb" src="https://img.youtube.com/vi/${v.ytId}/hqdefault.jpg" alt="" loading="lazy" referrerpolicy="no-referrer"><span class="org-link-playbtn">▶</span></span>`
+    : (v.isVideo ? `<span class="org-link-nothumb"><span class="org-link-playbtn">▶</span><span class="org-link-nothumb-name">${escapeHtml(v.platform)}</span></span>` : '');
+  return `<a class="org-link-card" href="${escapeHtml(v.url)}" target="_blank" rel="noopener noreferrer" data-url="${escapeHtml(v.url)}" data-post-id="${escapeHtml(String(pid))}" data-org-id="${escapeHtml(String(oid))}" data-rest="${escapeHtml(v.rest || '')}">${thumb}<div class="org-link-meta"><span class="org-link-play">${v.isVideo ? '▶' : '↗'}</span><span class="org-link-label">${v.isVideo ? 'Watch in Meet Me' : 'Open on ' + escapeHtml(v.platform)}</span><span class="org-link-host">${escapeHtml(v.host)}</span></div></a>`;
+}
+
+/* Official embed for each platform. Nothing is downloaded or stored: the page just frames the platform's own player.
+   Returns null when we can't build an embed for this link (short links, stories, etc.); the watch screen then shows
+   an "open on <platform>" page instead. */
+function videoEmbedFor(v){
+  let u; try{ u = new URL(v.url); }catch(e){ return null; }
+  const path = u.pathname;
+  let m;
+  switch(v.platform){
+    case 'YouTube':
+      return v.ytId ? { src: `https://www.youtube-nocookie.com/embed/${v.ytId}?playsinline=1&rel=0`, shape: 'wide' } : null;
+    case 'Vimeo':
+      m = path.match(/\/(\d{5,})(?:\/([a-f0-9]{6,}))?/i);
+      return m ? { src: `https://player.vimeo.com/video/${m[1]}${m[2] ? '?h=' + m[2] : ''}`, shape: 'wide' } : null;
+    case 'TikTok':
+      m = path.match(/\/video\/(\d+)/);
+      return m ? { src: `https://www.tiktok.com/embed/v2/${m[1]}`, shape: 'tall' } : null;
+    case 'Instagram':
+      m = path.match(/\/(p|reel|reels|tv)\/([\w-]+)/);
+      return m ? { src: `https://www.instagram.com/${m[1] === 'reels' ? 'reel' : m[1]}/${m[2]}/embed`, shape: 'tall' } : null;
+    case 'Facebook':
+      return { src: `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(v.url)}&show_text=false`, shape: 'wide' };
+    case 'X':
+      m = path.match(/\/status\/(\d+)/);
+      return m ? { src: `https://platform.twitter.com/embed/Tweet.html?id=${m[1]}&theme=dark&dnt=true`, shape: 'tall' } : null;
+  }
+  return null;
+}
+
+let watchState = null, watchHintTimer = null;
+function openWatchScreen(v, card){
+  const screen = document.getElementById('watch-screen');
+  const stage = document.getElementById('watch-stage');
+  const hint = document.getElementById('watch-hint');
+  const postEl = card.closest('.post');
+  const oc = (postEl && postEl.style.getPropertyValue('--oc')) || '';
+  screen.style.setProperty('--oc', oc.trim() || '#D4AF37');
+  const orgName = postEl && postEl.querySelector('.org-name-link') ? postEl.querySelector('.org-name-link').textContent : '';
+  const header = postEl && postEl.querySelector('.org-header') ? postEl.querySelector('.org-header').textContent : '';
+  document.getElementById('watch-org').textContent = orgName;
+  document.getElementById('watch-who').style.display = orgName ? 'flex' : 'none';
+  document.getElementById('watch-header').textContent = header;
+  document.getElementById('watch-header').style.display = header ? 'block' : 'none';
+  document.getElementById('watch-body').textContent = card.dataset.rest || '';
+  document.getElementById('watch-platform').textContent = v.platform;
+  const openBtn = document.getElementById('watch-open');
+  openBtn.href = v.url;
+  openBtn.textContent = 'Open on ' + v.platform + ' ↗';
+  document.getElementById('watch-note').textContent = 'Meet Me doesn\u2019t store this video. It plays from ' + v.platform + '.';
+  hint.classList.remove('show'); hint.textContent = '';
+  clearTimeout(watchHintTimer);
+  stage.innerHTML = '';
+  const emb = videoEmbedFor(v);
+  if(emb){
+    stage.className = emb.shape;
+    stage.innerHTML = '<div id="watch-loading">loading…</div>';
+    const f = document.createElement('iframe');
+    f.title = v.platform + ' video';
+    f.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen; clipboard-write';
+    f.allowFullscreen = true;
+    f.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+    f.addEventListener('load', ()=>{ const l = document.getElementById('watch-loading'); if(l) l.remove(); });
+    f.src = emb.src;
+    stage.appendChild(f);
+    // A page can't tell us if a platform refused to play a video, so after a few seconds we gently point at the backup button.
+    watchHintTimer = setTimeout(()=>{
+      hint.textContent = 'Not playing? Some ' + v.platform + ' videos only play on ' + v.platform + '. Use the button below.';
+      hint.classList.add('show');
+    }, 6000);
+  } else {
+    stage.className = 'fallback';
+    const thumb = v.ytId ? `<img src="https://img.youtube.com/vi/${v.ytId}/hqdefault.jpg" alt="" referrerpolicy="no-referrer">` : '';
+    stage.innerHTML = thumb + `<div class="watch-fb"><div class="watch-fb-title">This one plays on ${escapeHtml(v.platform)}</div><div class="watch-fb-sub">${escapeHtml(v.platform)} won\u2019t let us show this link inside Meet Me. Tap below to watch it there, then come back to take your stand.</div></div>`;
+  }
+  watchState = { v, postEl: postEl || null, postId: card.dataset.postId || (postEl ? postEl.dataset.postId : '') };
+  screen.classList.add('show');
+  screen.querySelector('#watch-scroll').scrollTop = 0;
+  if(typeof updateComposeVisibility === 'function') updateComposeVisibility();
+}
+function closeWatchScreen(){
+  const screen = document.getElementById('watch-screen');
+  if(!screen.classList.contains('show')) return;
+  screen.classList.remove('show');
+  clearTimeout(watchHintTimer);
+  document.getElementById('watch-stage').innerHTML = '';   // removing the player stops the video
+  watchState = null;
+  if(typeof updateComposeVisibility === 'function') updateComposeVisibility();
+}
+// Capture phase so this runs before any post-tap handler: a video card opens the Meet Me watch screen, not another app.
+document.addEventListener('click', (e)=>{
+  const card = e.target.closest('.org-link-card');
+  if(!card) return;
+  const v = extractVideoLink(card.dataset.url || card.getAttribute('href') || '');
+  if(!v || !v.isVideo) return;     // non-video links keep opening normally
+  e.preventDefault(); e.stopPropagation();
+  openWatchScreen(v, card);
+}, true);
+document.getElementById('watch-close').addEventListener('click', closeWatchScreen);
+document.getElementById('watch-stand').addEventListener('click', async ()=>{
+  if(!watchState) return;
+  let postEl = watchState.postEl;
+  if(!postEl || !postEl.isConnected) postEl = document.querySelector(`.post[data-post-id="${watchState.postId}"]`);
+  if(!postEl) return;
+  await ensureOrgs();
+  openStandScreen(postEl, watchState.postId);
+});
+document.addEventListener('keydown', (e)=>{ if(e.key === 'Escape') closeWatchScreen(); });
+
 function renderRantPost(post, userLiked, likeCount, inspirationLabels){
   const isCommunity = !!post.community_id;
   const isOrg = !isCommunity && !!post.organization_id;
@@ -6584,7 +6811,8 @@ function renderRantPost(post, userLiked, likeCount, inspirationLabels){
     : isOrg
       ? org.name
       : (post.users?.meet_number || ('Meet ' + post.user_id.slice(0,6)));
-  const bodyHtml = postBodyHtml(post, 'post-body', 150);
+  const vidLink = isOrg ? extractVideoLink(post.content) : null;   // organisation posts only
+  const bodyHtml = postBodyHtml(vidLink ? Object.assign({}, post, { content: vidLink.rest }) : post, 'post-body', 150) + (vidLink ? videoLinkCardHtml(vidLink, post) : '');
   const inspiredLine = post.inspired_by_post_id && inspirationLabels[post.inspired_by_post_id]
     ? `<div class="post-action inspired-source-link" data-source-id="${post.inspired_by_post_id}" style="font-size:11px; color:var(--muted-dim); margin-bottom:8px;">↻ inspired by ${escapeHtml(inspirationLabels[post.inspired_by_post_id])}</div>` : '';
   const fresh = isOrg && (Date.now() - new Date(post.created_at).getTime() < ORG_FRESH_MS) && !orgSeenSet().has(String(post.id));
@@ -6603,7 +6831,7 @@ function renderRantPost(post, userLiked, likeCount, inspirationLabels){
   div.innerHTML = `
     <div class="post-head">
       <span class="post-id">${headHtml}</span>
-      <span class="post-head-right"><span class="post-time">${formatRelativeTime(post.created_at)}</span><span class="post-action share-trigger post-head-share" data-content="${escapeHtml(post.content || '')}" data-sticker-url="${escapeHtml(post.sticker_url || '')}" data-audio-url="${escapeHtml(post.audio_url || '')}" data-duration="${post.duration_seconds || ''}" data-name="${escapeHtml(displayName)}" data-space="Rant">share</span></span>
+      <span class="post-head-right"><span class="post-time">${formatRelativeTime(post.created_at)}</span><span class="post-action share-trigger post-head-share" data-content="${escapeHtml(post.content || '')}" data-sticker-url="${escapeHtml(post.sticker_url || '')}" data-audio-url="${escapeHtml(post.audio_url || '')}" data-duration="${post.duration_seconds || ''}" data-name="${escapeHtml(displayName)}" data-space="Rant" data-share-id="${post.id}">share</span></span>
     </div>
     ${isOrg && post.header ? `<div class="org-header">${escapeHtml(post.header)}</div>` : ''}
     ${doorTagHtml(post)}
@@ -7678,6 +7906,21 @@ function showNavToast(message){
 // anything, which just looked like the tap did nothing. Now we fetch
 // the actual post first and, if it isn't already rendered, inject it
 // into the right feed ourselves before trying to highlight it.
+// A shared link looks like  /?post=123  -- open that post once the app has finished loading.
+const SHARED_POST_ID = (()=>{
+  try{ const v = new URLSearchParams(location.search).get('post'); return (v && /^\d{1,18}$/.test(v)) ? v : null; }
+  catch(e){ return null; }
+})();
+async function openSharedPost(){
+  if(!SHARED_POST_ID) return;
+  try{ history.replaceState(null, '', location.pathname); }catch(e){}   // so a refresh doesn't jump there again
+  await new Promise(resolve => {   // let the splash finish first
+    const t = setInterval(()=>{ if(splash.style.display === 'none'){ clearInterval(t); resolve(); } }, 150);
+    setTimeout(()=>{ clearInterval(t); resolve(); }, 9000);
+  });
+  await navigateToPost(SHARED_POST_ID);
+}
+
 async function navigateToPost(postId){
   if(!postId) return;
   const { data: post, error } = await sb
@@ -7689,7 +7932,10 @@ async function navigateToPost(postId){
     showNavToast('That post is no longer available.');
     return;
   }
-  if(post.post_type === 'rant'){
+  if(post.post_type === 'rant' && post.organization_id && !post.community_id){
+    await goToScreen('orgs');
+    await ensureOrgPostLoaded(post);
+  } else if(post.post_type === 'rant'){
     await goToScreen('twin');
     await setTwinMode('rant');
     await ensureRantPostLoaded(post);
@@ -7708,6 +7954,22 @@ async function navigateToPost(postId){
 // case for "inspired by", since it points at an older post). Each one
 // prepends a single real card using the feed's own render function, so
 // it looks identical to a normally-loaded post.
+async function ensureOrgPostLoaded(post){
+  const list = document.getElementById('orgs-list');
+  if(list.querySelector(`.post[data-post-id="${post.id}"]`)) return;
+  await ensureOrgs();
+  let userLiked = false;
+  if(currentUserId){
+    const { data: likeRow } = await sb.from('likes').select('post_id').eq('user_id', currentUserId).eq('post_id', post.id).maybeSingle();
+    userLiked = !!likeRow;
+  }
+  const likeCounts = await fetchLikeCounts([post.id]);
+  const inspirationLabels = await fetchInspirationLabels([post]);
+  const cardEl = renderRantPost(post, userLiked, likeCounts[post.id] || 0, inspirationLabels);
+  cardEl.classList.add('nav-injected-post');
+  list.insertBefore(cardEl, list.firstChild);
+}
+
 async function ensureRantPostLoaded(post){
   const feed = document.getElementById('feed');
   if(feed.querySelector(`.post[data-post-id="${post.id}"]`)) return;
@@ -8511,7 +8773,7 @@ function openComposeOverlay(){
   // On the Organisations page you always post as one of your organisations.
   if(currentScreenKey === 'orgs'){
     title.textContent = 'Post as your organisation';
-    textarea.placeholder = 'Say it to your followers.';
+    textarea.placeholder = 'Say it to your followers. You can paste a video link.';
     composeOrgSetup(true);
     ensureOrgs().then(()=>{
       if(myOrgs.length && !postAsOrgId){ postAsOrgId = myOrgs[0].id; composeOrgRender(); }
@@ -9165,7 +9427,7 @@ function drawVoiceNoteVisual(ctx, palette, x, y, w, h, durationSeconds){
   }
 }
 
-async function buildShareCanvas(content, name, spaceLabel, style, stickerUrl, audioUrl, durationSeconds){
+async function buildShareCanvas(content, name, spaceLabel, style, stickerUrl, audioUrl, durationSeconds, shareUrl){
   style = style || 'dark';
   const isGold = style === 'gold';
   const canvas = document.createElement('canvas');
@@ -9256,6 +9518,15 @@ async function buildShareCanvas(content, name, spaceLabel, style, stickerUrl, au
   ctx.font = 'italic 30px Georgia, serif';
   ctx.fillText('Not for everyone. But you.', pad + 60, canvas.height - pad - 60);
 
+  // the link to this exact post, printed on the card so it survives being shared as a picture
+  if(shareUrl){
+    ctx.fillStyle = palette.label;
+    ctx.font = '26px Karla, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(shareUrl.replace(/^https?:\/\//, ''), canvas.width - pad - 60, canvas.height - pad - 60);
+    ctx.textAlign = 'left';
+  }
+
   return canvas;
 }
 
@@ -9269,9 +9540,30 @@ function roundRect(ctx, x, y, w, h, r){
   ctx.closePath();
 }
 
+// Link that opens one post inside the app (Rant, Spill or Organisations).
+function postShareUrl(id){
+  if(!id) return null;
+  const base = /^https?:$/.test(location.protocol) ? location.origin : 'https://meet-me-beta-six.vercel.app';
+  return base + '/?post=' + encodeURIComponent(id);
+}
+let currentShareUrl = null;
+async function copyText(text){
+  try{ await navigator.clipboard.writeText(text); return true; }catch(e){}
+  try{
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove(); return ok;
+  }catch(e){ return false; }
+}
 let currentShareContent = null, currentShareName = null, currentShareSpace = null, currentShareStyle = 'dark', currentShareStickerUrl = null, currentShareAudioUrl = null, currentShareDuration = null;
 
-async function openShareCard(content, name, spaceLabel, stickerUrl, audioUrl, durationSeconds){
+async function openShareCard(content, name, spaceLabel, stickerUrl, audioUrl, durationSeconds, postId){
+  currentShareUrl = postShareUrl(postId);
+  const linkRow = document.getElementById('share-card-link-row');
+  linkRow.style.display = currentShareUrl ? 'flex' : 'none';
+  document.getElementById('share-card-link-text').textContent = currentShareUrl ? currentShareUrl.replace(/^https?:\/\//, '') : '';
   currentShareContent = content;
   currentShareName = name;
   currentShareSpace = spaceLabel;
@@ -9346,7 +9638,7 @@ function setupOriginalMediaRow(){
         // caption riding along with a photo/video share in any other app --
         // without this, a captioned voice note or sticker would arrive
         // with the file but silently drop what was typed alongside it.
-        const shareText = currentShareContent ? currentShareContent + ' \u2014 Meet Me' : 'Meet Me';
+        const shareText = (currentShareContent ? currentShareContent + ' \u2014 Meet Me' : 'Meet Me') + (currentShareUrl ? '\n' + currentShareUrl : '');
         await navigator.share({ files: [file], title: 'Meet Me', text: shareText });
       } else {
         const blobUrl = URL.createObjectURL(file);
@@ -9369,7 +9661,7 @@ function setupOriginalMediaRow(){
 }
 
 async function renderShareCard(){
-  const canvas = await buildShareCanvas(currentShareContent, currentShareName, currentShareSpace, currentShareStyle, currentShareStickerUrl, currentShareAudioUrl, currentShareDuration);
+  const canvas = await buildShareCanvas(currentShareContent, currentShareName, currentShareSpace, currentShareStyle, currentShareStickerUrl, currentShareAudioUrl, currentShareDuration, currentShareUrl);
   const dataUrl = canvas.toDataURL('image/png');
   document.getElementById('share-card-image').src = dataUrl;
 
@@ -9381,7 +9673,7 @@ async function renderShareCard(){
     if(navigator.canShare && navigator.canShare({ files: [file] })){
       shareBtn.style.display = 'block';
       shareBtn.onclick = async ()=>{
-        try{ await navigator.share({ files: [file], title: 'Meet Me', text: currentShareSpace + ' — Meet Me' }); }
+        try{ await navigator.share({ files: [file], title: 'Meet Me', text: currentShareSpace + ' — Meet Me' + (currentShareUrl ? '\n' + currentShareUrl : '') }); }
         catch(e){ /* user cancelled share sheet, nothing to do */ }
       };
     } else {
@@ -9408,6 +9700,11 @@ document.querySelectorAll('.share-style-choice').forEach(btn=>{
     renderShareCard();
   });
 });
+document.getElementById('share-card-link-btn').addEventListener('click', async ()=>{
+  if(!currentShareUrl) return;
+  const ok = await copyText(currentShareUrl);
+  showNavToast(ok ? 'Link copied.' : 'Could not copy the link.');
+});
 function closeShareCard(){ document.getElementById('share-card-overlay').classList.remove('show'); }
 document.getElementById('share-card-close').addEventListener('click', closeShareCard);
 document.getElementById('share-card-overlay').addEventListener('click', (e)=>{
@@ -9424,7 +9721,8 @@ document.addEventListener('click', (e)=>{
       shareBtn.dataset.space,
       shareBtn.dataset.stickerUrl || null,
       shareBtn.dataset.audioUrl || null,
-      shareBtn.dataset.duration ? Number(shareBtn.dataset.duration) : null
+      shareBtn.dataset.duration ? Number(shareBtn.dataset.duration) : null,
+      shareBtn.dataset.shareId || null
     );
   }
 });
@@ -9439,8 +9737,9 @@ function updateComposeVisibility(){
   const isCommunityThread = document.getElementById('community-thread-overlay')?.classList.contains('show');
   const isProfile = document.getElementById('screen-profile')?.classList.contains('active');
   const isPostReplies = postRepliesSheet?.classList.contains('show');
+  const isWatching = document.getElementById('watch-screen')?.classList.contains('show');
   const isOrgsScreen = document.getElementById('screen-orgs')?.classList.contains('active');
-  const hide = (isChatScreen && !isCommunitiesTab) || isRoom || isChatThread || isCommunityThread || isProfile || isPostReplies || (isOrgsScreen && !myOrgIds.size);
+  const hide = (isChatScreen && !isCommunitiesTab) || isRoom || isChatThread || isCommunityThread || isProfile || isPostReplies || isWatching || (isOrgsScreen && !myOrgIds.size);
   composeBtn.style.display = hide ? 'none' : 'flex';
   composeBtn.textContent = isCommunitiesTab ? '👥' : '+';
 }
@@ -10907,6 +11206,7 @@ document.addEventListener('DOMContentLoaded', async function(){
     .catch(err => console.error('Background Door warm-up failed:', err));
 
   await rantPromise;
+  openSharedPost();             // fire-and-forget -- only does anything when the app was opened from a shared link
   refreshChatUnread();          // fire-and-forget -- the badge appears when it lands
   startChatUnreadWatch();
   if(currentScreenKey === 'twin' && currentTwinMode === 'rant') startFeedRealtime(); // opens on Rant unless restored elsewhere
