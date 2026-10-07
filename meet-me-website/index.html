@@ -359,6 +359,13 @@
   .orgs-note b{ display:block; color:var(--ivory); font-weight:600; margin-bottom:3px; }
   .orgs-note .orgs-note-btn{ display:inline-block; margin-top:10px; font-size:12px; color:var(--ivory); border:1px solid var(--card-border); border-radius:12px; padding:6px 14px; cursor:pointer; }
 
+  /* Organisations: "new posts" pill (sticks to the top while you scroll) + pull-to-refresh hint */
+  #orgs-new-wrap{ position:sticky; top:4px; height:0; margin-bottom:-14px; z-index:6; display:flex; justify-content:center; pointer-events:none; flex-shrink:0; }
+  #orgs-new-banner{ display:none; pointer-events:auto; background:var(--gold-dim); color:var(--bg); font-size:11.5px; font-weight:600; letter-spacing:0.04em; padding:7px 16px; border-radius:20px; cursor:pointer; box-shadow:0 6px 16px rgba(0,0,0,0.35); height:fit-content; }
+  #orgs-new-banner.show{ display:block; animation:orgsPillIn .25s ease; }
+  @keyframes orgsPillIn{ from{ opacity:0; transform:translateY(-8px); } to{ opacity:1; transform:none; } }
+  #orgs-pull-indicator{ position:absolute; left:0; right:0; top:0; z-index:5; text-align:center; padding-top:10px; font-size:11px; letter-spacing:0.06em; text-transform:uppercase; color:var(--muted-dim); opacity:0; pointer-events:none; transition:opacity 0.15s ease; }
+
   #feed-pull-indicator{
     position:absolute; left:0; right:0; top:0; z-index:5;
     text-align:center; padding-top:10px;
@@ -1360,6 +1367,7 @@
   .comm-row{ display:flex; align-items:center; gap:12px; padding:13px 8px; border-bottom:1px solid var(--card-border); cursor:pointer; }
   .comm-avatar{ font-size:16px; }
   .comm-count{ font-size:10.5px; color:var(--muted-dim); font-weight:400; margin-left:6px; }
+  #comm-org-only-note{ text-align:center; padding:26px 26px 10px; font-size:12.5px; color:var(--muted); line-height:1.6; }
   #comm-empty-note{ text-align:center; padding:26px 26px 40px; font-size:12px; color:var(--muted-dim); line-height:1.6; }
 
   #bottom-nav{ position:absolute; bottom:0; left:0; right:0; background:linear-gradient(180deg, rgba(12,12,14,0) 0%, var(--bg) 32%);
@@ -1981,6 +1989,8 @@
 
     <div class="screen active" id="screen-orgs">
       <div id="orgs-feed">
+        <div id="orgs-new-wrap"><div id="orgs-new-banner">↑ new posts</div></div>
+        <div id="orgs-pull-indicator">↓ pull to refresh</div>
         <div class="orgs-head">
           <span class="orgs-head-title">Organisations</span>
           <span class="orgs-head-btn" id="orgs-browse-btn">Browse</span>
@@ -2489,7 +2499,7 @@
   <div id="new-community-overlay" class="account-overlay">
     <div class="account-panel">
       <div class="account-title">Start a community</div>
-      <div class="account-sub">Needs you plus 2 moderators before it's real and joinable.</div>
+      <div class="account-sub" id="new-community-for">Needs you plus 2 moderators before it's real and joinable.</div>
       <input id="new-community-name" class="account-input" type="text" placeholder="Community name">
       <input id="new-community-icon" class="account-input" type="text" placeholder="An emoji, e.g. 🌀" maxlength="4">
       <div class="account-choice-row">
@@ -2505,7 +2515,8 @@
   <div id="community-thread-overlay">
     <div id="community-thread-header">
       <div id="community-thread-back" style="width:32px; height:32px; border-radius:50%; background:var(--bg-elevated); border:1px solid var(--card-border); display:flex; align-items:center; justify-content:center; font-size:18px; color:var(--ivory); cursor:pointer; flex-shrink:0;">‹</div>
-      <div id="community-thread-title" style="font-size:13.5px; color:var(--ivory);">—</div>
+      <div id="community-thread-title" style="font-size:13.5px; color:var(--ivory); flex:1; min-width:0;">—</div>
+      <div id="community-notify-btn" title="Notify me about this community" style="width:32px; height:32px; border-radius:50%; background:var(--bg-elevated); border:1px solid var(--card-border); display:flex; align-items:center; justify-content:center; font-size:14px; color:var(--muted-dim); cursor:pointer; flex-shrink:0;">🔔︎</div>
     </div>
     <div id="community-thread-messages" style="flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:10px;"></div>
     <div id="community-reply-preview" class="reply-preview-bar" style="display:none;">
@@ -3422,6 +3433,15 @@ if(document.documentElement.classList.contains('mm-resume')){
     }
   }catch(e){}
 }
+// Organisations is the landing page, so its last-seen posts are painted on EVERY start (not just a quick return),
+// then the fresh copy swaps in as soon as it arrives.
+try{
+  const snapO = JSON.parse(localStorage.getItem('mm_snap') || 'null');
+  if(snapO && snapO.orgs && (Date.now() - (snapO.orgsTs || 0)) < 24 * 60 * 60 * 1000){
+    const ol = document.getElementById('orgs-list');
+    if(ol && !ol.children.length) ol.innerHTML = snapO.orgs;
+  }
+}catch(e){}
 // The veil pieces fully cover #main while the splash is up, so the feed can
 // be at full opacity underneath. Fading it in AFTER the veil tears away is
 // what made the screen look blank for a second.
@@ -3477,6 +3497,7 @@ async function goToScreen(key){
   saveAppState();
   if(key === 'twin' && currentTwinMode === 'rant'){ startFeedRealtime(); }
   else { stopFeedRealtime(); }
+  if(key === 'orgs'){ startOrgsRealtime(); } else { stopOrgsRealtime(); }
 }
 
 document.querySelectorAll('#bottom-nav .nav-item').forEach(item=>{
@@ -4707,10 +4728,13 @@ let cachedCommunitiesData = null; // { invites, mine, discoverFiltered, formingF
 function renderCommunitiesList(data){
   const { invites, mine, discoverFiltered, formingFiltered } = data;
   const list = document.getElementById('communities-list');
-  list.innerHTML = '<div id="new-community-btn">+ Start a community</div>';
-  document.getElementById('new-community-btn').addEventListener('click', ()=>{
-    document.getElementById('new-community-overlay').classList.add('show');
-  });
+  // Only organisations can have communities. No organisation, no "Start a community".
+  if(myOrgs.length){
+    list.innerHTML = '<div id="new-community-btn">+ Start a community</div>';
+    document.getElementById('new-community-btn').addEventListener('click', openNewCommunity);
+  } else {
+    list.innerHTML = '<div id="comm-org-only-note">Communities belong to organisations. When you have an organisation, you can start one here.</div>';
+  }
 
   if(invites && invites.length){
     const label = document.createElement('div');
@@ -4805,12 +4829,22 @@ function renderCommunitiesList(data){
   if(!invites?.length && !mine?.length && !discoverFiltered.length && !formingFiltered.length){
     const note = document.createElement('div');
     note.id = 'comm-empty-note';
-    note.textContent = "Every community needs a creator and at least two moderators before it exists — no single person ever holds the room alone.";
+    note.textContent = "No communities yet. Organisations start them, and every community needs its creator plus two moderators before it opens.";
     list.appendChild(note);
   }
 }
 
+// The one way in to "Start a community": only someone who owns an organisation gets the form.
+async function openNewCommunity(){
+  await ensureOrgs();
+  if(!myOrgs.length){ showNavToast('Only organisations can start communities.'); return; }
+  const who = myOrgs[0];
+  document.getElementById('new-community-for').textContent = 'This community will belong to ' + who.name + '. It needs you plus 2 moderators before it\u2019s real and joinable.';
+  document.getElementById('new-community-overlay').classList.add('show');
+}
+
 async function loadCommunitiesList(){
+  await ensureOrgs();
   if(!currentUserId) return;
 
   // Paint immediately from whatever's cached -- instant on every open
@@ -4909,10 +4943,15 @@ document.getElementById('new-community-submit-btn').addEventListener('click', as
   const name = document.getElementById('new-community-name').value.trim();
   const icon = document.getElementById('new-community-icon').value.trim();
   if(!name) return;
+  await ensureOrgs();
+  if(!myOrgs.length){ showNavToast('Only organisations can start communities.'); return; }
   const { data: newCommunity, error } = await sb.from('communities').insert({
-    name, icon: icon || '🌀', created_by: currentUserId, visibility: selectedNewCommunityVisibility
+    name, icon: icon || '🌀', created_by: currentUserId, visibility: selectedNewCommunityVisibility, organization_id: myOrgs[0].id
   }).select('id').single();
-  if(error){ toast.textContent = 'Could not create community.'; toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 2200); return; }
+  if(error){
+    toast.textContent = (error.code === '42501' || /row-level security/i.test(error.message || '')) ? 'Only organisations can start communities.' : 'Could not create community.';
+    toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 2200); return;
+  }
   await sb.from('community_members').insert({ community_id: newCommunity.id, user_id: currentUserId, role: 'creator' });
   document.getElementById('new-community-overlay').classList.remove('show');
   document.getElementById('new-community-name').value = '';
@@ -5014,6 +5053,7 @@ async function openCommunityThread(communityId, name){
   currentCommunityId = communityId;
   document.getElementById('community-thread-title').textContent = name;
   clearCommunityReplyingTo();
+  loadCommunityNotifyState(communityId);
   await loadCommunityMessages();
   await markCommunityRead();
   document.getElementById('community-thread-overlay').classList.add('show');
@@ -6910,6 +6950,7 @@ async function loadFeed(){
   // Loading fresh means the user has now seen everything up to this
   // point -- clear the "new posts" pill and reset the realtime counter.
   clearNewPostsBanner();
+  saveSnapshotSoon();
 }
 
 // Older rants used to just stop existing at post #20 -- loadFeed only
@@ -7041,10 +7082,82 @@ async function renderOrgsFeed(){
     note((rows.length ? '' : '<b>No organisation posts yet.</b>') + 'Organisations are just getting started here. Rant is where people are talking right now.<br><span class="orgs-note-btn" id="orgs-open-rant">Open Rant</span>');
   }
 
+  const orgsScroller = document.getElementById('orgs-feed');
+  const keepScroll = orgsScroller.scrollTop;
   list.innerHTML = '';
   list.appendChild(frag);
+  if(keepScroll > 0) orgsScroller.scrollTop = keepScroll;   // the fresh copy swaps in without yanking you back to the top
   updateComposeVisibility();
+  clearOrgsNewBanner();
+  saveSnapshotSoon();
 }
+
+/* New organisation posts: same idea as Rant's pill. We don't shove new posts into the page while you read;
+   a pill counts them, and tapping it scrolls to the top and loads them. */
+let orgsRealtimeChannel = null;
+let newOrgPostsSinceLoad = 0;
+function startOrgsRealtime(){
+  if(orgsRealtimeChannel) return;
+  orgsRealtimeChannel = sb
+    .channel('orgs-feed-live')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts', filter: 'post_type=eq.rant' }, (payload)=>{
+      const n = payload.new || {};
+      if(!n.organization_id || n.community_id) return;               // only organisation posts
+      if(n.user_id === currentUserId) return;                         // your own post already reloads this page on save
+      if(myMutedOrgIds.has(n.organization_id)) return;                // muted organisations stay quiet
+      newOrgPostsSinceLoad++;
+      showOrgsNewBanner();
+    })
+    .subscribe();
+}
+function stopOrgsRealtime(){
+  if(orgsRealtimeChannel){ sb.removeChannel(orgsRealtimeChannel); orgsRealtimeChannel = null; }
+}
+function showOrgsNewBanner(){
+  const b = document.getElementById('orgs-new-banner');
+  b.textContent = '↑ ' + newOrgPostsSinceLoad + (newOrgPostsSinceLoad === 1 ? ' new post' : ' new posts');
+  b.classList.add('show');
+}
+function clearOrgsNewBanner(){
+  newOrgPostsSinceLoad = 0;
+  document.getElementById('orgs-new-banner').classList.remove('show');
+}
+document.getElementById('orgs-new-banner').addEventListener('click', async (e)=>{
+  e.stopPropagation();
+  const sc = document.getElementById('orgs-feed');
+  sc.scrollTo({ top: 0, behavior: 'smooth' });
+  await loadOrgsFeed(true);
+  sc.scrollTop = 0;
+});
+(function setupOrgsPullToRefresh(){
+  const feedEl = document.getElementById('orgs-feed');
+  const indicator = document.getElementById('orgs-pull-indicator');
+  const threshold = 70;
+  let startY = 0, pulling = false, pullDistance = 0, refreshing = false;
+  feedEl.addEventListener('touchstart', (e)=>{
+    if(feedEl.scrollTop <= 0 && !refreshing){ startY = e.touches[0].clientY; pulling = true; pullDistance = 0; }
+  }, { passive: true });
+  feedEl.addEventListener('touchmove', (e)=>{
+    if(!pulling) return;
+    pullDistance = e.touches[0].clientY - startY;
+    if(pullDistance > 0){
+      indicator.style.opacity = Math.min(pullDistance / threshold, 1);
+      indicator.textContent = pullDistance > threshold ? '↑ release to refresh' : '↓ pull to refresh';
+    }
+  }, { passive: true });
+  feedEl.addEventListener('touchend', async ()=>{
+    if(pulling && pullDistance > threshold && !refreshing){
+      refreshing = true;
+      indicator.textContent = 'refreshing…';
+      await loadOrgsFeed(true);
+      indicator.style.opacity = 0;
+      refreshing = false;
+    } else {
+      indicator.style.opacity = 0;
+    }
+    pulling = false; pullDistance = 0;
+  });
+})();
 
 document.getElementById('orgs-browse-btn').addEventListener('click', openOrgList);
 document.getElementById('orgs-feed').addEventListener('click', async (e)=>{
@@ -7894,7 +8007,10 @@ const NOTIF_TEXT = {
   secure_nudge: ()=> 'Create an account to keep your posts, friends, and Room access — even on a new device.',
   system: (n)=> n.message ? escapeHtml(n.message) : 'Meet Me has an update for you.',
   inspired: (n)=> `${actorName(n)} was inspired by your post.`,
-  community_invite: (n)=> `${actorName(n)} invited you to a community.`
+  community_invite: (n)=> `${actorName(n)} invited you to a community.`,
+  org_post: (n)=> n.message ? escapeHtml(n.message) : 'An organisation you follow posted.',
+  community_post: (n)=> n.message ? escapeHtml(n.message) : 'New post in a community.',
+  community_message: (n)=> n.message ? `New messages in ${escapeHtml(n.message)}.` : 'New messages in a community.'
 };
 
 // Brief, self-dismissing message for "inspired by" navigation failures
@@ -8072,7 +8188,10 @@ const NOTIF_NAV = {
   friend_accept: async ()=>{ notifOverlay.classList.remove('show'); await goToScreen('chat'); },
   room_ready: async ()=>{ notifOverlay.classList.remove('show'); await goToScreen('chat'); },
   secure_nudge: ()=>{ notifOverlay.classList.remove('show'); openSecureOverlay(); },
-  inspired: (n)=>{ notifOverlay.classList.remove('show'); return navigateToPost(n.reference_id); }
+  inspired: (n)=>{ notifOverlay.classList.remove('show'); return navigateToPost(n.reference_id); },
+  org_post: (n)=>{ notifOverlay.classList.remove('show'); return navigateToPost(n.reference_id); },
+  community_post: (n)=>{ notifOverlay.classList.remove('show'); return navigateToPost(n.reference_id); },
+  community_message: async (n)=>{ notifOverlay.classList.remove('show'); await goToScreen('chat'); await openCommunityThread(n.reference_id, n.message || 'Community'); }
 };
 
 async function loadNotifications(){
@@ -8105,7 +8224,7 @@ async function loadNotifications(){
     const canNavigate = !!NOTIF_NAV[n.type];
     if(canNavigate) item.style.cursor = 'pointer';
     item.innerHTML = `
-      <div class="notif-item-icon">${n.type === 'like' ? '♥' : n.type === 'inspired' ? '↻' : n.type === 'system' ? '✦' : '◐'}</div>
+      <div class="notif-item-icon">${n.type === 'like' ? '♥' : n.type === 'inspired' ? '↻' : n.type === 'system' ? '✦' : n.type === 'org_post' ? '◈' : (n.type === 'community_post' || n.type === 'community_message') ? '◍' : '◐'}</div>
       <div class="notif-item-body">
         <div class="notif-item-text">${NOTIF_TEXT[n.type] ? NOTIF_TEXT[n.type](n) : 'Update.'}</div>
         <div class="notif-item-time">${formatRelativeTime(n.created_at)}</div>
@@ -8122,6 +8241,43 @@ async function markAllNotificationsSeen(){
   if(!currentUserId) return;
   await sb.from('notifications').update({ seen: true }).eq('user_id', currentUserId).eq('seen', false);
   notifDot.classList.add('hide');
+}
+
+/* ---------- community notify toggle (bell in the community header) ---------- */
+let communityNotifyOn = false;
+function paintCommunityNotifyBtn(){
+  const b = document.getElementById('community-notify-btn');
+  if(!b) return;
+  b.style.color = communityNotifyOn ? 'var(--gold-light)' : 'var(--muted-dim)';
+  b.style.borderColor = communityNotifyOn ? 'var(--gold-dim)' : 'var(--card-border)';
+  b.title = communityNotifyOn ? 'Notifications on' : 'Notify me about this community';
+}
+async function loadCommunityNotifyState(communityId){
+  communityNotifyOn = false; paintCommunityNotifyBtn();
+  const { data } = await sb.from('community_members').select('notify').eq('community_id', communityId).eq('user_id', currentUserId).maybeSingle();
+  if(communityId !== currentCommunityId) return;
+  communityNotifyOn = !!(data && data.notify);
+  paintCommunityNotifyBtn();
+}
+async function toggleCommunityNotify(){
+  if(!currentCommunityId) return;
+  const next = !communityNotifyOn;
+  const { error } = await sb.from('community_members').update({ notify: next }).eq('community_id', currentCommunityId).eq('user_id', currentUserId);
+  if(error){ showNavToast('Could not change notifications.'); return; }
+  communityNotifyOn = next; paintCommunityNotifyBtn();
+  showNavToast(next ? 'Notifications on for this community.' : 'Notifications off for this community.');
+}
+document.getElementById('community-notify-btn')?.addEventListener('click', toggleCommunityNotify);
+
+/* ---------- live notification dot ---------- */
+let notifChannel = null;
+function startNotifRealtime(){
+  if(!currentUserId || notifChannel) return;
+  notifChannel = sb.channel('notifs-' + currentUserId)
+    .on('postgres_changes', { event:'INSERT', schema:'public', table:'notifications', filter:'user_id=eq.' + currentUserId }, ()=>{
+      if(notifOverlay.classList.contains('show')) loadNotifications(); else notifDot.classList.remove('hide');
+    })
+    .subscribe();
 }
 
 async function refreshNotifDot(){
@@ -8749,7 +8905,7 @@ function setupComposeButton(){
   if(!btn) return;
   btn.addEventListener('click', ()=>{
     if(currentScreenKey === 'chat' && currentChatCommMode === 'communities'){
-      document.getElementById('new-community-overlay').classList.add('show');
+      openNewCommunity();
       return;
     }
     openComposeOverlay();
@@ -10381,10 +10537,24 @@ function saveSnapshot(){
     if(posts){ snap.feed = posts; snap.feedScroll = feedEl.scrollTop; }
     const chatEl = document.getElementById('chat-list');
     if(chatEl.querySelector('.chat-row')) snap.chat = chatEl.innerHTML;
-    const str = JSON.stringify(snap);
+    const orgsEl = document.getElementById('orgs-list');
+    if(orgsEl && orgsEl.querySelector('.post')){
+      let n = 0; const keep = [];
+      for(const el of Array.from(orgsEl.children)){ if(el.classList.contains('post') && ++n > 20) break; keep.push(el.outerHTML); }
+      snap.orgs = keep.join(''); snap.orgsTs = Date.now();
+    }
+    let str = JSON.stringify(snap);
+    if(str.length >= 1500000){ delete snap.orgs; str = JSON.stringify(snap); }
     if(str.length < 1500000) localStorage.setItem('mm_snap', str);
+    // Spill: keep the card data itself so the deck is ready the moment you tap Spill
+    if(cachedSpills && cachedSpills.length && currentUserId){
+      localStorage.setItem('mm_spills', JSON.stringify({ uid: currentUserId, ts: Date.now(), spills: cachedSpills.slice(0, 40) }));
+    }
   }catch(e){}
 }
+// Save a moment after fresh data lands, so even a force-closed app has something recent to show next time.
+let snapSoonTimer = null;
+function saveSnapshotSoon(){ clearTimeout(snapSoonTimer); snapSoonTimer = setTimeout(saveSnapshot, 1500); }
 function saveAll(){ saveAppState(); saveSnapshot(); }
 document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState === 'hidden') saveAll(); });
 window.addEventListener('pagehide', saveAll);
@@ -11205,6 +11375,11 @@ function setupBackNavigation(){
    ============================================================ */
 document.addEventListener('DOMContentLoaded', async function(){
   await initUser();
+  // Spill: bring back the last deck we saved, so tapping Spill paints at once while a fresh copy loads underneath.
+  try{
+    const sp = JSON.parse(localStorage.getItem('mm_spills') || 'null');
+    if(sp && sp.uid === currentUserId && sp.spills && sp.spills.length && (Date.now() - sp.ts) < 24 * 60 * 60 * 1000 && !cachedSpills) cachedSpills = sp.spills;
+  }catch(e){}
   if(document.documentElement.classList.contains('mm-resume')) restoreAppState();
 
   // Fire Rant + Spill together the moment auth is ready, instead of
@@ -11212,7 +11387,7 @@ document.addEventListener('DOMContentLoaded', async function(){
   // registration, so a quick tap on Spill never lands on an empty cache.
   const rantPromise = Promise.all([loadFeed(), loadOrgsFeed(true)]).then(async ()=>{ try{ await restoreAppState(); }catch(e){ console.error(e); } splashDataReady = true; trySplashExit(); });
   const spillPromise = loadSpills()
-    .then(spills => { cachedSpills = spills; })
+    .then(spills => { cachedSpills = spills; saveSnapshotSoon(); })
     .catch(err => console.error('Background Spill warm-up failed:', err));
   const momentQuestionPromise = loadMomentQuestion()
     .catch(err => console.error('Background Moment-question warm-up failed:', err));
@@ -11225,11 +11400,13 @@ document.addEventListener('DOMContentLoaded', async function(){
   refreshChatUnread();          // fire-and-forget -- the badge appears when it lands
   startChatUnreadWatch();
   if(currentScreenKey === 'twin' && currentTwinMode === 'rant') startFeedRealtime(); // opens on Rant unless restored elsewhere
+  if(currentScreenKey === 'orgs') startOrgsRealtime();    // Organisations is the landing page
   setupBackNavigation();
   setupComposeButton();
   setupSpillSwipes();
   startGameBannerWatcher();
   await refreshNotifDot();
+  startNotifRealtime();
   await registerServiceWorker();
   await refreshPushRowLabel();
   setTimeout(updateComposeVisibility, 200);
