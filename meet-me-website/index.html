@@ -346,6 +346,18 @@
 
   #feed{ flex:1; overflow-y:auto; padding:2px 16px 90px; display:flex; flex-direction:column; gap:14px; -webkit-overflow-scrolling:touch; position:relative; }
   #feed::-webkit-scrollbar{ width:0; }
+  /* ===== ORGANISATIONS PILLAR (landing page) ===== */
+  #orgs-feed{ flex:1; overflow-y:auto; padding:2px 16px 90px; display:flex; flex-direction:column; gap:14px; -webkit-overflow-scrolling:touch; position:relative; }
+  #orgs-feed::-webkit-scrollbar{ width:0; }
+  #orgs-list{ display:flex; flex-direction:column; gap:14px; }
+  .orgs-head{ display:flex; align-items:center; justify-content:space-between; padding:6px 2px 0; }
+  .orgs-head-title{ font-family:'Fraunces',serif; font-size:19px; color:var(--ivory); }
+  .orgs-head-btn{ font-size:11.5px; color:var(--muted); border:1px solid var(--card-border); border-radius:12px; padding:5px 12px; cursor:pointer; }
+  .orgs-head-btn:active{ color:var(--gold-light); }
+  .orgs-section{ font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted-dim); padding:4px 2px 0; }
+  .orgs-note{ font-size:12.5px; line-height:1.5; color:var(--muted); background:rgba(0,0,0,0.25); border:1px solid var(--card-border); border-radius:12px; padding:12px 14px; }
+  .orgs-note b{ display:block; color:var(--ivory); font-weight:600; margin-bottom:3px; }
+  .orgs-note .orgs-note-btn{ display:inline-block; margin-top:10px; font-size:12px; color:var(--ivory); border:1px solid var(--card-border); border-radius:12px; padding:6px 14px; cursor:pointer; }
 
   #feed-pull-indicator{
     position:absolute; left:0; right:0; top:0; z-index:5;
@@ -461,6 +473,14 @@
   #compose-org-pill.on{ border-color:var(--oc); color:var(--oc); background:color-mix(in srgb, var(--oc) 10%, transparent); }
   #compose-org-pill .org-dot{ background:var(--muted-dim); }
   #compose-org-pill.on .org-dot{ background:var(--oc); }
+  /* compose: Meet Founder toggle (Meet 8 only, Rant + Spill) */
+  #compose-founder-row{ display:none; margin:-6px 0 12px; }
+  #compose-founder-pill{
+    display:inline-flex; align-items:center; height:38px; padding:0 14px; border-radius:19px;
+    background:var(--card); border:1px solid var(--card-border);
+    color:var(--muted); font-size:12.5px; cursor:pointer; white-space:nowrap;
+  }
+  #compose-founder-pill.on{ border-color:var(--gold-dim); color:var(--gold-light); background:rgba(212,168,87,0.10); }
   #compose-org-header-wrap{ display:none; align-items:center; gap:8px; margin:-6px 0 12px; }
   #compose-org-header{
     flex:1; min-width:0; background:var(--card); border:1px solid var(--card-border);
@@ -1873,7 +1893,7 @@
         <div id="logo"><span></span><span></span><span></span><span></span></div>
       </div>
       <div id="wordmark">Meet Me</div>
-      <div id="screen-label-text">Rant</div>
+      <div id="screen-label-text">Organisations</div>
       <div id="search-btn" role="button" aria-label="Search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="15.5" y1="15.5" x2="21" y2="21"/></svg></div>
       <div id="notif-btn">
         <span id="notif-icon">🔔</span>
@@ -1882,7 +1902,7 @@
       <div id="theme-toggle"><span id="theme-toggle-dot"></span></div>
     </header>
 
-    <div class="screen active" id="screen-twin">
+    <div class="screen" id="screen-twin">
       <div id="twin-toggle">
         <div class="twin-btn active" data-mode="rant">Rant</div>
         <div class="twin-btn spill-mode" data-mode="spill">Spill</div>
@@ -1910,6 +1930,16 @@
         <div id="spill-stack"></div>
         <div id="spill-progress"></div>
         <div id="spill-hint">swipe left</div>
+      </div>
+    </div>
+
+    <div class="screen active" id="screen-orgs">
+      <div id="orgs-feed">
+        <div class="orgs-head">
+          <span class="orgs-head-title">Organisations</span>
+          <span class="orgs-head-btn" id="orgs-browse-btn">Browse</span>
+        </div>
+        <div id="orgs-list"></div>
       </div>
     </div>
 
@@ -2023,7 +2053,8 @@
 <div id="compose-btn">+</div>
 
     <div id="bottom-nav">
-      <div class="nav-item active" data-screen="twin"><span class="nav-icon">◐</span><span class="nav-item-label">Rant / Spill</span></div>
+      <div class="nav-item active" data-screen="orgs"><span class="nav-icon">◇</span><span class="nav-item-label">Orgs</span></div>
+      <div class="nav-item" data-screen="twin"><span class="nav-icon">◐</span><span class="nav-item-label">Rant / Spill</span></div>
       <div class="nav-item" data-screen="chat"><span class="nav-icon">◈</span><span class="nav-item-label">Chat</span></div>
       <div class="nav-item" data-screen="profile"><span class="nav-icon">◉</span><span class="nav-item-label">Profile</span></div>
     </div>
@@ -2045,7 +2076,7 @@
   <div id="org-list-overlay">
     <div id="org-list-panel">
       <div id="org-list-title">Organisations</div>
-      <div id="org-list-sub">Newscasts and creators who broadcast into Rant. Follow or mute them here.</div>
+      <div id="org-list-sub">Newscasts, creators and groups that broadcast here. Follow or mute them.</div>
       <div id="org-list-body"></div>
       <div id="org-list-close">close</div>
     </div>
@@ -2283,6 +2314,9 @@
       </div>
       <div id="compose-org-row">
         <div id="compose-org-pill"><span class="org-dot"></span><span id="compose-org-pill-label">Posting as you</span></div>
+      </div>
+      <div id="compose-founder-row">
+        <div id="compose-founder-pill"><span class="org-crest-dot crest-founder" style="margin-right:8px;"></span><span id="compose-founder-pill-label">Post as Meet Founder</span></div>
       </div>
 
       <div class="account-btn primary" id="compose-submit-btn">Post</div>
@@ -2772,6 +2806,7 @@ let currentMeetNumber = null;
 const FOUNDER_ORG_ID = 1;
 let isMeet8 = false;
 let postAsOrgId = null;
+let postAsFounder = false;   // Meet 8 only: this Rant/Spill post goes out as "Meet Founder"
 let accountSecured = false;
 let accountCreatedAt = null;
 let isAdmin = false;
@@ -2870,7 +2905,7 @@ const orgListClose = document.getElementById('org-list-close');
 const profileOrgRow = document.getElementById('profile-org-row');function openOrgList(){ renderOrgList(); orgListOverlay.classList.add('show'); }
 function closeOrgList(){ orgListOverlay.classList.remove('show'); }
 
-logoBtn.addEventListener('click', ()=>goToScreen('twin'));
+logoBtn.addEventListener('click', ()=>goToScreen('orgs'));
 orgListClose.addEventListener('click', closeOrgList);
 orgListOverlay.addEventListener('click', (e)=>{ if(e.target===orgListOverlay) closeOrgList(); });
 profileOrgRow.addEventListener('click', ()=>{ closeProfile(); setTimeout(openOrgList, 250); });
@@ -3352,10 +3387,10 @@ setTimeout(enterApp, 8000);
 /* ============================================================
    BOTTOM NAV
    ============================================================ */
-const screens = { twin:'screen-twin', chat:'screen-chat', profile:'screen-profile' };
-const labels = { twin:'Rant', chat:'Chat', profile:'Profile' };
+const screens = { orgs:'screen-orgs', twin:'screen-twin', chat:'screen-chat', profile:'screen-profile' };
+const labels = { orgs:'Organisations', twin:'Rant', chat:'Chat', profile:'Profile' };
 let currentTwinMode = 'rant';
-let currentScreenKey = 'twin';
+let currentScreenKey = 'orgs';
 let currentChatCommMode = 'chat';
 
 async function goToScreen(key){
@@ -3368,6 +3403,7 @@ async function goToScreen(key){
   document.getElementById('screen-label-text').textContent = key==='twin' ? (currentTwinMode==='rant'?'Rant':'Spill') : labels[key];
   setTimeout(updateComposeVisibility, 50);
   if(key === 'chat'){ await loadChatList(); }
+  if(key === 'orgs'){ loadOrgsFeed(); }
   if(key === 'profile'){ refreshOnlineCountRowLabel(); }
   saveAppState();
   if(key === 'twin' && currentTwinMode === 'rant'){ startFeedRealtime(); }
@@ -3383,7 +3419,7 @@ document.querySelectorAll('#bottom-nav .nav-item').forEach(item=>{
 // Quick return: put the saved tab on screen right away (data loads behind it).
 (function(){
   const s = window.__mmResume;
-  if(!s || !s.screen || !screens[s.screen] || s.screen === 'twin') return;
+  if(!s || !s.screen || !screens[s.screen] || s.screen === 'orgs') return;
   document.querySelectorAll('#bottom-nav .nav-item').forEach(i=>i.classList.toggle('active', i.dataset.screen === s.screen));
   document.querySelectorAll('.screen').forEach(sc=>sc.classList.remove('active'));
   document.getElementById(screens[s.screen]).classList.add('active');
@@ -6236,12 +6272,31 @@ function shapeFeedPosts(rows){
 function composeOrgSetup(isPlainRant){
   composeOrgReset();
   if(!isPlainRant) return;
+  // Meet 8: organisations are posted to from the Organisations page only; in Rant/Spill the choice is "Meet Founder".
+  if(isMeet8 && currentScreenKey !== 'orgs') return;
   ensureOrgs().then(()=>{
     if(!myOrgs.length) return;
     document.getElementById('compose-org-row').style.display = 'block';
     composeOrgRender();
   });
 }
+/* ---------- compose: the "Meet Founder" toggle (Meet 8 only, Rant + Spill) ---------- */
+function composeFounderRender(){
+  const pill = document.getElementById('compose-founder-pill');
+  pill.classList.toggle('on', postAsFounder);
+  document.getElementById('compose-founder-pill-label').textContent = postAsFounder ? 'Posting as Meet Founder' : 'Post as Meet Founder';
+}
+function composeFounderSetup(show){
+  postAsFounder = false;
+  document.getElementById('compose-founder-row').style.display = (show && isMeet8) ? 'block' : 'none';
+  composeFounderRender();
+}
+document.getElementById('compose-founder-pill').addEventListener('click', ()=>{
+  if(!isMeet8) return;
+  postAsFounder = !postAsFounder;
+  if(postAsFounder && postAsOrgId){ postAsOrgId = null; composeOrgRender(); }   // founder and organisation are either/or
+  composeFounderRender();
+});
 function composeOrgReset(){
   postAsOrgId = null;
   document.getElementById('compose-org-row').style.display = 'none';
@@ -6251,7 +6306,9 @@ function composeOrgReset(){
 function composeOrgCycle(){
   if(!myOrgs.length) return;
   const idx = myOrgs.findIndex(o => o.id === postAsOrgId);
-  postAsOrgId = (idx === -1) ? myOrgs[0].id : (myOrgs[idx + 1] ? myOrgs[idx + 1].id : null);
+  if(currentScreenKey === 'orgs'){ postAsOrgId = myOrgs[(idx + 1) % myOrgs.length].id; }   // never falls back to a personal post here
+  else postAsOrgId = (idx === -1) ? myOrgs[0].id : (myOrgs[idx + 1] ? myOrgs[idx + 1].id : null);
+  if(postAsOrgId && postAsFounder){ postAsFounder = false; composeFounderRender(); }
   composeOrgRender();
 }
 function composeOrgRender(){
@@ -6410,6 +6467,12 @@ async function renderOrgList(){
       return `<div class="org-list-row"><span class="org-dot" style="--oc:${o.color}"></span><span class="org-list-name">${escapeHtml(o.name)}</span>${btns}</div>`;
     }).join('');
   }
+  const discover = Object.values(orgMap).filter(o => !myOrgIds.has(o.id) && !myFollows[o.id] && !myMutedOrgIds.has(o.id));
+  html += '<div class="org-follow-title">Discover</div>';
+  html += discover.length
+    ? discover.map(o => { const i = orgInfo(o.id);
+        return `<div class="org-list-row"><span class="org-dot" style="--oc:${i.color}"></span><span class="org-list-name">${escapeHtml(i.name)}</span><span class="org-mini-btn" data-act="follow" data-id="${i.id}">Follow</span></div>`; }).join('')
+    : '<div class="stand-empty">No other organisations yet.</div>';
   html += `<div class="org-claim">
     <div class="org-claim-link">Have an invite code?</div>
     <div class="org-claim-form"><input class="org-claim-input" maxlength="20" placeholder="MM-XXXXX-XXXXX" autocomplete="off" autocapitalize="characters"><span class="org-claim-go">Claim</span></div>
@@ -6469,7 +6532,12 @@ document.getElementById('org-list-body').addEventListener('click', async (e)=>{
   const mini = e.target.closest('.org-mini-btn');
   if(mini){
     const id = Number(mini.dataset.id);
-    if(mini.dataset.act === 'unfollow'){
+    if(mini.dataset.act === 'follow'){
+      if(!currentUserId) return;
+      const { error } = await sb.from('follows').insert({ user_id: currentUserId, organization_id: id });
+      if(error && error.code !== '23505'){ showNavToast("That didn't go through. Try again."); return; }
+      myFollows[id] = { notify: false };
+    } else if(mini.dataset.act === 'unfollow'){
       const { error } = await sb.from('follows').delete().eq('user_id', currentUserId).eq('organization_id', id);
       if(error){ showNavToast("That didn't go through. Try again."); return; }
       delete myFollows[id];
@@ -6482,7 +6550,7 @@ document.getElementById('org-list-body').addEventListener('click', async (e)=>{
   }
 });
 
-async function saveRant(content, communityId, audio, inspiredByPostId, stickerUrl, happeningId, doorQuestionId, doorRouteScore, asOrg){
+async function saveRant(content, communityId, audio, inspiredByPostId, stickerUrl, happeningId, doorQuestionId, doorRouteScore, asOrg, asFounder){
   if(!currentUserId) return console.error('No user');
   const base = communityId ? { community_id: communityId } : { user_id: currentUserId };
   const row = { ...base, content: content || null, post_type: 'rant' };
@@ -6492,6 +6560,7 @@ async function saveRant(content, communityId, audio, inspiredByPostId, stickerUr
   if(happeningId) row.happening_id = happeningId;
   if(doorQuestionId){ row.door_question_id = doorQuestionId; row.door_route_score = doorRouteScore; }
   if(asOrg && !communityId){ row.organization_id = asOrg.id; row.header = asOrg.header || null; }
+  else if(asFounder && isMeet8 && !communityId){ row.as_founder = true; }   // the database trigger is what really enforces Meet 8 only
   const { error } = await sb.from('posts').insert(row);
   if(error){ console.error('Error saving rant:', error); showNavToast(orgErrorMessage(error) || 'Your post didn\'t go through. Try again.'); return; }
   if(inspiredByPostId) await notifyInspiredBy(inspiredByPostId);
@@ -6505,10 +6574,13 @@ let feedLoadingMore = false;
 function renderRantPost(post, userLiked, likeCount, inspirationLabels){
   const isCommunity = !!post.community_id;
   const isOrg = !isCommunity && !!post.organization_id;
+  const isFounder = !isCommunity && !isOrg && !!post.as_founder;
   const isOwn = !isCommunity && post.user_id === currentUserId;
   const org = isOrg ? orgInfo(post.organization_id) : null;
   const displayName = isCommunity
     ? (post.communities?.icon || '🌀') + ' ' + (post.communities?.name || 'Community')
+    : isFounder
+      ? 'Meet Founder'
     : isOrg
       ? org.name
       : (post.users?.meet_number || ('Meet ' + post.user_id.slice(0,6)));
@@ -6518,6 +6590,8 @@ function renderRantPost(post, userLiked, likeCount, inspirationLabels){
   const fresh = isOrg && (Date.now() - new Date(post.created_at).getTime() < ORG_FRESH_MS) && !orgSeenSet().has(String(post.id));
   const headHtml = isCommunity
     ? escapeHtml(displayName) + ' <span class="org-badge">community</span>'
+    : isFounder
+      ? '<span class="org-crest-dot crest-founder" style="margin-right:7px;"></span>Meet Founder'
     : isOrg
       ? `<span class="org-dot${fresh ? ' fresh' : ''}"></span><span class="org-name-link" data-org-id="${org.id}">${escapeHtml(org.name)}</span><span class="org-tag">${orgTypeLabel(org.type)}</span>`
       : `<span class="user-link" data-user-id="${post.user_id}">${escapeHtml(displayName)}</span>`;
@@ -6537,7 +6611,7 @@ function renderRantPost(post, userLiked, likeCount, inspirationLabels){
     ${happeningPillHtml(post)}
     ${bodyHtml}
     <div class="post-foot">
-      ${postActionsHtml(post.id, isCommunity ? null : (isOrg ? (isOwn ? post.user_id : null) : post.user_id), post.content, post.sticker_url, post.audio_url, post.duration_seconds, displayName, 'Rant', userLiked, likeCount, false, isCommunity ? post.community_id : null, (isCommunity || isOrg))}
+      ${postActionsHtml(post.id, isCommunity ? null : ((isOrg || isFounder) ? (isOwn ? post.user_id : null) : post.user_id), post.content, post.sticker_url, post.audio_url, post.duration_seconds, displayName, 'Rant', userLiked, likeCount, false, isCommunity ? post.community_id : null, (isCommunity || isOrg))}
     </div>`;
   if(fresh) watchFreshOrgPost(div);
   return div;
@@ -6554,8 +6628,9 @@ async function loadFeed(){
   feedHasMore = true;
   const { data: rawPosts, error } = await sb
     .from('posts')
-    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, inspired_by_post_id, door_question_id, happening_id, happenings(name), users(meet_number), communities(name, icon)')
+    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, inspired_by_post_id, door_question_id, happening_id, happenings(name), users(meet_number), communities(name, icon)')
     .eq('post_type', 'rant')
+    .or('organization_id.is.null,community_id.not.is.null')   // organisation posts live in the Organisations pillar
     .order('created_at', { ascending: false })
     .range(0, FEED_PAGE_SIZE - 1);
   if(error){ console.error('Error loading feed:', error); return; }
@@ -6606,8 +6681,9 @@ async function loadMoreFeed(){
 
   const { data: rawPosts, error } = await sb
     .from('posts')
-    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, inspired_by_post_id, door_question_id, happening_id, happenings(name), users(meet_number), communities(name, icon)')
+    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, inspired_by_post_id, door_question_id, happening_id, happenings(name), users(meet_number), communities(name, icon)')
     .eq('post_type', 'rant')
+    .or('organization_id.is.null,community_id.not.is.null')
     .order('created_at', { ascending: false })
     .range(feedOffset, feedOffset + FEED_PAGE_SIZE - 1);
 
@@ -6649,6 +6725,104 @@ async function loadMoreFeed(){
 })();
 
 /* ============================================================
+   ORGANISATIONS PILLAR -- the landing page.
+   Organisation posts live here, not in Rant. Two states on one screen:
+   following nobody -> everything from every organisation;
+   following some  -> theirs first, the rest under "Discover".
+   If organisations are thin, a card points to Rant so it never looks empty.
+   ============================================================ */
+const ORGS_FEED_LIMIT = 40;
+const ORGS_FEED_STALE_MS = 45 * 1000;
+const ORGS_MIN_FOR_FULL_PAGE = 3;
+let orgsFeedLoadedAt = 0;
+let orgsFeedLoading = null;
+
+function loadOrgsFeed(force){
+  if(orgsFeedLoading) return orgsFeedLoading;
+  if(!force && orgsFeedLoadedAt && Date.now() - orgsFeedLoadedAt < ORGS_FEED_STALE_MS) return Promise.resolve();
+  orgsFeedLoading = (async ()=>{
+    try{ await renderOrgsFeed(); orgsFeedLoadedAt = Date.now(); }
+    catch(e){ console.error('Error loading the Organisations page:', e); }
+    finally{ orgsFeedLoading = null; }
+  })();
+  return orgsFeedLoading;
+}
+
+async function renderOrgsFeed(){
+  const list = document.getElementById('orgs-list');
+  const { data: rawPosts, error } = await sb
+    .from('posts')
+    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, inspired_by_post_id, door_question_id, happening_id, happenings(name), users(meet_number), communities(name, icon)')
+    .eq('post_type', 'rant')
+    .not('organization_id', 'is', null)
+    .is('community_id', null)
+    .order('created_at', { ascending: false })
+    .range(0, ORGS_FEED_LIMIT - 1);
+  if(error){
+    console.error('Error loading organisation posts:', error);
+    if(!list.children.length) list.innerHTML = '<div class="orgs-note">Couldn\'t load organisations right now. Try again in a moment.</div>';
+    return;
+  }
+  await ensureOrgs();
+  const rows = (rawPosts || []).filter(p => !myMutedOrgIds.has(p.organization_id));
+  const isFollowed = p => !!myFollows[p.organization_id] || myOrgIds.has(p.organization_id);
+  const followed = rows.filter(isFollowed);
+  const others = rows.filter(p => !isFollowed(p));
+
+  const [likedIds, likeCounts, inspirationLabels] = await Promise.all([
+    (async ()=>{
+      if(!currentUserId) return new Set();
+      const { data: likeRows } = await sb.from('likes').select('post_id').eq('user_id', currentUserId);
+      return new Set((likeRows || []).map(l => l.post_id));
+    })(),
+    fetchLikeCounts(rows.map(p => p.id)),
+    fetchInspirationLabels(rows)
+  ]);
+
+  const frag = document.createDocumentFragment();
+  const section = (text) => { const d = document.createElement('div'); d.className = 'orgs-section'; d.textContent = text; frag.appendChild(d); };
+  const note = (html) => { const d = document.createElement('div'); d.className = 'orgs-note'; d.innerHTML = html; frag.appendChild(d); };
+  const addPosts = (arr) => arr.forEach(post => frag.appendChild(renderRantPost(post, likedIds.has(post.id), likeCounts[post.id] || 0, inspirationLabels)));
+
+  if(followed.length){
+    section('Following');
+    addPosts(followed);
+    if(others.length){ section('Discover'); addPosts(others); }
+  } else if(rows.length){
+    note('<b>Follow organisations to shape this page.</b>Tap an organisation\'s name, or use Browse, and their posts will come first.');
+    section('From organisations');
+    addPosts(rows);
+  }
+
+  if(rows.length < ORGS_MIN_FOR_FULL_PAGE){
+    note((rows.length ? '' : '<b>No organisation posts yet.</b>') + 'Organisations are just getting started here. Rant is where people are talking right now.<br><span class="orgs-note-btn" id="orgs-open-rant">Open Rant</span>');
+  }
+
+  list.innerHTML = '';
+  list.appendChild(frag);
+  updateComposeVisibility();
+}
+
+document.getElementById('orgs-browse-btn').addEventListener('click', openOrgList);
+document.getElementById('orgs-feed').addEventListener('click', async (e)=>{
+  if(e.target.closest('#orgs-open-rant')){ await goToScreen('twin'); return; }
+  const likeBtn = e.target.closest('.like-btn');
+  if(likeBtn){ e.stopPropagation(); const postId = likeBtn.dataset.postId; if(postId) await toggleLike(postId, likeBtn); return; }
+  const replyBtn = e.target.closest('.reply-trigger');
+  if(replyBtn){ e.stopPropagation(); openActionSheet(replyBtn.dataset.receiverId, replyBtn.dataset.postId, replyBtn.dataset.name); return; }
+});
+// Following, unfollowing or muting changes what this page should show.
+['org-sheet-overlay', 'org-list-overlay'].forEach(id => {
+  const el = document.getElementById(id);
+  let wasOpen = false;
+  new MutationObserver(()=>{
+    const open = el.classList.contains('show');
+    if(wasOpen && !open){ orgsFeedLoadedAt = 0; if(currentScreenKey === 'orgs') loadOrgsFeed(true); }
+    wasOpen = open;
+  }).observe(el, { attributes: true, attributeFilter: ['class'] });
+});
+
+/* ============================================================
    FEED REFRESH — realtime "new posts" pill + pull-to-refresh,
    same idea as Twitter's timeline. We don't auto-insert new posts
    as they arrive (that yanks the feed out from under a reading
@@ -6667,6 +6841,7 @@ function startFeedRealtime(){
       event: 'INSERT', schema: 'public', table: 'posts', filter: 'post_type=eq.rant'
     }, (payload) => {
       if(payload.new.user_id === currentUserId) return; // your own post already reloads the feed on save
+      if(payload.new.organization_id && !payload.new.community_id) return; // organisation posts belong to the Organisations pillar
       newPostsSinceLoad++;
       showNewPostsBanner();
     })
@@ -6796,15 +6971,16 @@ document.getElementById('feed-new-posts-banner').addEventListener('click', async
    ============================================================ */
 let cachedSpills = null; // last successfully rendered list, painted instantly on reopen while a fresh copy loads
 
-async function saveSpill(content, audio, inspiredByPostId, stickerUrl, doorQuestionId, doorRouteScore){
+async function saveSpill(content, audio, inspiredByPostId, stickerUrl, doorQuestionId, doorRouteScore, asFounder){
   if(!currentUserId) return console.error('No user');
   const row = { user_id: currentUserId, content: content || null, post_type: 'spill' };
+  if(asFounder && isMeet8) row.as_founder = true;   // the database trigger is what really enforces Meet 8 only
   if(audio){ row.audio_url = audio.url; row.duration_seconds = audio.duration; }
   if(inspiredByPostId) row.inspired_by_post_id = inspiredByPostId;
   if(stickerUrl) row.sticker_url = stickerUrl;
   if(doorQuestionId){ row.door_question_id = doorQuestionId; row.door_route_score = doorRouteScore; }
   const { error } = await sb.from('posts').insert(row);
-  if(error){ console.error('Error saving spill:', error); return; }
+  if(error){ console.error('Error saving spill:', error); showNavToast('Your post didn\'t go through. Try again.'); return; }
   if(inspiredByPostId) await notifyInspiredBy(inspiredByPostId);
 }
 
@@ -6813,7 +6989,7 @@ async function loadSpills(){
   // you posted before swiping into strangers' -- then everyone else's.
   const { data: own, error: ownErr } = await sb
     .from('posts')
-    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, inspired_by_post_id, door_question_id, users(meet_number)')
+    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, inspired_by_post_id, door_question_id, as_founder, users(meet_number)')
     .eq('post_type', 'spill')
     .eq('user_id', currentUserId)
     .order('created_at', { ascending: false });
@@ -6821,7 +6997,7 @@ async function loadSpills(){
 
   const { data: others, error } = await sb
     .from('posts')
-    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, inspired_by_post_id, door_question_id, users(meet_number)')
+    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, inspired_by_post_id, door_question_id, as_founder, users(meet_number)')
     .eq('post_type', 'spill')
     .neq('user_id', currentUserId)
     .order('created_at', { ascending: false })
@@ -6868,7 +7044,8 @@ async function renderSpills(spills){
   spills.forEach(spill => {
     const isOwn = spill.user_id === currentUserId;
     const userLiked = likedIds.has(spill.id);
-    const displayName = (spill.users?.meet_number || ('Meet ' + spill.user_id.slice(0,6))) + (isOwn ? ' (you)' : '');
+    const isFounder = !!spill.as_founder;
+    const displayName = isFounder ? ('Meet Founder' + (isOwn ? ' (you)' : '')) : ((spill.users?.meet_number || ('Meet ' + spill.user_id.slice(0,6))) + (isOwn ? ' (you)' : ''));
     const bodyHtml = postBodyHtml(spill, 'spill-card-body', 150);
     const inspiredLine = spill.inspired_by_post_id && inspirationLabels[spill.inspired_by_post_id]
       ? `<div class="post-action inspired-source-link" data-source-id="${spill.inspired_by_post_id}" style="font-size:11px; color:var(--muted-dim); margin-bottom:6px;">↻ inspired by ${escapeHtml(inspirationLabels[spill.inspired_by_post_id])}</div>` : '';
@@ -6877,13 +7054,13 @@ async function renderSpills(spills){
     card.dataset.postId = spill.id;
     card.dataset.isOwn = isOwn ? 'true' : 'false';
     card.innerHTML = `
-      <div class="spill-card-id"><span class="user-link" data-user-id="${spill.user_id}">${escapeHtml(displayName)}</span></div>
+      <div class="spill-card-id">${isFounder ? `<span class="org-crest-dot crest-founder" style="margin-right:7px;"></span><span>${escapeHtml(displayName)}</span>` : `<span class="user-link" data-user-id="${spill.user_id}">${escapeHtml(displayName)}</span>`}</div>
       ${doorTagHtml(spill)}
       ${inspiredLine}
       ${bodyHtml}
       <div class="spill-card-time">${formatRelativeTime(spill.created_at)}</div>
       <div class="spill-card-actions" style="display:flex; gap:14px; margin-top:14px; flex-wrap:wrap;">
-        ${postActionsHtml(spill.id, spill.user_id, spill.content, spill.sticker_url, spill.audio_url, spill.duration_seconds, displayName, 'Spill', userLiked)}
+        ${postActionsHtml(spill.id, (isFounder && !isOwn) ? null : spill.user_id, spill.content, spill.sticker_url, spill.audio_url, spill.duration_seconds, displayName, 'Spill', userLiked)}
       </div>`;
     stack.appendChild(card);
   });
@@ -7505,7 +7682,7 @@ async function navigateToPost(postId){
   if(!postId) return;
   const { data: post, error } = await sb
     .from('posts')
-    .select('id, post_type, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, inspired_by_post_id, door_question_id, happening_id, happenings(name), users(meet_number), communities(name, icon)')
+    .select('id, post_type, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, inspired_by_post_id, door_question_id, happening_id, happenings(name), users(meet_number), communities(name, icon)')
     .eq('id', postId)
     .single();
   if(error || !post){
@@ -8331,12 +8508,26 @@ function openComposeOverlay(){
   // Post as: anyone who owns an organisation, plain Rant posts only.
   composeOrgSetup(isPlainRant);
 
+  // On the Organisations page you always post as one of your organisations.
+  if(currentScreenKey === 'orgs'){
+    title.textContent = 'Post as your organisation';
+    textarea.placeholder = 'Say it to your followers.';
+    composeOrgSetup(true);
+    ensureOrgs().then(()=>{
+      if(myOrgs.length && !postAsOrgId){ postAsOrgId = myOrgs[0].id; composeOrgRender(); }
+    });
+  }
+
+  // Meet 8 only: a "Meet Founder" choice on plain Rant and Spill posts (not communities, not the Organisations page).
+  composeFounderSetup(currentScreenKey === 'twin' && (currentTwinMode === 'rant' || currentTwinMode === 'spill') && !currentPostAsCommunityId);
+
   document.getElementById('compose-overlay').classList.add('show');
   setTimeout(()=>textarea.focus(), 100);
 }
 function closeComposeOverlay(){
   document.getElementById('compose-overlay').classList.remove('show');
   composeOrgReset();
+  composeFounderSetup(false);
   currentPostAsCommunityId = null;
   currentInspiredByPostId = null;
   currentInspiredBySpace = null;
@@ -8518,7 +8709,7 @@ async function openHappeningView(happeningId, name){
 
   const { data: posts } = await sb
     .from('posts')
-    .select('id, user_id, content, sticker_url, audio_url, duration_seconds, created_at, users(meet_number)')
+    .select('id, user_id, content, sticker_url, audio_url, duration_seconds, created_at, as_founder, users(meet_number)')
     .eq('happening_id', happeningId)
     .eq('post_type', 'rant')
     .order('created_at', { ascending: false });
@@ -8539,7 +8730,8 @@ async function openHappeningView(happeningId, name){
   const likeCounts = await fetchLikeCounts(posts.map(p => p.id));
 
   posts.forEach(post => {
-    const displayName = post.users?.meet_number || ('Meet ' + post.user_id.slice(0,6));
+    const isFounder = !!post.as_founder;
+    const displayName = isFounder ? 'Meet Founder' : (post.users?.meet_number || ('Meet ' + post.user_id.slice(0,6)));
     const userLiked = likedIds.has(post.id);
     const likeCount = likeCounts[post.id] || 0;
     const likeHtml = `<span class="like-btn ${userLiked ? 'liked' : ''}" data-post-id="${post.id}" data-name="${escapeHtml(displayName)}"><span class="heart">${userLiked ? '♥' : '♡'}</span><span class="like-count">${likeCount}</span></span>`;
@@ -8548,7 +8740,7 @@ async function openHappeningView(happeningId, name){
     wrap.className = 'yp-post';
     wrap.dataset.postId = post.id;
     wrap.innerHTML = `
-      <div class="yp-post-space"><span class="user-link" data-user-id="${post.user_id}">${escapeHtml(displayName)}</span></div>
+      <div class="yp-post-space">${isFounder ? `<span class="org-crest-dot crest-founder" style="margin-right:7px;"></span><span>Meet Founder</span>` : `<span class="user-link" data-user-id="${post.user_id}">${escapeHtml(displayName)}</span>`}</div>
       ${postBodyHtml(post, 'yp-post-body', 150)}
       <div class="yp-post-time">${formatRelativeTime(post.created_at)}</div>
       <div class="post-foot">${likeHtml}${inspiredHtml}</div>`;
@@ -8807,6 +8999,7 @@ document.getElementById('compose-org-header').addEventListener('input', composeO
 
 document.getElementById('compose-submit-btn').addEventListener('click', async ()=>{
   const orgToUse = postAsOrgId ? { id: postAsOrgId, header: document.getElementById('compose-org-header').value.trim() } : null; // captured before closeComposeOverlay() clears it
+  const founderToUse = !!(postAsFounder && isMeet8 && !orgToUse); // captured before closeComposeOverlay() clears it
   const content = document.getElementById('compose-textarea').value.trim();
   if(orgToUse && orgInfo(orgToUse.id).type === 'newscast' && !orgToUse.header){
     composeOrgRefresh(true);
@@ -8849,8 +9042,8 @@ document.getElementById('compose-submit-btn').addEventListener('click', async ()
   };
 
   if(inspiredByPostId){
-    if(inspiredBySpace === 'Rant'){ await saveRant(content, null, audio, inspiredByPostId, stickerToUse); if(currentScreenKey==='twin' && currentTwinMode==='rant') await loadFeed(); }
-    else if(inspiredBySpace === 'Spill'){ await saveSpill(content, audio, inspiredByPostId, stickerToUse); if(currentTwinMode==='spill'){ const spills = await loadSpills(); cachedSpills = spills; renderSpills(spills); } }
+    if(inspiredBySpace === 'Rant'){ await saveRant(content, null, audio, inspiredByPostId, stickerToUse, null, null, null, null, founderToUse); if(currentScreenKey==='twin' && currentTwinMode==='rant') await loadFeed(); }
+    else if(inspiredBySpace === 'Spill'){ await saveSpill(content, audio, inspiredByPostId, stickerToUse, null, null, founderToUse); if(currentTwinMode==='spill'){ const spills = await loadSpills(); cachedSpills = spills; renderSpills(spills); } }
     await refreshYourPostsIfOpen();
     toast.textContent = `posted to ${inspiredBySpace}.`;
     toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 2000);
@@ -8865,13 +9058,20 @@ document.getElementById('compose-submit-btn').addEventListener('click', async ()
     toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 2000);
     return;
   }
+  if(currentScreenKey === 'orgs'){
+    if(!orgToUse) return;
+    await saveRant(content, null, audio, null, stickerToUse, null, null, null, orgToUse);
+    await loadOrgsFeed(true);
+    await refreshYourPostsIfOpen();
+    return;
+  }
   if(currentTwinMode === 'spill'){
-    await saveSpill(content, audio, null, stickerToUse);
+    await saveSpill(content, audio, null, stickerToUse, null, null, founderToUse);
     const spills = await loadSpills();
     cachedSpills = spills;
     renderSpills(spills);
   } else {
-    await saveRant(content, null, audio, null, stickerToUse, happeningToUse, null, null, orgToUse);
+    await saveRant(content, null, audio, null, stickerToUse, happeningToUse, null, null, orgToUse, founderToUse);
     await loadFeed();
   }
   await refreshYourPostsIfOpen();
@@ -9239,7 +9439,8 @@ function updateComposeVisibility(){
   const isCommunityThread = document.getElementById('community-thread-overlay')?.classList.contains('show');
   const isProfile = document.getElementById('screen-profile')?.classList.contains('active');
   const isPostReplies = postRepliesSheet?.classList.contains('show');
-  const hide = (isChatScreen && !isCommunitiesTab) || isRoom || isChatThread || isCommunityThread || isProfile || isPostReplies;
+  const isOrgsScreen = document.getElementById('screen-orgs')?.classList.contains('active');
+  const hide = (isChatScreen && !isCommunitiesTab) || isRoom || isChatThread || isCommunityThread || isProfile || isPostReplies || (isOrgsScreen && !myOrgIds.size);
   composeBtn.style.display = hide ? 'none' : 'flex';
   composeBtn.textContent = isCommunitiesTab ? '👥' : '+';
 }
@@ -9323,6 +9524,7 @@ async function runSearch(){
       .from('posts')
       .select('id, user_id, content, sticker_url, audio_url, duration_seconds, post_type, category, created_at, happening_id, happenings(name), users(meet_number)')
       .in('post_type', spaces)
+      .eq('as_founder', false)
       .ilike('content', `%${query}%`)
       .order('created_at', { ascending: false })
       .limit(40);
@@ -9562,6 +9764,7 @@ async function loadUserProfilePosts(){
     .from('posts')
     .select('id, user_id, content, sticker_url, audio_url, duration_seconds, post_type, category, created_at, happening_id, happenings(name)')
     .eq('user_id', currentProfileUserId)
+    .eq('as_founder', false)   // Meet Founder posts never show on Meet 8's profile
     .order('created_at', { ascending: false })
     .limit(100);
   if(error){ console.error('Error loading user profile posts:', error); feed.innerHTML = ''; return; }
@@ -9883,10 +10086,9 @@ async function restoreAppState(){
     const commBtn = document.querySelector('#chat-comm-toggle .twin-btn[data-ccmode="communities"]');
     if(commBtn) commBtn.click();
   }
-  if(s.screen && screens[s.screen] && s.screen !== 'twin'){
+  if(s.screen && screens[s.screen] && s.screen !== 'orgs'){
     await goToScreen(s.screen);
-  } else if(s.twin === 'spill'){
-    await setTwinMode('spill');
+    if(s.screen === 'twin' && s.twin === 'spill') await setTwinMode('spill');
   }
 }
 
@@ -10618,7 +10820,7 @@ document.getElementById('install-close').addEventListener('click', ()=>{
 });
 
 const BACK_LAYERS = [
-  ['stand-screen','stand-close'], ['sticker-viewer-overlay','sticker-viewer-close'], ['text-viewer-overlay','text-viewer-close'],
+  ['sticker-viewer-overlay','sticker-viewer-close'], ['text-viewer-overlay','text-viewer-close'],
   ['post-replies-sheet','post-replies-close'], ['action-sheet',null],
   ['sticker-picker-overlay','sticker-picker-close'], ['share-card-overlay','share-card-close'],
   ['compose-overlay','compose-overlay-close'], ['create-happening-overlay','happening-create-close'],
@@ -10661,8 +10863,8 @@ function handleBackPress(){
     updateComposeVisibility();
     return true;
   }
-  if(currentScreenKey !== 'twin'){ goToScreen('twin'); return true; }
-  if(currentTwinMode === 'spill'){ setTwinMode('rant'); return true; }
+  if(currentScreenKey === 'twin' && currentTwinMode === 'spill'){ setTwinMode('rant'); return true; }
+  if(currentScreenKey !== 'orgs'){ goToScreen('orgs'); return true; }
   return false;
 }
 
@@ -10694,7 +10896,7 @@ document.addEventListener('DOMContentLoaded', async function(){
   // Fire Rant + Spill together the moment auth is ready, instead of
   // queuing Spill behind Rant + notifications + service-worker
   // registration, so a quick tap on Spill never lands on an empty cache.
-  const rantPromise = loadFeed().then(async ()=>{ try{ await restoreAppState(); }catch(e){ console.error(e); } splashDataReady = true; trySplashExit(); });
+  const rantPromise = Promise.all([loadFeed(), loadOrgsFeed(true)]).then(async ()=>{ try{ await restoreAppState(); }catch(e){ console.error(e); } splashDataReady = true; trySplashExit(); });
   const spillPromise = loadSpills()
     .then(spills => { cachedSpills = spills; })
     .catch(err => console.error('Background Spill warm-up failed:', err));
