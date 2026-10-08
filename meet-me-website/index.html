@@ -1075,8 +1075,10 @@
     display:none; flex-shrink:0; padding:4px 10px; border-radius:12px; font-size:11px; letter-spacing:0.03em;
     color:var(--gold); border:1px solid var(--gold-dim); background:rgba(212,168,87,0.10); white-space:nowrap;
   }
-  #depth-game-pill.show{ display:block; }
-  #depth-game-pill.show ~ #depth-bar-arrow{ display:none; }
+  /* The pill only shows while the bar is on the Moment question. While an announcement is on the bar
+     (.bar-ann) the pill steps aside so the announcement gets the whole bar and isn't squeezed. */
+  #depth-bar:not(.bar-ann) #depth-game-pill.show{ display:block; }
+  #depth-bar:not(.bar-ann) #depth-game-pill.show ~ #depth-bar-arrow{ display:none; }
   @keyframes gameBannerPulse{ 0%,100%{ box-shadow:0 0 0 0 rgba(212,168,87,0.5); } 50%{ box-shadow:0 0 0 7px rgba(212,168,87,0); } }
   #depth-bar.game-live{ border-color:var(--gold-dim); background:linear-gradient(135deg, rgba(212,168,87,0.16), rgba(212,168,87,0.05)); }
   #depth-bar.game-live #depth-bar-icon-dot{ background:var(--gold); animation:gameBannerPulse 1.8s ease-in-out infinite; }
