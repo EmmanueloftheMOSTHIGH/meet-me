@@ -1000,12 +1000,29 @@
     display:flex; align-items:center; justify-content:center;
     font-size:16px; color:var(--ivory); cursor:pointer; z-index:1;
   }
+  #sticker-viewer-mute{
+    position:absolute; top:max(18px, env(safe-area-inset-top)); left:18px;
+    width:34px; height:34px; border-radius:50%;
+    background:var(--bg-elevated); border:1px solid var(--card-border);
+    display:none; align-items:center; justify-content:center;
+    font-size:15px; cursor:pointer; z-index:1;
+  }
+  #sticker-viewer-mute.show{ display:flex; }
   #sticker-viewer-media-wrap{ max-width:88vw; max-height:80vh; display:flex; }
   #sticker-viewer-media-wrap img, #sticker-viewer-media-wrap video{
     max-width:88vw; max-height:80vh; width:auto; height:auto;
     object-fit:contain; border-radius:8px;
   }
   .sticker-tap{ cursor:pointer; }
+  /* Video stickers in feeds: a still picture with a golden play button. The video itself only loads when tapped (saves bandwidth). */
+  .vid-poster{ position:relative; display:block; background:#0b0b0b; border-radius:8px; overflow:hidden; }
+  .vid-poster img{ width:100%; height:100%; object-fit:contain; display:block; }
+  .vid-play{ position:absolute; left:50%; top:50%; width:44px; height:44px; margin:-22px 0 0 -22px; border-radius:50%;
+    background:#d4a857; box-shadow:0 0 14px rgba(212,168,87,0.45); display:flex; align-items:center; justify-content:center; pointer-events:none; }
+  .vid-play::before{ content:''; margin-left:3px; border-style:solid; border-width:8px 0 8px 13px; border-color:transparent transparent transparent #0c0c0e; }
+  .vid-play.sm{ width:28px; height:28px; margin:-14px 0 0 -14px; }
+  .vid-play.sm::before{ margin-left:2px; border-width:5px 0 5px 8px; }
+  .vid-expired{ color:#d4a857; font-size:14px; text-align:center; padding:28px 22px; }
 
   #text-viewer-overlay{
     position:absolute; inset:0;
@@ -2501,6 +2518,23 @@
     </div>
   </div>
 
+  <div id="video-trim-overlay" class="account-overlay">
+    <div class="account-panel" style="max-width:360px;">
+      <div class="account-title">Trim your video</div>
+      <div class="account-sub" id="video-trim-sub">Drag the left and right handles to cut the front and back. Up to 30 seconds.</div>
+      <video id="video-trim-preview" playsinline style="width:100%; max-height:260px; background:#000; border-radius:12px; display:block; margin-bottom:14px; object-fit:contain;"></video>
+      <div id="video-trim-track" style="position:relative; height:44px; margin:0 14px 8px; touch-action:none; user-select:none; -webkit-user-select:none;">
+        <div style="position:absolute; left:0; right:0; top:18px; height:8px; border-radius:4px; background:var(--bg-elevated);"></div>
+        <div id="video-trim-range" style="position:absolute; top:18px; height:8px; border-radius:4px; background:var(--gold);"></div>
+        <div id="video-trim-h-start" style="position:absolute; top:6px; width:28px; height:32px; margin-left:-14px; border-radius:8px; background:var(--gold-light); border:2px solid var(--gold); box-sizing:border-box; touch-action:none; cursor:ew-resize;"></div>
+        <div id="video-trim-h-end" style="position:absolute; top:6px; width:28px; height:32px; margin-left:-14px; border-radius:8px; background:var(--gold-light); border:2px solid var(--gold); box-sizing:border-box; touch-action:none; cursor:ew-resize;"></div>
+      </div>
+      <div id="video-trim-readout" style="text-align:center; font-size:13px; color:var(--gold-text); margin-bottom:14px;"></div>
+      <div class="account-btn primary" id="video-trim-use">Use this part</div>
+      <div class="account-close" id="video-trim-cancel">cancel</div>
+    </div>
+  </div>
+
   <div id="create-happening-overlay" class="account-overlay">
     <div class="account-panel" style="max-width:360px;">
       <div class="account-title">New Happening</div>
@@ -2941,6 +2975,7 @@
 
   <div id="sticker-viewer-overlay">
     <div id="sticker-viewer-close" title="Close">✕</div>
+    <div id="sticker-viewer-mute" title="Sound on / off">🔊</div>
     <div id="sticker-viewer-media-wrap"></div>
   </div>
 
@@ -5746,25 +5781,33 @@ function isVideoStickerUrl(url){
   const clean = (url || '').split('?')[0].toLowerCase();
   return clean.endsWith('.mp4') || clean.endsWith('.webm');
 }
+// Every uploaded video has a small still picture next to it: same name, "-poster.jpg" instead of ".webm"/".mp4".
+// It is kept when the video itself is deleted after 30 days.
+function videoPosterUrl(url){
+  return (url || '').replace(/\.(webm|mp4)(\?.*)?$/i, '-poster.jpg');
+}
 
 // Works for static images, animated GIF/WebP (both play natively in a
 // plain <img>), and short looping video stickers (needs a real <video>
 // element instead -- <img> can't render mp4/webm at all).
 // The .sticker-tap class + data-sticker-url is what the click delegate
 // below opens the full-size viewer.
-function stickerMediaTag(url, size){
+function stickerMediaTag(url, size, withSound){
   size = size || 120;
   if(isVideoStickerUrl(url)){
-    return `<video class="sticker-tap" data-sticker-url="${escapeHtml(url)}" data-sticker-video="true" src="${escapeHtml(url)}" style="width:${size}px; height:${size}px; object-fit:contain; display:block;" autoplay loop muted playsinline></video>`;
+    // withSound = organisation posts only. The feed copy stays a silent loop either way; the flag only tells the
+    // full-size viewer that it may play this one with sound after a tap.
+    // Tap to play: only the small still picture loads in the feed. The video loads when the viewer opens.
+    return `<span class="sticker-tap vid-poster" data-sticker-url="${escapeHtml(url)}" data-sticker-video="true"${withSound ? ' data-sticker-sound="true"' : ''} style="width:${size}px; height:${size}px;"><img src="${escapeHtml(videoPosterUrl(url))}" alt="" loading="lazy" onerror="this.style.display='none'"><span class="vid-play${size < 90 ? ' sm' : ''}"></span></span>`;
   }
   return `<img class="sticker-tap" data-sticker-url="${escapeHtml(url)}" src="${escapeHtml(url)}" style="width:${size}px; height:${size}px; object-fit:contain; display:block;">`;
 }
 
-function stickerHtml(stickerUrl, size){
+function stickerHtml(stickerUrl, size, withSound){
   if(!stickerUrl) return '';
   const alreadyMine = myStickers.includes(stickerUrl);
   const saveBtn = alreadyMine ? '' : `<div class="post-action save-sticker-trigger" data-sticker-url="${escapeHtml(stickerUrl)}" style="margin-top:4px; font-size:10.5px; display:inline-block;">save sticker</div>`;
-  return `<div style="margin-bottom:8px;">${stickerMediaTag(stickerUrl, size)}<br>${saveBtn}</div>`;
+  return `<div style="margin-bottom:8px;">${stickerMediaTag(stickerUrl, size, withSound)}<br>${saveBtn}</div>`;
 }
 
 // Builds the full body of a post -- sticker, voice note, and text can
@@ -5774,9 +5817,9 @@ function stickerHtml(stickerUrl, size){
 // full-width feeds (Rant/Spill/Your Posts/bookmarks). tapExpand adds
 // the .text-tap hook (currently unused) so tapping the text opens the larger, scrollable reading view --
 // see TEXT VIEWER below.
-function postBodyHtml(post, textClass, stickerSize, tapExpand){
+function postBodyHtml(post, textClass, stickerSize, tapExpand, withSound){
   let parts = '';
-  if(post.sticker_url) parts += stickerHtml(post.sticker_url, stickerSize);
+  if(post.sticker_url) parts += stickerHtml(post.sticker_url, stickerSize, withSound);
   if(post.audio_url) parts += voiceNoteHtml(post.audio_url, post.duration_seconds);
   if(post.content) parts += `<div class="${textClass}${tapExpand ? ' text-tap' : ''}">${escapeHtml(post.content)}</div>`;
   return parts;
@@ -5829,25 +5872,58 @@ function tutorialCardEl(space){
 const stickerViewerOverlay = document.getElementById('sticker-viewer-overlay');
 const stickerViewerMediaWrap = document.getElementById('sticker-viewer-media-wrap');
 
-function openStickerViewer(url, isVideo){
-  stickerViewerMediaWrap.innerHTML = isVideo
-    ? `<video src="${escapeHtml(url)}" autoplay loop muted playsinline></video>`
-    : `<img src="${escapeHtml(url)}">`;
+// Sound: only for video stickers on ORGANISATION posts, and only once someone taps to open it. The feed copy stays
+// a silent loop. The tap counts as the person's permission, so the browser allows sound; if it still refuses, the
+// clip plays muted and the mute button shows the sound is off.
+const stickerViewerMute = document.getElementById('sticker-viewer-mute');
+function setStickerViewerMuteIcon(v){ stickerViewerMute.textContent = v.muted ? '🔇' : '🔊'; }
+function watchViewerVideoExpired(){
+  const v = stickerViewerMediaWrap.querySelector('video');
+  if(!v) return;
+  v.addEventListener('error', ()=>{
+    stickerViewerMute.classList.remove('show');
+    stickerViewerMediaWrap.innerHTML = '<div class="vid-expired">This video has expired.</div>';
+  });
+}
+function openStickerViewer(url, isVideo, withSound){
+  stickerViewerMute.classList.remove('show');
+  if(isVideo && withSound){
+    stickerViewerMediaWrap.innerHTML = `<video src="${escapeHtml(url)}" loop playsinline></video>`;
+    const v = stickerViewerMediaWrap.querySelector('video');
+    v.muted = false;
+    const p = v.play();
+    if(p && p.catch) p.catch(()=>{ v.muted = true; v.play().catch(()=>{}); setStickerViewerMuteIcon(v); });
+    setStickerViewerMuteIcon(v);
+    stickerViewerMute.classList.add('show');
+  } else {
+    stickerViewerMediaWrap.innerHTML = isVideo
+      ? `<video src="${escapeHtml(url)}" autoplay loop muted playsinline></video>`
+      : `<img src="${escapeHtml(url)}">`;
+  }
+  watchViewerVideoExpired();
   stickerViewerOverlay.classList.add('show');
 }
 function closeStickerViewer(){
   stickerViewerOverlay.classList.remove('show');
+  stickerViewerMute.classList.remove('show');
   stickerViewerMediaWrap.innerHTML = '';
 }
 document.addEventListener('click', (e)=>{
   const media = e.target.closest('.sticker-tap');
   if(media){
     e.stopPropagation();
-    openStickerViewer(media.dataset.stickerUrl, media.dataset.stickerVideo === 'true');
+    openStickerViewer(media.dataset.stickerUrl, media.dataset.stickerVideo === 'true', media.dataset.stickerSound === 'true');
+    return;
+  }
+  if(e.target.closest('#sticker-viewer-mute')){
+    const v = stickerViewerMediaWrap.querySelector('video');
+    if(v){ v.muted = !v.muted; if(!v.muted) v.play().catch(()=>{}); setStickerViewerMuteIcon(v); }
     return;
   }
   if(e.target === stickerViewerOverlay || e.target.closest('#sticker-viewer-close')) closeStickerViewer();
 });
+// Sound stops the moment the app goes to the background (or the phone is locked).
+document.addEventListener('visibilitychange', ()=>{ if(document.hidden) closeStickerViewer(); });
 
 /* ============================================================
    TEXT VIEWER — tapping a post's text (currently unused, via
@@ -7266,7 +7342,7 @@ function renderRantPost(post, userLiked, likeCount, inspirationLabels){
       ? org.name
       : (post.users?.meet_number || ('Meet ' + post.user_id.slice(0,6)));
   const vidLink = isOrg ? extractVideoLink(post.content) : null;   // organisation posts only
-  const bodyHtml = postBodyHtml(vidLink ? Object.assign({}, post, { content: vidLink.rest }) : post, 'post-body', 150) + (vidLink ? videoLinkCardHtml(vidLink, post) : '');
+  const bodyHtml = postBodyHtml(vidLink ? Object.assign({}, post, { content: vidLink.rest }) : post, 'post-body', 150, false, isOrg) + (vidLink ? videoLinkCardHtml(vidLink, post) : '');
   const inspiredLine = post.inspired_by_post_id && inspirationLabels[post.inspired_by_post_id]
     ? `<div class="post-action inspired-source-link" data-source-id="${post.inspired_by_post_id}" style="font-size:11px; color:var(--muted-dim); margin-bottom:8px;">↻ inspired by ${escapeHtml(inspirationLabels[post.inspired_by_post_id])}</div>` : '';
   const fresh = isOrg && (Date.now() - new Date(post.created_at).getTime() < ORG_FRESH_MS) && !orgSeenSet().has(String(post.id));
@@ -9632,7 +9708,7 @@ function renderStickerPicker(){
     const tile = document.createElement('div');
     tile.style.cssText = 'position:relative; width:100%; aspect-ratio:1; background:var(--card); border-radius:10px; border:1px solid var(--card-border); cursor:pointer; overflow:hidden;';
     tile.innerHTML = (isVideoStickerUrl(url)
-      ? `<video src="${escapeHtml(url)}" style="width:100%; height:100%; object-fit:contain;" autoplay loop muted playsinline></video>`
+      ? `<img src="${escapeHtml(videoPosterUrl(url))}" style="width:100%; height:100%; object-fit:contain;" onerror="this.style.display='none'"><span class="vid-play sm"></span>`
       : `<img src="${escapeHtml(url)}" style="width:100%; height:100%; object-fit:contain;">`)
       + `<div class="sticker-tile-remove" data-sticker-url="${escapeHtml(url)}" title="Remove from your stickers">×</div>`;
     tile.addEventListener('click', (e)=>{
@@ -9710,21 +9786,386 @@ document.getElementById('action-sheet-sticker-remove').addEventListener('click',
 document.getElementById('sticker-picker-close').addEventListener('click', ()=>{
   document.getElementById('sticker-picker-overlay').classList.remove('show');
 });
-document.getElementById('sticker-upload-btn').addEventListener('click', ()=>{
+/* ============================================================
+   SHRINK STICKER -- animated pictures only, before they go to storage. Still pictures are left exactly as they are.
+   An animated sticker (GIF / animated WebP / animated PNG) is redrawn smaller and lighter and saved as a GIF:
+     - longest side 220 px or less (stickers show at 150 px in feeds), about 9 frames a second, 96 colours
+     - 6 seconds at most (a longer one keeps its first 6 seconds)
+     - if it is still over about 350 KB it is tried again smaller (2 more levels, down to 150 px / 48 colours)
+   It still plays on its own in feeds, like before; it is just a lot lighter to download.
+   If this browser can't redraw animations (no ImageDecoder), a GIF up to 1 MB is uploaded as it is and a bigger
+   one is refused with a friendly message. Any failure falls back to the original file, so shrinking never breaks an upload.
+   ============================================================ */
+const STICKER_ANIM_MAX_MS = 6000;
+const STICKER_ANIM_TARGET_BYTES = 350 * 1024;
+const STICKER_ANIM_PASSTHROUGH_BYTES = 1024 * 1024;
+const STICKER_ANIM_LEVELS = [                   // longest side, gap between kept frames (ms), colours
+  { side: 220, gap: 110, colors: 96 },
+  { side: 180, gap: 140, colors: 64 },
+  { side: 150, gap: 180, colors: 48 }
+];
+
+// Which kind of picture is this? Looks at the first bytes, not the file name.
+async function sniffStickerKind(file){
+  const buf = new Uint8Array(await file.slice(0, 4096).arrayBuffer());
+  const ascii = (a, b) => { let t = ''; for(let i = a; i < b && i < buf.length; i++) t += String.fromCharCode(buf[i]); return t; };
+  if(ascii(0, 4) === 'GIF8') return 'animated';
+  if(ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WEBP') return (ascii(12, 16) === 'VP8X' && (buf[20] & 0x02)) ? 'animated' : 'still';
+  if(buf[0] === 0x89 && ascii(1, 4) === 'PNG') return ascii(0, 4096).indexOf('acTL') !== -1 ? 'animated' : 'still';
+  return 'still';
+}
+
+// Decides which frames of an animation to keep. A dropped frame's time is added to the frame before it,
+// so the animation keeps its total length and rhythm.
+function makeStickerFramePicker(gapMs, maxMs){
+  let t = 0, lastKeptAt = -1e9, kept = 0;
+  return {
+    next(durMs){
+      if(t >= maxMs) return { stop: true };
+      const keep = kept === 0 || (t - lastKeptAt) >= gapMs - 1;
+      if(keep){ lastKeptAt = t; kept++; }
+      t += durMs;
+      return { stop: false, keep };
+    }
+  };
+}
+
+let stickerGifLib = null;
+async function loadStickerGifLib(){
+  if(!stickerGifLib) stickerGifLib = await import('https://unpkg.com/gifenc@1.0.3');
+  return stickerGifLib;
+}
+
+// One attempt at one level. Returns a Blob, or null if there was nothing to draw.
+async function encodeStickerGif(dec, frameCount, level){
+  const lib = await loadStickerGifLib();
+  const picker = makeStickerFramePicker(level.gap, STICKER_ANIM_MAX_MS);
+  const kept = [];               // { data, hasAlpha, delay }
+  let w = 0, h = 0, canvas = null, ctx = null;
+  for(let i = 0; i < frameCount; i++){
+    const { image } = await dec.decode({ frameIndex: i, completeFramesOnly: true });
+    let durMs = image.duration ? image.duration / 1000 : 100;
+    if(durMs < 20) durMs = 100;                      // browsers treat 0-20 ms GIF delays as 100 ms
+    const step = picker.next(durMs);
+    if(step.stop){ image.close(); break; }
+    if(!canvas){
+      const iw = image.displayWidth, ih = image.displayHeight;
+      const sc = Math.min(1, level.side / Math.max(iw, ih));
+      w = Math.max(2, Math.round(iw * sc)); h = Math.max(2, Math.round(ih * sc));
+      canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
+      ctx = canvas.getContext('2d', { willReadFrequently: true });
+    }
+    if(step.keep){
+      ctx.clearRect(0, 0, w, h);
+      ctx.drawImage(image, 0, 0, w, h);
+      const data = ctx.getImageData(0, 0, w, h).data;
+      let hasAlpha = false;
+      for(let p = 3; p < data.length; p += 4){ if(data[p] < 128){ hasAlpha = true; break; } }
+      kept.push({ data, hasAlpha, delay: durMs });
+    } else if(kept.length){
+      kept[kept.length - 1].delay += durMs;          // dropped frame: the one before it stays longer
+    }
+    image.close();
+  }
+  if(!kept.length) return null;
+  const gif = lib.GIFEncoder();
+  for(const f of kept){
+    const delay = Math.max(20, Math.round(f.delay / 10) * 10);
+    if(f.hasAlpha){
+      const palette = lib.quantize(f.data, level.colors, { format: 'rgba4444', oneBitAlpha: true });
+      const index = lib.applyPalette(f.data, palette, 'rgba4444');
+      const ti = palette.findIndex(c => c.length > 3 && c[3] === 0);
+      gif.writeFrame(index, w, h, { palette, delay, transparent: ti >= 0, transparentIndex: ti >= 0 ? ti : 0, dispose: 2 });
+    } else {
+      const palette = lib.quantize(f.data, level.colors);
+      const index = lib.applyPalette(f.data, palette);
+      gif.writeFrame(index, w, h, { palette, delay });
+    }
+  }
+  gif.finish();
+  return new Blob([gif.bytes()], { type: 'image/gif' });
+}
+
+async function shrinkAnimatedSticker(file){
+  const asIs = () => file.size > STICKER_ANIM_PASSTHROUGH_BYTES
+    ? { error: 'That animation is too big for this phone to shrink. Try a shorter or smaller one.' }
+    : { file };
+  if(typeof ImageDecoder === 'undefined') return asIs();
+  try{
+    const dec = new ImageDecoder({ data: await file.arrayBuffer(), type: file.type || 'image/gif' });
+    await dec.tracks.ready;
+    const frameCount = dec.tracks.selectedTrack.frameCount;
+    if(!(frameCount > 1)){ dec.close(); return { file }; }      // a one-frame "GIF" is just a picture
+    let best = null;
+    for(const level of STICKER_ANIM_LEVELS){
+      const blob = await encodeStickerGif(dec, frameCount, level);
+      if(!blob) break;
+      if(!best || blob.size < best.size) best = blob;
+      if(blob.size <= STICKER_ANIM_TARGET_BYTES) break;
+    }
+    dec.close();
+    if(!best) return asIs();
+    if(best.size >= file.size) return asIs();                  // never make a small file bigger
+    return { file: best, ext: 'gif' };
+  }catch(err){
+    console.error('Animated sticker shrink failed, uploading as it is:', err);
+    return asIs();
+  }
+}
+
+async function prepareStickerImage(file){
+  let kind = 'still';
+  try{ kind = await sniffStickerKind(file); }catch(e){}
+  return kind === 'animated' ? await shrinkAnimatedSticker(file) : { file };   // pictures stay as they are
+}
+
+/* ============================================================
+   SHRINK VIDEO -- keeps Supabase's free storage and bandwidth from filling up.
+   Before a video sticker is uploaded it is checked and re-recorded smaller, on the phone:
+     - 30 seconds at most (longer clips open a trimmer: drag the front and back handles to pick the part to keep)
+     - scaled down to fit inside 480 x 640 (sticker-sized screens don't need more)
+     - about 450 kbps video + 48 kbps sound, about 2 MB for a full 30 seconds
+   The sound is kept (organisation clips play with sound when tapped open).
+   Already-small clips are uploaded as they are. If this browser can't re-record video, a clip is
+   uploaded only if it is already small, otherwise the person is asked for a smaller one.
+   ============================================================ */
+const VIDEO_MAX_SECONDS = 30;
+const VIDEO_SKIP_BYTES  = 700 * 1024;        // already this small: no need to re-record
+const VIDEO_FALLBACK_MAX_BYTES = 3 * 1024 * 1024;
+const VIDEO_MAX_W = 480, VIDEO_MAX_H = 640;
+const VIDEO_BITS = 450000, AUDIO_BITS = 48000;
+
+function showShrinkToast(text){
+  toast.textContent = text; toast.classList.add('show');
+}
+function hideShrinkToast(){ toast.classList.remove('show'); }
+
+// A small still picture of the video (first moment of the kept part), used in feeds instead of the video itself.
+async function captureVideoPoster(v, atTime){
+  try{
+    await new Promise(res=>{ v.onseeked = res; v.currentTime = atTime; setTimeout(res, 2000); });
+    v.onseeked = null;
+    const sc = Math.min(1, 360 / v.videoWidth, 360 / v.videoHeight);
+    const c = document.createElement('canvas');
+    c.width = Math.max(2, Math.round(v.videoWidth * sc)); c.height = Math.max(2, Math.round(v.videoHeight * sc));
+    c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+    return await new Promise(r => c.toBlob(r, 'image/jpeg', 0.7));
+  }catch(e){ console.warn('Poster capture failed', e); return null; }
+}
+
+// Long video? Let the person choose which VIDEO_MAX_SECONDS to keep by dragging the front and back handles.
+// Resolves { start, end } in seconds, or null if they cancel.
+function pickVideoTrim(url, dur){
+  return new Promise(resolve=>{
+    const ov = document.getElementById('video-trim-overlay');
+    const pv = document.getElementById('video-trim-preview');
+    const track = document.getElementById('video-trim-track');
+    const hS = document.getElementById('video-trim-h-start');
+    const hE = document.getElementById('video-trim-h-end');
+    const rangeEl = document.getElementById('video-trim-range');
+    const readout = document.getElementById('video-trim-readout');
+    const MIN_LEN = 1;
+    const maxLen = Math.min(VIDEO_MAX_SECONDS, dur);
+    let start = 0, end = maxLen;
+    const fmt = t => { t = Math.max(0, t); const m = Math.floor(t/60), sec = Math.floor(t%60); return m + ':' + String(sec).padStart(2,'0'); };
+    const trackW = ()=> track.clientWidth || 1;
+    const render = ()=>{
+      const w = trackW();
+      hS.style.left = (start/dur*w) + 'px';
+      hE.style.left = (end/dur*w) + 'px';
+      rangeEl.style.left = (start/dur*w) + 'px';
+      rangeEl.style.width = ((end-start)/dur*w) + 'px';
+      readout.textContent = fmt(start) + ' – ' + fmt(end) + '  ·  ' + Math.round(end-start) + 's kept of ' + fmt(dur);
+    };
+    const cleanup = (result)=>{
+      pv.pause(); pv.removeAttribute('src'); pv.load();
+      pv.ontimeupdate = null;
+      ov.classList.remove('show');
+      document.getElementById('video-trim-use').onclick = null;
+      document.getElementById('video-trim-cancel').onclick = null;
+      resolve(result);
+    };
+    const seekPlay = ()=>{ try{ pv.currentTime = start; pv.play().catch(()=>{}); }catch(e){} };
+    const drag = (handle, which)=>{
+      handle.onpointerdown = (ev)=>{
+        ev.preventDefault();
+        handle.setPointerCapture(ev.pointerId);
+        const rect = track.getBoundingClientRect();
+        handle.onpointermove = (e2)=>{
+          const t = Math.min(dur, Math.max(0, (e2.clientX - rect.left) / rect.width * dur));
+          if(which === 'start'){
+            start = Math.min(t, end - MIN_LEN);
+            if(end - start > maxLen) end = start + maxLen;       // front moved back: the back follows
+          }else{
+            end = Math.max(t, start + MIN_LEN);
+            if(end - start > maxLen) start = end - maxLen;       // back moved forward: the front follows
+          }
+          start = Math.max(0, start); end = Math.min(dur, end);
+          render();
+          pv.currentTime = which === 'start' ? start : Math.max(start, end - 0.3);
+        };
+        handle.onpointerup = handle.onpointercancel = ()=>{
+          handle.onpointermove = null; handle.onpointerup = null; handle.onpointercancel = null;
+          seekPlay();
+        };
+      };
+    };
+    drag(hS, 'start'); drag(hE, 'end');
+    pv.src = url; pv.muted = false; pv.loop = false;
+    pv.ontimeupdate = ()=>{ if(pv.currentTime >= end || pv.currentTime < start - 0.5) seekPlay(); };   // preview loops inside the kept part
+    ov.classList.add('show');
+    render();
+    pv.onloadedmetadata = ()=>{ render(); seekPlay(); };
+    document.getElementById('video-trim-use').onclick = ()=> cleanup({ start, end });
+    document.getElementById('video-trim-cancel').onclick = ()=> cleanup(null);
+  });
+}
+
+async function prepareVideoForUpload(file){
+  const url = URL.createObjectURL(file);
+  const v = document.createElement('video');
+  v.src = url; v.preload = 'auto'; v.playsInline = true; v.muted = false;
+  let poster = null;
+  try{
+    // 1) read the length
+    await new Promise((res, rej)=>{ v.onloadedmetadata = res; v.onerror = ()=>rej(new Error('unreadable')); });
+    const dur = v.duration;
+    if(!isFinite(dur) || dur <= 0) return { error: 'Could not read that video.' };
+    let startT = 0, endT = dur, trimmed = false;
+    if(dur > VIDEO_MAX_SECONDS + 0.5){
+      const pick = await pickVideoTrim(url, dur);
+      if(!pick) return { cancelled: true };
+      startT = pick.start; endT = pick.end; trimmed = true;
+    }
+    const clipLen = endT - startT;
+    poster = await captureVideoPoster(v, Math.min(startT + 0.3, Math.max(startT, endT - 0.1)));
+    if(!trimmed && file.size <= VIDEO_SKIP_BYTES) return { file, poster };
+
+    // 2) can this browser re-record?
+    const mime = ['video/webm;codecs=vp8,opus', 'video/webm;codecs=vp9,opus', 'video/webm']
+      .find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m));
+    const canCapture = !!mime && !!HTMLCanvasElement.prototype.captureStream && (window.AudioContext || window.webkitAudioContext);
+    if(!canCapture){
+      if(trimmed) return { error: 'This browser can\u2019t trim videos. Try a clip that is 30 seconds or shorter.' };
+      return file.size <= VIDEO_FALLBACK_MAX_BYTES ? { file, poster } : { error: 'That video is too big. Try a shorter or smaller one.' };
+    }
+
+    // 3) re-record smaller: draw each frame onto a small canvas, take the sound through the audio graph
+    const scale = Math.min(1, VIDEO_MAX_W / v.videoWidth, VIDEO_MAX_H / v.videoHeight);
+    const w = Math.max(2, Math.round(v.videoWidth * scale / 2) * 2), h = Math.max(2, Math.round(v.videoHeight * scale / 2) * 2);
+    const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
+    const g = canvas.getContext('2d');
+    const tracks = canvas.captureStream(24).getTracks();
+    let ctx = null;
+    try{
+      const AC = window.AudioContext || window.webkitAudioContext;
+      ctx = new AC();
+      if(ctx.state === 'suspended') await ctx.resume();
+      const src = ctx.createMediaElementSource(v);
+      const dest = ctx.createMediaStreamDestination();
+      src.connect(dest);                       // not connected to the speakers: nothing is heard while it shrinks
+      tracks.push(...dest.stream.getAudioTracks());
+    }catch(e){ console.warn('Shrink: no sound track, clip will be silent', e); }
+
+    const rec = new MediaRecorder(new MediaStream(tracks), { mimeType: mime, videoBitsPerSecond: VIDEO_BITS, audioBitsPerSecond: AUDIO_BITS });
+    const chunks = [];
+    rec.ondataavailable = ev => { if(ev.data && ev.data.size) chunks.push(ev.data); };
+    const done = new Promise(res => { rec.onstop = res; });
+
+    let raf = 0, stopped = false;
+    const draw = ()=>{ g.drawImage(v, 0, 0, w, h); if(trimmed && v.currentTime >= endT){ finish(); return; } if(!stopped) raf = requestAnimationFrame(draw); };
+    const finish = ()=>{ if(stopped) return; stopped = true; cancelAnimationFrame(raf); if(rec.state !== 'inactive') rec.stop(); };
+    v.onended = finish;
+    const safety = setTimeout(finish, (clipLen + 5) * 1000);
+    const tick = setInterval(()=>{ showShrinkToast('Preparing video… ' + Math.max(0, Math.min(99, Math.round((v.currentTime - startT) / clipLen * 100))) + '%'); }, 400);
+
+    showShrinkToast('Preparing video…');
+    {   // jump back to the chosen front before recording starts (the poster picture moved the playhead)
+      await new Promise(res=>{ v.onseeked = res; v.currentTime = startT; setTimeout(res, 2000); });
+      v.onseeked = null;
+    }
+    rec.start(500);
+    try{ await v.play(); }
+    catch(e){ v.muted = true; await v.play(); }   // browser refused sound: still shrinks, clip is silent
+    draw();
+    await done;
+    clearTimeout(safety); clearInterval(tick); hideShrinkToast();
+    if(ctx) ctx.close().catch(()=>{});
+
+    const blob = new Blob(chunks, { type: 'video/webm' });
+    if(!blob.size) return file.size <= VIDEO_FALLBACK_MAX_BYTES ? { file, poster } : { error: 'Could not prepare that video.' };
+    if(!trimmed && blob.size >= file.size) return { file, poster };   // never make an untrimmed clip bigger
+    return { file: new File([blob], 'sticker.webm', { type: 'video/webm' }), poster };
+  }catch(e){
+    console.error('Video shrink failed:', e);
+    hideShrinkToast();
+    return file.size <= VIDEO_FALLBACK_MAX_BYTES ? { file, poster } : { error: 'Could not prepare that video. Try a smaller one.' };
+  }finally{
+    v.pause(); URL.revokeObjectURL(url);
+  }
+}
+
+document.getElementById('sticker-upload-btn').addEventListener('click', async ()=>{
+  // Video stickers are for organisation owners only (the database enforces it too). Everyone else is offered pictures only.
+  await ensureOrgs();
+  document.getElementById('sticker-upload-input').accept = myOrgs.length
+    ? 'image/png,image/webp,image/jpeg,image/gif,video/webm,video/mp4'
+    : 'image/png,image/webp,image/jpeg,image/gif';
   document.getElementById('sticker-upload-input').click();
 });
 document.getElementById('sticker-upload-input').addEventListener('change', async (e)=>{
-  const file = e.target.files[0];
+  let file = e.target.files[0];
   e.target.value = '';
   if(!file || !currentUserId) return;
-  const ext = file.name.split('.').pop() || 'png';
-  const path = `${currentUserId}/${Date.now()}.${ext}`;
-  const { error: uploadErr } = await sb.storage.from('stickers').upload(path, file, { contentType: file.type });
+  let posterBlob = null;
+  if(file.type.startsWith('video/')){
+    await ensureOrgs();
+    if(!myOrgs.length){
+      toast.textContent = 'Only organisations can upload videos.';
+      toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 3000);
+      return;
+    }
+  }
+  // Animated pictures: made smaller and lighter on the phone before upload (see SHRINK STICKER below). Still pictures are untouched.
+  let forcedExt = null;
+  if(file.type.startsWith('image/')){
+    toast.textContent = 'Preparing sticker...';
+    toast.classList.add('show');
+    let r;
+    try{ r = await prepareStickerImage(file); }
+    catch(err){ console.error('Sticker shrink failed:', err); r = { file }; }
+    toast.classList.remove('show');
+    if(r.error){
+      toast.textContent = r.error;
+      toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 3200);
+      return;
+    }
+    file = r.file; forcedExt = r.ext || null;
+  }
+  // Video: check the length and shrink it on the phone before it goes to storage (see SHRINK VIDEO below).
+  if(file.type.startsWith('video/')){
+    const r = await prepareVideoForUpload(file);
+    if(r.cancelled) return;
+    if(r.error){
+      toast.textContent = r.error;
+      toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 3200);
+      return;
+    }
+    file = r.file; posterBlob = r.poster || null;
+  }
+  const stamp = Date.now();
+  const ext = forcedExt || (file.type === 'video/webm' && !/\.webm$/i.test(file.name) ? 'webm' : (file.name.split('.').pop() || 'png'));
+  const path = `${currentUserId}/${stamp}.${ext}`;
+  // cacheControl = one year, so a phone that has seen this file once never downloads it again (saves egress)
+  const { error: uploadErr } = await sb.storage.from('stickers').upload(path, file, { contentType: file.type, cacheControl: '31536000' });
   if(uploadErr){
     console.error('Sticker upload failed:', uploadErr);
     toast.textContent = 'Could not upload sticker.';
     toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 2200);
     return;
+  }
+  if(posterBlob){   // the still picture lives next to the video; if it fails the video still works
+    await sb.storage.from('stickers').upload(`${currentUserId}/${stamp}-poster.jpg`, posterBlob, { contentType: 'image/jpeg', cacheControl: '31536000' });
   }
   const { data } = sb.storage.from('stickers').getPublicUrl(path);
   await sb.from('user_stickers').insert({ user_id: currentUserId, image_url: data.publicUrl });
@@ -9828,7 +10269,7 @@ document.getElementById('compose-voice-preview-play').addEventListener('click', 
 
 async function uploadVoiceNote(blob){
   const path = `${currentUserId}/${Date.now()}.webm`;
-  const { error: uploadErr } = await sb.storage.from('voice-notes').upload(path, blob, { contentType: 'audio/webm' });
+  const { error: uploadErr } = await sb.storage.from('voice-notes').upload(path, blob, { contentType: 'audio/webm', cacheControl: '31536000' });
   if(uploadErr){ console.error('Voice note upload failed:', uploadErr); return null; }
   const { data } = sb.storage.from('voice-notes').getPublicUrl(path);
   return data.publicUrl;

@@ -81,6 +81,10 @@ dialog::backdrop{background:rgba(0,0,0,.78)}
 .thumb{display:flex;align-items:center;gap:10px;margin:0 0 12px;flex-wrap:wrap}
 .thumb img,.thumb video{width:72px;height:72px;object-fit:contain;border:1px solid var(--line);border-radius:10px;background:#0b0b0b}
 .thumb audio{height:40px;max-width:100%}
+.vthumb{position:relative;display:inline-block;width:72px;height:72px;border-radius:10px;background:#0b0b0b;border:1px solid var(--line);cursor:pointer;overflow:hidden;flex:none}
+.vthumb img{width:100%;height:100%;border:0;border-radius:0}
+.vplay{position:absolute;left:50%;top:50%;width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:50%;background:var(--gold);box-shadow:0 0 12px rgba(212,175,55,.45);pointer-events:none}
+.vplay::before{content:"";position:absolute;left:11px;top:8px;border-style:solid;border-width:7px 0 7px 11px;border-color:transparent transparent transparent #000}
 .bad{color:var(--red)}
 .sep{border:0;border-top:1px solid var(--line);margin:26px 0 18px}
 @media (prefers-reduced-motion:no-preference){.btn{transition:transform .12s}.btn:active{transform:scale(.97)}}
@@ -321,8 +325,21 @@ const REC_MAX_SECONDS = 300;
 let activeRec = null;
 const fmt = (n) => Math.floor(n / 60) + ":" + String(n % 60).padStart(2, "0");
 const isVid = (u) => /\.(mp4|webm)(\?|$)/i.test(u || "");
+const posterOf = (u) => (u || "").replace(/\.(webm|mp4)(\?.*)?$/i, "-poster.jpg");
 function mediaThumb(u) {
-  return isVid(u) ? h("video", { src: u, muted: true, loop: true, autoplay: true, playsinline: true }) : h("img", { src: u, alt: "" });
+  if (!isVid(u)) return h("img", { src: u, alt: "" });
+  // Videos show a still picture with a golden play button; the video itself only loads when tapped.
+  const wrap = h("span", { class: "vthumb", role: "button", tabindex: "0", "aria-label": "Play video" },
+    h("img", { src: posterOf(u), alt: "", onerror: (e) => { e.target.style.display = "none"; } }),
+    h("span", { class: "vplay" }));
+  const play = () => {
+    const v = h("video", { src: u, controls: true, autoplay: true, playsinline: true, style: "width:160px;height:160px" });
+    v.addEventListener("error", () => v.replaceWith(h("span", { class: "small mute" }, "This video has expired.")));
+    wrap.replaceWith(v);
+  };
+  wrap.addEventListener("click", play);
+  wrap.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); play(); } });
+  return wrap;
 }
 function stopActiveRec() {
   if (!activeRec) return;
@@ -348,9 +365,173 @@ async function shrinkPhoto(file) {
     return blob && blob.size < file.size ? blob : file;
   } catch (e) { return file; }
 }
-async function uploadMedia(bucket, blob, ext, type) {
-  const path = state.uid + "/" + Date.now() + "." + ext;
-  const { error } = await sb.storage.from(bucket).upload(path, blob, { contentType: type });
+/* ---------- video: 30 seconds at most, trim front and back, shrink (same rules as the Meet Me app) ---------- */
+const VIDEO_MAX_SECONDS = 30;
+const VIDEO_SKIP_BYTES = 700 * 1024;            // already this small and not trimmed: upload as it is
+const VIDEO_FALLBACK_MAX_BYTES = 3 * 1024 * 1024;
+const VIDEO_MAX_W = 480, VIDEO_MAX_H = 640;
+const VIDEO_BITS = 450000, AUDIO_BITS = 48000;
+
+// A small still picture of the first moment of the kept part. Feeds show this instead of the video.
+async function captureVideoPoster(v, atTime) {
+  try {
+    await new Promise((res) => { v.onseeked = res; v.currentTime = atTime; setTimeout(res, 2000); });
+    v.onseeked = null;
+    const sc = Math.min(1, 360 / v.videoWidth, 360 / v.videoHeight);
+    const c = document.createElement("canvas");
+    c.width = Math.max(2, Math.round(v.videoWidth * sc)); c.height = Math.max(2, Math.round(v.videoHeight * sc));
+    c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
+    return await new Promise((r) => c.toBlob(r, "image/jpeg", 0.7));
+  } catch (e) { console.warn("Poster capture failed", e); return null; }
+}
+
+// Long video: pick which part to keep by dragging the front and back handles. Resolves { start, end } or null.
+function pickVideoTrim(url, dur) {
+  return new Promise((resolve) => {
+    const MIN_LEN = 1, maxLen = Math.min(VIDEO_MAX_SECONDS, dur);
+    let start = 0, end = maxLen;
+    const tf = (t) => Math.floor(t / 60) + ":" + String(Math.floor(t % 60)).padStart(2, "0");
+    const dlg = h("dialog", { "aria-label": "Trim your video" });
+    const pv = h("video", { playsinline: true, style: "width:100%;max-height:260px;background:#000;border-radius:12px;display:block;margin-bottom:14px;object-fit:contain" });
+    const rangeEl = h("div", { style: "position:absolute;top:18px;height:8px;border-radius:4px;background:var(--gold)" });
+    const handleCss = "position:absolute;top:6px;width:28px;height:32px;margin-left:-14px;border-radius:8px;background:var(--gold);border:2px solid var(--ink);touch-action:none;cursor:ew-resize";
+    const hS = h("div", { style: handleCss, role: "slider", "aria-label": "Start of the kept part" });
+    const hE = h("div", { style: handleCss, role: "slider", "aria-label": "End of the kept part" });
+    const track = h("div", { style: "position:relative;height:44px;margin:0 14px 8px;touch-action:none;user-select:none;-webkit-user-select:none" },
+      h("div", { style: "position:absolute;left:0;right:0;top:18px;height:8px;border-radius:4px;background:var(--line)" }), rangeEl, hS, hE);
+    const readout = h("div", { class: "small mute", style: "text-align:center;margin-bottom:6px" });
+    const render = () => {
+      const w = track.clientWidth || 1;
+      hS.style.left = (start / dur * w) + "px"; hE.style.left = (end / dur * w) + "px";
+      rangeEl.style.left = (start / dur * w) + "px"; rangeEl.style.width = ((end - start) / dur * w) + "px";
+      readout.textContent = tf(start) + " – " + tf(end) + "  ·  " + Math.round(end - start) + "s kept of " + tf(dur);
+    };
+    const close = (result) => {
+      pv.pause(); pv.ontimeupdate = null; pv.removeAttribute("src"); pv.load();
+      dlg.close(); dlg.remove(); resolve(result);
+    };
+    const seekPlay = () => { try { pv.currentTime = start; pv.play().catch(() => {}); } catch (e) {} };
+    const drag = (handle, which) => {
+      handle.addEventListener("pointerdown", (ev) => {
+        ev.preventDefault();
+        handle.setPointerCapture(ev.pointerId);
+        const rect = track.getBoundingClientRect();
+        const move = (e2) => {
+          const t = Math.min(dur, Math.max(0, (e2.clientX - rect.left) / rect.width * dur));
+          if (which === "start") { start = Math.min(t, end - MIN_LEN); if (end - start > maxLen) end = start + maxLen; }
+          else { end = Math.max(t, start + MIN_LEN); if (end - start > maxLen) start = end - maxLen; }
+          start = Math.max(0, start); end = Math.min(dur, end);
+          render();
+          pv.currentTime = which === "start" ? start : Math.max(start, end - 0.3);
+        };
+        const up = () => { handle.removeEventListener("pointermove", move); handle.removeEventListener("pointerup", up); handle.removeEventListener("pointercancel", up); seekPlay(); };
+        handle.addEventListener("pointermove", move); handle.addEventListener("pointerup", up); handle.addEventListener("pointercancel", up);
+      });
+    };
+    drag(hS, "start"); drag(hE, "end");
+    pv.addEventListener("timeupdate", () => { if (pv.currentTime >= end || pv.currentTime < start - 0.5) seekPlay(); });
+    pv.addEventListener("loadedmetadata", () => { render(); seekPlay(); });
+    pv.src = url;
+    dlg.append(
+      h("h2", {}, "Trim your video"),
+      h("p", { class: "small mute" }, "Drag the left and right handles to cut the front and back. Up to " + VIDEO_MAX_SECONDS + " seconds."),
+      pv, track, readout,
+      h("div", { class: "dlg-acts" },
+        h("button", { class: "btn", type: "button", onclick: () => close({ start, end }) }, "Use this part"),
+        h("button", { class: "btn ghost", type: "button", onclick: () => close(null) }, "Cancel")));
+    dlg.addEventListener("cancel", (e) => { e.preventDefault(); close(null); });   // Esc
+    document.body.append(dlg);
+    dlg.showModal();
+    render();
+  });
+}
+
+// Checks the length, lets the person trim a long clip, then re-records it smaller on this device.
+// Returns { file } or { error } or { cancelled: true }. onProgress(text) is optional.
+async function prepareVideoForUpload(file, onProgress) {
+  const say = onProgress || (() => {});
+  const url = URL.createObjectURL(file);
+  const v = document.createElement("video");
+  v.src = url; v.preload = "auto"; v.playsInline = true; v.muted = false;
+  let trimmed = false, poster = null;
+  try {
+    await new Promise((res, rej) => { v.onloadedmetadata = res; v.onerror = () => rej(new Error("unreadable")); });
+    const dur = v.duration;
+    if (!isFinite(dur) || dur <= 0) return { error: "Could not read that video." };
+    let startT = 0, endT = dur;
+    if (dur > VIDEO_MAX_SECONDS + 0.5) {
+      const pick = await pickVideoTrim(url, dur);
+      if (!pick) return { cancelled: true };
+      startT = pick.start; endT = pick.end; trimmed = true;
+    }
+    const clipLen = endT - startT;
+    poster = await captureVideoPoster(v, Math.min(startT + 0.3, Math.max(startT, endT - 0.1)));
+    if (!trimmed && file.size <= VIDEO_SKIP_BYTES) return { file, poster };
+
+    const mime = ["video/webm;codecs=vp8,opus", "video/webm;codecs=vp9,opus", "video/webm"]
+      .find((m) => window.MediaRecorder && MediaRecorder.isTypeSupported(m));
+    const canCapture = !!mime && !!HTMLCanvasElement.prototype.captureStream && (window.AudioContext || window.webkitAudioContext);
+    if (!canCapture) {
+      if (trimmed) return { error: "This browser can't trim videos. Try a clip that is " + VIDEO_MAX_SECONDS + " seconds or shorter." };
+      return file.size <= VIDEO_FALLBACK_MAX_BYTES ? { file, poster } : { error: "That video is too big. Try a shorter or smaller one." };
+    }
+
+    const scale = Math.min(1, VIDEO_MAX_W / v.videoWidth, VIDEO_MAX_H / v.videoHeight);
+    const w = Math.max(2, Math.round(v.videoWidth * scale / 2) * 2), hh = Math.max(2, Math.round(v.videoHeight * scale / 2) * 2);
+    const canvas = document.createElement("canvas"); canvas.width = w; canvas.height = hh;
+    const g = canvas.getContext("2d");
+    const tracks = canvas.captureStream(24).getTracks();
+    let ctx = null;
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      ctx = new AC();
+      if (ctx.state === "suspended") await ctx.resume();
+      const src = ctx.createMediaElementSource(v);
+      const dest = ctx.createMediaStreamDestination();
+      src.connect(dest);                       // not connected to the speakers: nothing is heard while it shrinks
+      tracks.push(...dest.stream.getAudioTracks());
+    } catch (e) { console.warn("Shrink: no sound track, clip will be silent", e); }
+
+    const rec = new MediaRecorder(new MediaStream(tracks), { mimeType: mime, videoBitsPerSecond: VIDEO_BITS, audioBitsPerSecond: AUDIO_BITS });
+    const chunks = [];
+    rec.ondataavailable = (ev) => { if (ev.data && ev.data.size) chunks.push(ev.data); };
+    const done = new Promise((res) => { rec.onstop = res; });
+
+    let raf = 0, stopped = false;
+    const finish = () => { if (stopped) return; stopped = true; cancelAnimationFrame(raf); if (rec.state !== "inactive") rec.stop(); };
+    const draw = () => { g.drawImage(v, 0, 0, w, hh); if (trimmed && v.currentTime >= endT) { finish(); return; } if (!stopped) raf = requestAnimationFrame(draw); };
+    v.onended = finish;
+    const safety = setTimeout(finish, (clipLen + 5) * 1000);
+    const tick = setInterval(() => { say("Preparing video... " + Math.max(0, Math.min(99, Math.round((v.currentTime - startT) / clipLen * 100))) + "%"); }, 400);
+
+    say("Preparing video...");
+    {   // jump back to the chosen front before recording starts (the poster picture moved the playhead)
+      await new Promise((res) => { v.onseeked = res; v.currentTime = startT; setTimeout(res, 2000); });
+      v.onseeked = null;
+    }
+    rec.start(500);
+    try { await v.play(); } catch (e) { v.muted = true; await v.play(); }   // browser refused sound: clip is silent
+    draw();
+    await done;
+    clearTimeout(safety); clearInterval(tick);
+    if (ctx) ctx.close().catch(() => {});
+
+    const blob = new Blob(chunks, { type: "video/webm" });
+    if (!blob.size) return file.size <= VIDEO_FALLBACK_MAX_BYTES && !trimmed ? { file, poster } : { error: "Could not prepare that video." };
+    if (!trimmed && blob.size >= file.size) return { file, poster };   // never make an untrimmed clip bigger
+    return { file: new File([blob], "sticker.webm", { type: "video/webm" }), poster };
+  } catch (e) {
+    console.error("Video prepare failed:", e);
+    return file.size <= VIDEO_FALLBACK_MAX_BYTES && !trimmed ? { file, poster } : { error: "Could not prepare that video. Try a smaller one." };
+  } finally {
+    v.pause(); URL.revokeObjectURL(url);
+  }
+}
+
+async function uploadMedia(bucket, blob, ext, type, name) {
+  const path = state.uid + "/" + (name || Date.now()) + "." + ext;
+  // cacheControl = one year, so a phone that has seen this file once never downloads it again
+  const { error } = await sb.storage.from(bucket).upload(path, blob, { contentType: type, cacheControl: "31536000" });
   if (error) throw error;
   return sb.storage.from(bucket).getPublicUrl(path).data.publicUrl;
 }
@@ -378,8 +559,20 @@ function mediaEditor(m, onChange) {
     const f = e.target.files[0]; e.target.value = ""; if (!f) return;
     busy = true; say("Uploading picture..."); draw();
     try {
-      const small = await shrinkPhoto(f);
-      m.stickerUrl = await uploadMedia("stickers", small, small === f ? extFor(f, "png") : "jpg", small.type || f.type);
+      let small, posterBlob = null;
+      if (f.type.startsWith("video/")) {
+        // Videos: 30 seconds at most. Longer ones open the trimmer so the front and back can be cut.
+        const r = await prepareVideoForUpload(f, (t) => say(t));
+        if (r.cancelled) { say(""); busy = false; draw(); return; }
+        if (r.error) { say(r.error, true); busy = false; draw(); return; }
+        small = r.file; posterBlob = r.poster || null; say("Uploading video...");
+      } else { small = await shrinkPhoto(f); }
+      const isNewVid = small !== f && small.type === "video/webm";
+      const stamp = Date.now();
+      m.stickerUrl = await uploadMedia("stickers", small, isNewVid ? "webm" : small === f ? extFor(f, "png") : "jpg", small.type || f.type, stamp);
+      if (posterBlob) {   // the still picture lives next to the video; if it fails the video still works
+        try { await uploadMedia("stickers", posterBlob, "jpg", "image/jpeg", stamp + "-poster"); } catch (e) { console.warn("Poster upload failed", e); }
+      }
       say("");
     } catch (err) { failed(err); }
     busy = false; fire();
