@@ -246,8 +246,16 @@ async function refreshToday() {
 }
 async function afterSignIn(session) {
   state.uid = session.user.id;
-  const { data: me } = await sb.from("users").select("meet_number").eq("id", state.uid).maybeSingle();
-  state.meetNumber = me && me.meet_number ? me.meet_number : "";
+  const { data: me } = await sb.from("users").select("meet_number, display_number").eq("id", state.uid).maybeSingle();
+  if (!me || Number(me.display_number) !== 8) {
+    // The desk is for Meet 8 (Meet Founder) only.
+    await sb.auth.signOut();
+    state.uid = null; state.orgs = []; state.items = [];
+    state.loginError = "The content desk is only for Meet 8.";
+    render();
+    return;
+  }
+  state.meetNumber = me.meet_number ? me.meet_number : "";
   const { data: orgs, error } = await sb.rpc("my_organizations");
   state.orgs = error ? [] : (orgs || []);
   state.orgId = state.orgs.length ? state.orgs[0].id : null;
@@ -452,7 +460,9 @@ function viewDesk() {
   const root = h("div", {},
     h("div", { class: "top" },
       h("div", {}, h("h1", {}, "Content desk"), h("div", { class: "who" }, state.meetNumber ? "Signed in as " + state.meetNumber : "Signed in")),
-      h("button", { class: "link", onclick: signOut }, "Sign out"))
+      h("div", { style: "display:flex;flex-direction:column;align-items:flex-end" },
+        h("a", { class: "link", href: "/", style: "display:inline-flex;align-items:center" }, "Back to Meet Me"),
+        h("button", { class: "link", onclick: signOut }, "Sign out")))
   );
   if (!org) {
     root.append(h("p", {}, "This account does not own an organisation yet."),

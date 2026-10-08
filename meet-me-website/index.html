@@ -2155,6 +2155,10 @@
         <span class="profile-row-label">Organisations</span>
         <span class="profile-row-value">›</span>
       </div>
+      <div class="profile-row" id="profile-desk-row" style="display:none;">
+        <span class="profile-row-label">Content desk</span>
+        <span class="profile-row-value">›</span>
+      </div>
       <div class="profile-row" id="profile-contact-row">
         <span class="profile-row-label">Contact us</span>
         <span class="profile-row-value">›</span>
@@ -3139,7 +3143,18 @@ document.getElementById('admin-code-submit-btn').addEventListener('click', async
   document.getElementById('admin-code-overlay').classList.remove('show');
 });
 
+// Content desk link: Meet 8 (Meet Founder) only.
+function updateDeskRow(){
+  const deskRow = document.getElementById('profile-desk-row');
+  if(!deskRow) return;
+  let show = false;
+  try{ show = !!isMeet8; }catch(e){ show = false; }
+  deskRow.style.display = show ? 'flex' : 'none';
+}
+document.getElementById('profile-desk-row').addEventListener('click', ()=>{ window.location.href = '/desk.html'; });
+
 function updateAdminVisibility(){
+  updateDeskRow();
   const dashRow = document.getElementById('profile-admin-dashboard-row');
   if(dashRow) dashRow.style.display = isAdmin ? 'flex' : 'none';
   const dailyRow = document.getElementById('profile-daily-visitors-row');
@@ -6499,6 +6514,7 @@ function ensureOrgs(force){
       myOrgs = mine.data || [];
       myOrgs.forEach(r => { orgMap[r.id] = Object.assign({}, orgMap[r.id] || {}, { id:r.id, name:r.name, type:r.type, crest_color:r.crest_color }); });
       myOrgIds = new Set(myOrgs.map(r => r.id));
+      if(typeof updateDeskRow === 'function') updateDeskRow();
       myFollows = {};
       (f.data || []).forEach(r => { myFollows[r.organization_id] = { notify: !!r.notify }; });
       myMutedOrgIds = new Set((m.data || []).map(r => r.organization_id));
