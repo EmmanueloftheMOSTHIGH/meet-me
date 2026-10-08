@@ -823,6 +823,31 @@
     color:var(--muted-dim); padding:10px; cursor:pointer;
   }
 
+  /* Insights sheet (organisation owners only) */
+  #org-insights-overlay{
+    position:absolute; inset:0; background:rgba(6,6,7,0.75); z-index:78;
+    display:flex; align-items:flex-end; opacity:0; pointer-events:none; transition:opacity 0.3s ease;
+  }
+  #org-insights-overlay.show{ opacity:1; pointer-events:auto; }
+  #org-insights-panel{
+    width:100%; background:var(--bg-elevated); border-radius:20px 20px 0 0;
+    padding:22px 20px 30px; transform:translateY(16px); transition:transform 0.3s ease;
+  }
+  #org-insights-overlay.show #org-insights-panel{ transform:translateY(0); }
+  #org-insights-title{ font-family:'Fraunces',serif; font-size:17px; color:var(--ivory); margin-bottom:4px; }
+  #org-insights-sub{ font-size:11.5px; color:var(--muted-dim); margin-bottom:16px; line-height:1.5; }
+  #org-insights-body{ max-height:62vh; overflow-y:auto; }
+  #org-insights-close{ text-align:center; margin-top:16px; font-size:12px; letter-spacing:0.1em; text-transform:uppercase; color:var(--muted-dim); padding:10px; cursor:pointer; }
+  .ins-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .ins-cell{ border:1px solid var(--card-border); border-radius:14px; padding:12px 14px; }
+  .ins-num{ font-family:'Fraunces',serif; font-size:22px; color:var(--ivory); }
+  .ins-lbl{ font-size:11px; color:var(--muted-dim); margin-top:2px; }
+  .ins-top{ border:1px solid var(--card-border); border-radius:14px; padding:12px 14px; cursor:pointer; margin-top:6px; }
+  .ins-top-text{ font-size:13.5px; color:var(--ivory); line-height:1.45; margin-bottom:6px; }
+  .org-insights-btn{ display:block; text-align:center; padding:10px; margin-top:12px; border-radius:12px; font-size:13px; border:1px solid var(--card-border); color:var(--muted); cursor:pointer; }
+  .post-insight{ font-size:11.5px; color:var(--muted-dim); margin-top:10px; }
+  .post-insight:empty{ display:none; }
+
   #notif-overlay{
     position:absolute; inset:0;
     background:rgba(6,6,7,0.75);
@@ -2138,6 +2163,15 @@
     </div>
   </div>
 
+  <div id="org-insights-overlay">
+    <div id="org-insights-panel">
+      <div id="org-insights-title">Insights</div>
+      <div id="org-insights-sub">The last 7 days. Only you can see this.</div>
+      <div id="org-insights-body"></div>
+      <div id="org-insights-close">close</div>
+    </div>
+  </div>
+
   <div id="org-sheet-overlay">
     <div id="org-sheet-panel">
       <div id="org-sheet-title"></div>
@@ -3371,9 +3405,16 @@ async function loadYourPosts(){
   if(error){ console.error('Error loading your posts:', error); return; }
 
   allMyPosts = posts || [];
+  myPostViews = {};
+  if(allMyPosts.length){
+    const { data: vrows, error: verr } = await sb.rpc('my_post_views', { p_post_ids: allMyPosts.slice(0, 500).map(p => p.id) });
+    if(verr) console.error('my_post_views', verr);
+    (vrows || []).forEach(r => { myPostViews[r.post_id] = Number(r.views); });
+  }
   renderYourPosts();
 }
 
+let myPostViews = {};
 function renderYourPosts(){
   const feed = document.getElementById('yourposts-feed');
   feed.innerHTML = '';
@@ -3396,7 +3437,7 @@ function renderYourPosts(){
       <div class="yp-post-space">${escapeHtml(spaceLabel)}</div>
       ${happeningPillHtml(post)}
       ${postBodyHtml(post, 'yp-post-body', 150)}
-      <div class="yp-post-time">${formatRelativeTime(post.created_at)}</div>
+      <div class="yp-post-time">${formatRelativeTime(post.created_at)}${myPostViews[post.id] !== undefined ? ' · seen by ' + myPostViews[post.id] : ''}</div>
       <div style="margin-top:8px; font-size:11px; letter-spacing:0.05em; text-transform:uppercase; color:var(--gold-text);">tap to view replies &amp; likes</div>`;
     feed.appendChild(wrap);
   });
@@ -5401,16 +5442,29 @@ async function unfriendUser(otherUserId){
   toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 2200);
 }
 
+// Deleting a post that is already gone (deleted elsewhere, or only still showing from the saved copy of the page)
+// is a success, not an error: take it off the screen and refresh the saved copy so it can't come back.
+async function deletePostRow(postId){
+  const { data: gone, error } = await sb.from('posts').delete().eq('id', postId).select('id');
+  if(error) return { ok:false, error };
+  if(gone && gone.length) return { ok:true, already:false };
+  const { data: still, error: chkErr } = await sb.from('posts').select('id').eq('id', postId).maybeSingle();
+  if(chkErr) return { ok:false, error: chkErr };
+  return still ? { ok:false, error:{ message:'delete refused' } } : { ok:true, already:true };
+}
+
 document.addEventListener('click', async (e)=>{
   const deleteBtn = e.target.closest('.delete-post-trigger');
   if(deleteBtn){
     e.stopPropagation();
     if(!confirm('Delete this post? This can\'t be undone.')) return;
     const postId = deleteBtn.dataset.postId;
-    const { data: gone, error: delErr } = await sb.from('posts').delete().eq('id', postId).select('id');
-    if(delErr || !gone || !gone.length){ console.error('Delete post failed:', delErr); showNavToast('Couldn\'t delete that post.'); return; }
+    const res = await deletePostRow(postId);
+    if(!res.ok){ console.error('Delete post failed:', res.error); showNavToast('Couldn\'t delete that post.'); return; }
+    if(res.already) showNavToast('That post was already deleted.');
     const postEl = deleteBtn.closest('.post, .spill-card, .yp-post');
     if(postEl) postEl.remove();
+    saveSnapshotSoon();
   }
 });
 
@@ -5432,9 +5486,11 @@ document.addEventListener('click', async (e)=>{
       timer = null; fired = true;
       if(navigator.vibrate) navigator.vibrate(30);
       if(!confirm('Delete this post as admin? This can\'t be undone.')) return;
-      const { data: gone, error } = await sb.from('posts').delete().eq('id', postEl.dataset.postId).select('id');
-      if(error || !gone || !gone.length){ console.error('Admin delete failed:', error); showNavToast('Couldn\'t delete that post.'); return; }
+      const res = await deletePostRow(postEl.dataset.postId);
+      if(!res.ok){ console.error('Admin delete failed:', res.error); showNavToast('Couldn\'t delete that post.'); return; }
+      if(res.already) showNavToast('That post was already deleted.');
       postEl.remove();
+      saveSnapshotSoon();
     }, LONG_MS);
   }, { passive:true });
   document.addEventListener('touchmove', (e)=>{
@@ -6567,6 +6623,7 @@ function ownOrgBlockHtml(o, count){
     <div class="org-own-name"><span class="org-dot" style="--oc:${c}"></span>${escapeHtml(o.name)}<span class="org-tag" style="--oc:${c}">${orgTypeLabel(o.type)}</span></div>
     <div class="org-own-meta">${countLine}</div>
     ${colourHtml}
+    <div class="org-insights-btn" data-org-id="${o.id}">Insights</div>
   </div>`;
 }
 async function renderOrgList(){
@@ -6853,6 +6910,116 @@ document.getElementById('watch-open').addEventListener('click', (e)=>{
 });
 document.addEventListener('keydown', (e)=>{ if(e.key === 'Escape') closeWatchScreen(); });
 
+/* ============================================================
+   VIEWS + INSIGHTS
+   A view counts after 60% of a post has been on screen for 1.5 s. The database ignores your own posts
+   and repeat views, and only ever hands counts back to the author (rants) or the owner (organisations).
+   ============================================================ */
+const viewQueue = new Set(), viewSent = new Set();
+let viewFlushTimer = null, postViewObserver = null;
+function flushPostViews(){
+  clearTimeout(viewFlushTimer); viewFlushTimer = null;
+  if(!viewQueue.size || !currentUserId) return;
+  const ids = [...viewQueue].slice(0, 50);
+  ids.forEach(id => { viewQueue.delete(id); viewSent.add(id); });
+  sb.rpc('record_post_views', { p_post_ids: ids }).then(({ error }) => { if(error) console.error('record_post_views', error); });
+  if(viewQueue.size) viewFlushTimer = setTimeout(flushPostViews, 1000);
+}
+function postViewContextOk(el){
+  if(document.visibilityState !== 'visible') return false;
+  if(topOpenLayer()) return false;                        // something is covering the feed
+  if(el.classList.contains('org-card')) return currentScreenKey === 'orgs';
+  return currentScreenKey === 'twin' && currentTwinMode === 'rant';
+}
+function watchPostView(el, post){
+  if(!('IntersectionObserver' in window) || !currentUserId || !post) return;
+  if(post.community_id || post.user_id === currentUserId) return;
+  if(post.organization_id && myOrgIds.has(post.organization_id)) return;
+  if(viewSent.has(post.id)) return;
+  if(!postViewObserver){
+    postViewObserver = new IntersectionObserver((entries)=>{
+      entries.forEach(en => {
+        const t = en.target;
+        if(!en.isIntersecting){ clearTimeout(t._viewTimer); return; }
+        clearTimeout(t._viewTimer);
+        t._viewTimer = setTimeout(()=>{
+          if(!postViewContextOk(t)) return;               // stays watched; counts the next time it is properly on screen
+          const id = Number(t.dataset.postId);
+          postViewObserver.unobserve(t);
+          if(!id || viewSent.has(id)) return;
+          viewQueue.add(id);
+          if(!viewFlushTimer) viewFlushTimer = setTimeout(flushPostViews, 4000);
+        }, 1500);
+      });
+    }, { threshold: 0.6 });
+  }
+  postViewObserver.observe(el);
+}
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState === 'hidden') flushPostViews(); });
+window.addEventListener('pagehide', flushPostViews);
+
+// Owner-only line under each of your organisation's posts
+const insightQueue = new Set(); let insightTimer = null;
+function addOrgPostInsight(div, post){
+  const foot = div.querySelector('.post-foot');
+  if(!foot) return;
+  const line = document.createElement('div');
+  line.className = 'post-insight';
+  line.dataset.insightFor = post.id;
+  foot.insertAdjacentElement('afterend', line);
+  insightQueue.add(Number(post.id));
+  clearTimeout(insightTimer);
+  insightTimer = setTimeout(fillOrgPostInsights, 250);
+}
+async function fillOrgPostInsights(){
+  const ids = [...insightQueue].slice(0, 100);
+  insightQueue.clear();
+  if(!ids.length) return;
+  const { data, error } = await sb.rpc('org_post_stats', { p_post_ids: ids });
+  if(error) console.error('org_post_stats', error);
+  const by = {};
+  (data || []).forEach(r => { by[r.post_id] = r; });
+  const pl = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  ids.forEach(id => document.querySelectorAll(`.post-insight[data-insight-for="${id}"]`).forEach(el => {
+    const r = by[id];
+    if(!r){ el.remove(); return; }
+    el.textContent = `${pl(Number(r.likes), 'like')} · ${pl(Number(r.stands), 'stand')} · ${pl(Number(r.views), 'view')} · only you see this`;
+  }));
+}
+
+// Insights sheet
+async function openOrgInsights(orgId){
+  const body = document.getElementById('org-insights-body');
+  body.innerHTML = '<div class="stand-empty">…</div>';
+  document.getElementById('org-insights-overlay').classList.add('show');
+  const { data, error } = await sb.rpc('org_insights', { p_org_id: orgId });
+  if(error || !data){ console.error(error); body.innerHTML = '<div class="stand-empty">Could not load insights. Try again.</div>'; return; }
+  const n = x => Number(x || 0);
+  const cell = (num, lbl) => `<div class="ins-cell"><div class="ins-num">${num}</div><div class="ins-lbl">${lbl}</div></div>`;
+  let html = '<div class="ins-grid">'
+    + cell(n(data.followers), 'followers') + cell('+' + n(data.new_followers), 'new followers')
+    + cell(n(data.posts), 'posts') + cell(n(data.views), 'views')
+    + cell(n(data.likes), 'likes') + cell(n(data.stands), 'stands') + '</div>';
+  const t = data.top_post;
+  html += t
+    ? `<div class="org-follow-title">Top post this week</div><div class="ins-top" data-post-id="${t.id}"><div class="ins-top-text">${escapeHtml(t.snippet || '')}</div><div class="ins-lbl">${n(t.likes)} likes · ${n(t.stands)} stands · ${n(t.views)} views</div></div>`
+    : '<div class="org-follow-title">No posts in the last 7 days.</div>';
+  body.innerHTML = html;
+}
+document.getElementById('org-insights-close').addEventListener('click', ()=>{
+  document.getElementById('org-insights-overlay').classList.remove('show');
+});
+document.addEventListener('click', (e)=>{
+  const b = e.target.closest('.org-insights-btn');
+  if(b){ openOrgInsights(Number(b.dataset.orgId)); return; }
+  const top = e.target.closest('.ins-top');
+  if(top){
+    document.getElementById('org-insights-overlay').classList.remove('show');
+    document.getElementById('org-list-overlay').classList.remove('show');
+    navigateToPost(Number(top.dataset.postId));
+  }
+});
+
 function renderRantPost(post, userLiked, likeCount, inspirationLabels){
   const isCommunity = !!post.community_id;
   const isOrg = !isCommunity && !!post.organization_id;
@@ -6897,6 +7064,8 @@ function renderRantPost(post, userLiked, likeCount, inspirationLabels){
       ${postActionsHtml(post.id, isCommunity ? null : ((isOrg || isFounder) ? (isOwn ? post.user_id : null) : post.user_id), post.content, post.sticker_url, post.audio_url, post.duration_seconds, displayName, 'Rant', userLiked, likeCount, false, isCommunity ? post.community_id : null, (isCommunity || isOrg))}
     </div>`;
   if(fresh) watchFreshOrgPost(div);
+  watchPostView(div, post);
+  if(isOrg && myOrgIds.has(post.organization_id)) addOrgPostInsight(div, post);
   return div;
 }
 
@@ -10533,14 +10702,15 @@ function saveSnapshot(){
     let snap = {};
     try{ snap = JSON.parse(localStorage.getItem('mm_snap') || '{}') || {}; }catch(e){}
     const feedEl = document.getElementById('feed');
-    const posts = Array.from(feedEl.querySelectorAll('.post')).slice(0, 15).map(p => p.outerHTML).join('');
+    const snapHtml = (el)=>{ const c = el.cloneNode(true); c.querySelectorAll('.post-insight').forEach(x => x.remove()); return c.outerHTML; };
+    const posts = Array.from(feedEl.querySelectorAll('.post')).slice(0, 15).map(snapHtml).join('');
     if(posts){ snap.feed = posts; snap.feedScroll = feedEl.scrollTop; }
     const chatEl = document.getElementById('chat-list');
     if(chatEl.querySelector('.chat-row')) snap.chat = chatEl.innerHTML;
     const orgsEl = document.getElementById('orgs-list');
     if(orgsEl && orgsEl.querySelector('.post')){
       let n = 0; const keep = [];
-      for(const el of Array.from(orgsEl.children)){ if(el.classList.contains('post') && ++n > 20) break; keep.push(el.outerHTML); }
+      for(const el of Array.from(orgsEl.children)){ if(el.classList.contains('post') && ++n > 20) break; keep.push(snapHtml(el)); }
       snap.orgs = keep.join(''); snap.orgsTs = Date.now();
     }
     let str = JSON.stringify(snap);
@@ -11314,7 +11484,7 @@ const BACK_LAYERS = [
   ['door-admin-overlay','door-admin-close'], ['moment-admin-overlay','moment-admin-close'],
   ['admin-code-overlay','admin-code-close'], ['admin-dashboard-overlay','admin-dashboard-close'], ['daily-visitors-overlay','daily-visitors-close'],
   ['community-invite-overlay','community-invite-close'], ['new-community-overlay','new-community-close'],
-  ['org-sheet-overlay','org-sheet-close'], ['org-list-overlay','org-list-close'], ['notif-overlay','notif-close'],
+  ['org-sheet-overlay','org-sheet-close'], ['org-list-overlay','org-list-close'], ['org-insights-overlay','org-insights-close'], ['notif-overlay','notif-close'],
   ['watch-screen','watch-close'], ['stand-screen','stand-close'],   // video response, then the stand on top of it: phone Back closes these instead of leaving the app
   ['moment', null], ['crisis-overlay','crisis-close'], ['anon-review-overlay','anon-review-close'], ['anon-report-overlay','anon-report-close'],
   ['anon-replies-overlay','anon-replies-close'], ['anon-reply-overlay','anon-reply-close'], ['anon-overlay','anon-back'],
