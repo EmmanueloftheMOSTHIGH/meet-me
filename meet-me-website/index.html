@@ -2886,7 +2886,10 @@
    ============================================================ */
 const SUPABASE_URL = 'https://ixdgthkovlkhdfrnqyav.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_QtxQM8j0w8T-b6uf9qor_Q_atDGCVis'; // your anon/publishable key
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+// Never reuse a saved copy of a database answer: a failed answer must not outlive the fix for it.
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  global: { fetch: (input, init) => fetch(input, Object.assign({}, init, { cache: 'no-store' })) }
+});
 
 let currentUserId = null;   // real UUID from Supabase Auth, set after sign-in
 // Pinned chats are a per-device preference, not app data worth a table --
@@ -3354,7 +3357,7 @@ async function loadYourReplies(){
 
   const { data, error } = await sb
     .from('replies')
-    .select('id, content, sticker_url, created_at, sender_id, receiver_id, post_id, posts(id, user_id, content, sticker_url, audio_url, duration_seconds, post_type, category, users(meet_number))')
+    .select('id, content, sticker_url, created_at, sender_id, receiver_id, post_id, posts(id, user_id, content, sticker_url, audio_url, duration_seconds, post_type, category, users!posts_user_id_fkey(meet_number))')
     .or(`sender_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`)
     .order('created_at', { ascending: false });
   if(error){ console.error('Error loading your replies:', error); feed.innerHTML = ''; return; }
@@ -6076,7 +6079,7 @@ async function fetchInspirationLabels(posts){
   await fetchDoorQuestionTexts(posts);
   const ids = [...new Set(posts.filter(p => p.inspired_by_post_id).map(p => p.inspired_by_post_id))];
   if(!ids.length) return {};
-  const { data } = await sb.from('posts').select('id, user_id, community_id, users(meet_number), communities(name)').in('id', ids);
+  const { data } = await sb.from('posts').select('id, user_id, community_id, users!posts_user_id_fkey(meet_number), communities(name)').in('id', ids);
   const map = {};
   (data || []).forEach(p => {
     map[p.id] = p.community_id ? (p.communities?.name || 'a community') : (p.users?.meet_number || 'someone');
@@ -7020,8 +7023,15 @@ document.addEventListener('click', (e)=>{
   }
 });
 
-document.addEventListener('click', (e)=>{
-  if(e.target.closest('#orgs-retry')){ orgsFeedLoadedAt = 0; ensureOrgs(true).then(()=> loadOrgsFeed(true)); }
+document.addEventListener('click', async (e)=>{
+  const btn = e.target.closest('#orgs-retry');
+  if(!btn) return;
+  btn.textContent = 'Trying…';
+  btn.style.opacity = '0.6';
+  orgsFeedLoadedAt = 0;
+  await ensureOrgs(true);
+  document.getElementById('orgs-list').innerHTML = '';     // empty list = a failed retry draws a fresh error box
+  await loadOrgsFeed(true);
 });
 
 function renderRantPost(post, userLiked, likeCount, inspirationLabels){
@@ -7084,7 +7094,7 @@ async function loadFeed(){
   feedHasMore = true;
   const { data: rawPosts, error } = await sb
     .from('posts')
-    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, inspired_by_post_id, door_question_id, happening_id, happenings(name), users(meet_number), communities(name, icon)')
+    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, inspired_by_post_id, door_question_id, happening_id, happenings(name), users!posts_user_id_fkey(meet_number), communities(name, icon)')
     .eq('post_type', 'rant')
     .or('organization_id.is.null,community_id.not.is.null')   // organisation posts live in the Organisations pillar
     .order('created_at', { ascending: false })
@@ -7138,7 +7148,7 @@ async function loadMoreFeed(){
 
   const { data: rawPosts, error } = await sb
     .from('posts')
-    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, inspired_by_post_id, door_question_id, happening_id, happenings(name), users(meet_number), communities(name, icon)')
+    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, inspired_by_post_id, door_question_id, happening_id, happenings(name), users!posts_user_id_fkey(meet_number), communities(name, icon)')
     .eq('post_type', 'rant')
     .or('organization_id.is.null,community_id.not.is.null')
     .order('created_at', { ascending: false })
@@ -7209,7 +7219,7 @@ async function renderOrgsFeed(){
   const list = document.getElementById('orgs-list');
   const { data: rawPosts, error } = await sb
     .from('posts')
-    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, inspired_by_post_id, door_question_id, happening_id, happenings(name), users(meet_number), communities(name, icon)')
+    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, inspired_by_post_id, door_question_id, happening_id, happenings(name), users!posts_user_id_fkey(meet_number), communities(name, icon)')
     .eq('post_type', 'rant')
     .not('organization_id', 'is', null)
     .is('community_id', null)
@@ -7522,7 +7532,7 @@ async function loadSpills(){
   // you posted before swiping into strangers' -- then everyone else's.
   const { data: own, error: ownErr } = await sb
     .from('posts')
-    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, inspired_by_post_id, door_question_id, as_founder, users(meet_number)')
+    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, inspired_by_post_id, door_question_id, as_founder, users!posts_user_id_fkey(meet_number)')
     .eq('post_type', 'spill')
     .eq('user_id', currentUserId)
     .order('created_at', { ascending: false });
@@ -7530,7 +7540,7 @@ async function loadSpills(){
 
   const { data: others, error } = await sb
     .from('posts')
-    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, inspired_by_post_id, door_question_id, as_founder, users(meet_number)')
+    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, inspired_by_post_id, door_question_id, as_founder, users!posts_user_id_fkey(meet_number)')
     .eq('post_type', 'spill')
     .neq('user_id', currentUserId)
     .order('created_at', { ascending: false })
@@ -8233,7 +8243,7 @@ async function navigateToPost(postId){
   if(!postId) return;
   const { data: post, error } = await sb
     .from('posts')
-    .select('id, post_type, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, inspired_by_post_id, door_question_id, happening_id, happenings(name), users(meet_number), communities(name, icon)')
+    .select('id, post_type, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, inspired_by_post_id, door_question_id, happening_id, happenings(name), users!posts_user_id_fkey(meet_number), communities(name, icon)')
     .eq('id', postId)
     .single();
   if(error || !post){
@@ -9319,7 +9329,7 @@ async function openHappeningView(happeningId, name){
 
   const { data: posts } = await sb
     .from('posts')
-    .select('id, user_id, content, sticker_url, audio_url, duration_seconds, created_at, as_founder, users(meet_number)')
+    .select('id, user_id, content, sticker_url, audio_url, duration_seconds, created_at, as_founder, users!posts_user_id_fkey(meet_number)')
     .eq('happening_id', happeningId)
     .eq('post_type', 'rant')
     .order('created_at', { ascending: false });
@@ -10169,7 +10179,7 @@ async function runSearch(){
     const spaces = ['rant'];
     const { data } = await sb
       .from('posts')
-      .select('id, user_id, content, sticker_url, audio_url, duration_seconds, post_type, category, created_at, happening_id, happenings(name), users(meet_number)')
+      .select('id, user_id, content, sticker_url, audio_url, duration_seconds, post_type, category, created_at, happening_id, happenings(name), users!posts_user_id_fkey(meet_number)')
       .in('post_type', spaces)
       .eq('as_founder', false)
       .ilike('content', `%${query}%`)
@@ -10485,7 +10495,7 @@ async function loadBookmarksList(){
 
   const { data, error } = await sb
     .from('bookmarks')
-    .select('post_id, posts(id, user_id, content, sticker_url, audio_url, duration_seconds, post_type, category, created_at, users(meet_number))')
+    .select('post_id, posts(id, user_id, content, sticker_url, audio_url, duration_seconds, post_type, category, created_at, users!posts_user_id_fkey(meet_number))')
     .eq('user_id', currentUserId)
     .order('created_at', { ascending: false });
   if(error){ console.error('Error loading bookmarks:', error); feed.innerHTML = ''; return; }
