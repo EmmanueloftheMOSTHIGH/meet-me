@@ -70,12 +70,19 @@ input::placeholder,textarea::placeholder{color:rgba(143,137,117,.7)}
 .empty{padding:28px 0;color:var(--mute)}
 .check{display:flex;align-items:center;gap:10px;min-height:44px;margin-bottom:12px}
 .check input{width:20px;height:20px;accent-color:#D4AF37}
-dialog{background:#000;color:var(--ink);border:1px solid var(--line);border-radius:18px;width:min(560px,calc(100vw - 24px));padding:20px}
+dialog{background:#000;color:var(--ink);border:1px solid var(--line);border-radius:18px;width:min(560px,calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow-y:auto;padding:20px}
 dialog::backdrop{background:rgba(0,0,0,.78)}
 .dlg-acts{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
 .count{float:right;font-size:13px}
 .count.over{color:var(--red)}
 .quote{border-left:2px solid var(--line);padding-left:12px;margin:10px 0 4px;color:var(--mute);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.media{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 12px}
+.media .btn{min-height:42px;padding:0 16px;font-size:15px}
+.thumb{display:flex;align-items:center;gap:10px;margin:0 0 12px;flex-wrap:wrap}
+.thumb img,.thumb video{width:72px;height:72px;object-fit:contain;border:1px solid var(--line);border-radius:10px;background:#0b0b0b}
+.thumb audio{height:40px;max-width:100%}
+.bad{color:var(--red)}
+.sep{border:0;border-top:1px solid var(--line);margin:26px 0 18px}
 @media (prefers-reduced-motion:no-preference){.btn{transition:transform .12s}.btn:active{transform:scale(.97)}}
 </style>
 </head>
@@ -85,7 +92,7 @@ dialog::backdrop{background:rgba(0,0,0,.78)}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-/* Meet Me content desk, version 1 (no scheduler).
+/* Meet Me content desk, version 2 (no scheduler; pictures, stickers and voice notes; source link optional).
    Signs in as a normal Meet Me account and posts as an organisation that account owns.
    The database enforces ownership, headers and the daily limit; this page only helps you fill the queue. */
 
@@ -99,10 +106,12 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { storageKey: "meetme-desk-auth", persistSession: true, autoRefreshToken: true }
 });
 
+function blankSingle() { return { header: "", body: "", link: "", stickerUrl: "", audioUrl: "", audioDur: 0 }; }
 const state = {
   uid: null, meetNumber: "", orgs: [], orgId: null,
   items: [], tab: "queue", today: 0, busy: false,
-  notice: null, draft: "", firstLineHeader: true, batch: 3, loginError: ""
+  notice: null, draft: "", firstLineHeader: true, batch: 3, loginError: "",
+  single: blankSingle()
 };
 
 const $app = document.getElementById("app");
@@ -147,9 +156,8 @@ function validate(it, org) {
   if (link && !/^https?:\/\/\S+$/i.test(link)) return "The link must start with http:// or https://";
   if (org.type === "newscast") {
     if (!header) return "News posts need a header";
-    if (!link) return "News posts need a source link";
-  } else if (!header && !(it.body || "").trim()) {
-    return "Add a header or a body";
+  } else if (!header && !(it.body || "").trim() && !it.stickerUrl && !it.audioUrl) {
+    return "Add a header, some text, a picture or a voice note";
   }
   return "";
 }
@@ -226,15 +234,15 @@ function addItems(list) {
   const seen = new Set(state.items.filter((i) => i.orgId === org.id).map((i) => key(i)));
   let added = 0, skipped = 0;
   for (const raw of list) {
-    const it = { id: crypto.randomUUID(), orgId: org.id, header: raw.header.trim(), body: raw.body.trim(), link: raw.link.trim(), status: "queued", error: "", postId: null, postedAt: null };
-    if (!it.header && !it.body && !it.link) continue;
+    const it = { id: crypto.randomUUID(), orgId: org.id, header: raw.header.trim(), body: raw.body.trim(), link: raw.link.trim(), stickerUrl: raw.stickerUrl || "", audioUrl: raw.audioUrl || "", audioDur: raw.audioDur || 0, status: "queued", error: "", postId: null, postedAt: null };
+    if (!it.header && !it.body && !it.link && !it.stickerUrl && !it.audioUrl) continue;
     if (seen.has(key(it))) { skipped++; continue; }
     seen.add(key(it)); state.items.push(it); added++;
   }
   save();
   return { added, skipped };
 }
-const key = (i) => [i.header, i.body, i.link].join("|").toLowerCase();
+const key = (i) => [i.header, i.body, i.link, i.stickerUrl || "", i.audioUrl || ""].join("|").toLowerCase();
 
 /* ---------- data ---------- */
 async function refreshToday() {
@@ -269,16 +277,19 @@ async function signIn(email, pin) {
   if (error || !data.session) { state.loginError = "That email and PIN did not work."; render(); return; }
   await afterSignIn(data.session);
 }
-async function signOut() { await sb.auth.signOut(); state.uid = null; state.orgs = []; state.items = []; render(); }
+async function signOut() { stopActiveRec(); await sb.auth.signOut(); state.uid = null; state.orgs = []; state.items = []; render(); }
 
 async function postItem(it) {
   const org = state.orgs.find((o) => o.id === it.orgId);
   const bad = validate(it, org);
   if (bad) { it.error = bad; return { ok: false }; }
-  const { data, error } = await sb.from("posts").insert({
+  const row = {
     user_id: state.uid, organization_id: org.id,
-    content: buildContent(it, org), header: it.header.trim() || null, post_type: "rant"
-  }).select("id").single();
+    content: buildContent(it, org) || null, header: it.header.trim() || null, post_type: "rant"
+  };
+  if (it.stickerUrl) row.sticker_url = it.stickerUrl;
+  if (it.audioUrl) { row.audio_url = it.audioUrl; row.duration_seconds = it.audioDur || 0; }
+  const { data, error } = await sb.from("posts").insert(row).select("id").single();
   if (error) { it.error = friendly(error.message); return { ok: false, limit: /org_daily_limit/.test(error.message || "") }; }
   it.status = "posted"; it.postId = data.id; it.postedAt = Date.now(); it.error = "";
   return { ok: true };
@@ -303,6 +314,139 @@ async function postMany(list) {
   render();
 }
 
+/* ---------- media (pictures, stickers, voice notes) ---------- */
+// Same buckets and columns the app itself uses: "stickers" -> posts.sticker_url, "voice-notes" -> posts.audio_url.
+const STICKER_ACCEPT = "image/png,image/webp,image/jpeg,image/gif,video/webm,video/mp4";
+const REC_MAX_SECONDS = 300;
+let activeRec = null;
+const fmt = (n) => Math.floor(n / 60) + ":" + String(n % 60).padStart(2, "0");
+const isVid = (u) => /\.(mp4|webm)(\?|$)/i.test(u || "");
+function mediaThumb(u) {
+  return isVid(u) ? h("video", { src: u, muted: true, loop: true, autoplay: true, playsinline: true }) : h("img", { src: u, alt: "" });
+}
+function stopActiveRec() {
+  if (!activeRec) return;
+  const r = activeRec; activeRec = null; r.discard = true;
+  clearInterval(r.timer);
+  try { if (r.rec.state !== "inactive") r.rec.stop(); } catch (e) {}
+  r.stream.getTracks().forEach((t) => t.stop());
+}
+function extFor(file, fallback) {
+  const m = (file.name || "").match(/\.([a-z0-9]+)$/i);
+  return (m ? m[1] : fallback).toLowerCase();
+}
+async function shrinkPhoto(file) {
+  // Big phone photos are wasteful in a feed. Only plain JPEGs are touched; PNG, GIF, WebP and video stay exactly as they are.
+  if (file.type !== "image/jpeg" || file.size < 1500000) return file;
+  try {
+    const bmp = await createImageBitmap(file);
+    const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement("canvas");
+    c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
+    c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+    const blob = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.85));
+    return blob && blob.size < file.size ? blob : file;
+  } catch (e) { return file; }
+}
+async function uploadMedia(bucket, blob, ext, type) {
+  const path = state.uid + "/" + Date.now() + "." + ext;
+  const { error } = await sb.storage.from(bucket).upload(path, blob, { contentType: type });
+  if (error) throw error;
+  return sb.storage.from(bucket).getPublicUrl(path).data.publicUrl;
+}
+function audioLength(file) {
+  return new Promise((resolve) => {
+    const a = new Audio(), u = URL.createObjectURL(file);
+    const done = (n) => { URL.revokeObjectURL(u); resolve(n); };
+    a.preload = "metadata";
+    a.onloadedmetadata = () => done(isFinite(a.duration) ? Math.round(a.duration) : 0);
+    a.onerror = () => done(0);
+    setTimeout(() => done(0), 4000);
+    a.src = u;
+  });
+}
+// m is any object with stickerUrl, audioUrl, audioDur. The editor uploads straight away and keeps only the public URLs on m.
+function mediaEditor(m, onChange) {
+  const box = h("div", {});
+  const status = h("div", { class: "small mute", style: "margin:0 0 12px", role: "status" });
+  let busy = false, recStart = 0;
+  const say = (t, bad) => { status.textContent = t || ""; status.className = "small " + (bad ? "bad" : "mute"); };
+  const fire = () => { if (onChange) onChange(); draw(); };
+  const failed = (err) => say("Upload failed: " + ((err && err.message) || err), true);
+
+  const pictureIn = h("input", { type: "file", accept: STICKER_ACCEPT, style: "display:none", onchange: async (e) => {
+    const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+    busy = true; say("Uploading picture..."); draw();
+    try {
+      const small = await shrinkPhoto(f);
+      m.stickerUrl = await uploadMedia("stickers", small, small === f ? extFor(f, "png") : "jpg", small.type || f.type);
+      say("");
+    } catch (err) { failed(err); }
+    busy = false; fire();
+  } });
+  const audioIn = h("input", { type: "file", accept: "audio/*", style: "display:none", onchange: async (e) => {
+    const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+    busy = true; say("Uploading voice note..."); draw();
+    try {
+      const dur = await audioLength(f);
+      m.audioUrl = await uploadMedia("voice-notes", f, extFor(f, "webm"), f.type || "audio/webm");
+      m.audioDur = dur; say("");
+    } catch (err) { failed(err); }
+    busy = false; fire();
+  } });
+
+  async function toggleRec() {
+    if (activeRec && activeRec.owner === box) { activeRec.rec.stop(); return; }
+    stopActiveRec();
+    let stream;
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+    catch (err) { say("Could not reach the microphone. Check the browser's permission for this site.", true); draw(); return; }
+    const rec = new MediaRecorder(stream), chunks = [];
+    const r = { rec, stream, discard: false, timer: null, owner: box };
+    rec.ondataavailable = (ev) => { if (ev.data.size) chunks.push(ev.data); };
+    rec.onstop = async () => {
+      clearInterval(r.timer);
+      stream.getTracks().forEach((t) => t.stop());
+      if (activeRec === r) activeRec = null;
+      if (r.discard) return;
+      const secs = Math.max(1, Math.round((Date.now() - recStart) / 1000));
+      const type = (rec.mimeType || "audio/webm").split(";")[0];
+      const blob = new Blob(chunks, { type });
+      busy = true; say("Uploading voice note..."); draw();
+      try {
+        m.audioUrl = await uploadMedia("voice-notes", blob, type.includes("mp4") ? "m4a" : type.includes("ogg") ? "ogg" : "webm", type);
+        m.audioDur = secs; say("");
+      } catch (err) { failed(err); }
+      busy = false; fire();
+    };
+    activeRec = r; recStart = Date.now(); rec.start();
+    r.timer = setInterval(() => {
+      const secs = Math.round((Date.now() - recStart) / 1000);
+      say("Recording " + fmt(secs) + ". Tap Stop when you are done.");
+      if (secs >= REC_MAX_SECONDS) rec.stop();
+    }, 500);
+    say("Recording 0:00. Tap Stop when you are done."); draw();
+  }
+
+  function draw() {
+    const recording = !!(activeRec && activeRec.owner === box);
+    box.replaceChildren(
+      m.stickerUrl ? h("div", { class: "thumb" }, mediaThumb(m.stickerUrl),
+        h("button", { class: "link", type: "button", style: "color:var(--red)", disabled: busy, onclick: () => { m.stickerUrl = ""; fire(); } }, "Remove picture")) : null,
+      m.audioUrl ? h("div", { class: "thumb" }, h("audio", { controls: true, src: m.audioUrl, preload: "metadata" }),
+        h("span", { class: "small mute" }, fmt(m.audioDur || 0)),
+        h("button", { class: "link", type: "button", style: "color:var(--red)", disabled: busy, onclick: () => { m.audioUrl = ""; m.audioDur = 0; fire(); } }, "Remove voice note")) : null,
+      h("div", { class: "media" },
+        !m.stickerUrl ? h("button", { class: "btn ghost", type: "button", disabled: busy || recording, onclick: () => pictureIn.click() }, "Add picture or sticker") : null,
+        !m.audioUrl ? h("button", { class: "btn ghost", type: "button", disabled: busy, onclick: toggleRec }, recording ? "Stop recording" : "Record voice note") : null,
+        !m.audioUrl && !recording ? h("button", { class: "btn ghost", type: "button", disabled: busy, onclick: () => audioIn.click() }, "Upload audio file") : null),
+      status, pictureIn, audioIn);
+  }
+  box.isBusy = () => busy || !!(activeRec && activeRec.owner === box);
+  draw();
+  return box;
+}
+
 /* ---------- dialogs ---------- */
 function openEdit(it) {
   const org = state.orgs.find((o) => o.id === it.orgId);
@@ -311,6 +455,8 @@ function openEdit(it) {
     body: h("textarea", { rows: 5 }, it.body),
     link: h("input", { type: "text", value: it.link, placeholder: "https://" })
   };
+  const m = { stickerUrl: it.stickerUrl || "", audioUrl: it.audioUrl || "", audioDur: it.audioDur || 0 };
+  const ed = mediaEditor(m);
   const count = h("span", { class: "count mute" });
   const upd = () => { const n = f.header.value.trim().length; count.textContent = n + "/" + HEADER_MAX; count.className = "count " + (n > HEADER_MAX ? "over" : "mute"); };
   f.header.addEventListener("input", upd); upd();
@@ -318,10 +464,14 @@ function openEdit(it) {
     h("h2", {}, "Edit item"),
     h("label", { class: "field" }, h("span", {}, "Header", count), f.header),
     h("label", { class: "field" }, h("span", {}, org && org.type === "newscast" ? "One-line summary, in your own words" : "Body"), f.body),
-    h("label", { class: "field" }, h("span", {}, "Link"), f.link),
+    h("label", { class: "field" }, h("span", {}, "Link (optional)"), f.link),
+    h("div", { class: "small mute", style: "margin-bottom:6px" }, "Picture, sticker or voice note"),
+    ed,
     h("div", { class: "dlg-acts" },
       h("button", { class: "btn", onclick: () => {
+        if (ed.isBusy()) return;
         it.header = f.header.value.trim(); it.body = f.body.value.trim(); it.link = f.link.value.trim();
+        it.stickerUrl = m.stickerUrl; it.audioUrl = m.audioUrl; it.audioDur = m.audioDur;
         it.error = ""; save(); $dlg.close(); render();
       } }, "Save changes"),
       h("button", { class: "btn ghost", onclick: () => $dlg.close() }, "Cancel"))
@@ -339,7 +489,8 @@ function openConfirm(title, text, quote, yes, no, fn) {
   );
   $dlg.showModal();
 }
-const snippet = (it) => it.header || it.body || it.link;
+const snippet = (it) => it.header || it.body || it.link || (it.stickerUrl ? "Picture or sticker" : it.audioUrl ? "Voice note" : "");
+$dlg.addEventListener("close", stopActiveRec);
 
 /* ---------- views ---------- */
 function viewLogin() {
@@ -393,6 +544,8 @@ function viewQueue(org) {
     root.append(h("div", { class: "item" },
       it.header ? h("h3", {}, it.header) : null,
       it.body ? h("div", { class: "body" }, it.body) : null,
+      it.stickerUrl ? h("div", { class: "thumb" }, mediaThumb(it.stickerUrl)) : null,
+      it.audioUrl ? h("div", { class: "thumb" }, h("audio", { controls: true, src: it.audioUrl, preload: "none" })) : null,
       it.link ? h("div", { class: "src" }, host(it.link)) : null,
       (it.error || problem) ? h("div", { class: "err" }, it.error || problem) : null,
       h("div", { class: "acts" },
@@ -408,7 +561,25 @@ function viewQueue(org) {
 }
 
 function viewAdd(org) {
-  const ta = h("textarea", { rows: 12, placeholder: "Header on the first line\nOne-line summary in your own words\nhttps://source-link\n---\nNext header\nNext summary\nhttps://link", oninput: (e) => { state.draft = e.target.value; } }, state.draft);
+  const sg = state.single;
+  const count = h("span", { class: "count mute" });
+  const hdr = h("input", { type: "text", value: sg.header, maxlength: 200, placeholder: org.type === "newscast" ? "Header (required for news)" : "Header (optional)",
+    oninput: (e) => { sg.header = e.target.value; upd(); } });
+  const upd = () => { const n = hdr.value.trim().length; count.textContent = n + "/" + HEADER_MAX; count.className = "count " + (n > HEADER_MAX ? "over" : "mute"); };
+  upd();
+  const body = h("textarea", { rows: 5, placeholder: "What do you want to say?", oninput: (e) => { sg.body = e.target.value; } }, sg.body);
+  const link = h("input", { type: "text", value: sg.link, placeholder: "https://   (optional)", oninput: (e) => { sg.link = e.target.value; } });
+  const ed = mediaEditor(sg);
+
+  const gather = () => ({ header: sg.header, body: sg.body, link: sg.link, stickerUrl: sg.stickerUrl, audioUrl: sg.audioUrl, audioDur: sg.audioDur });
+  const checked = () => {
+    if (ed.isBusy()) { note("Wait for the picture or voice note to finish first.", true); render(); return null; }
+    const raw = gather(); const bad = validate(raw, org);
+    if (bad) { note(bad, true); render(); return null; }
+    return raw;
+  };
+
+  const ta = h("textarea", { rows: 10, placeholder: "Header on the first line\nOne-line summary in your own words\nhttps://source-link (optional)\n---\nNext header\nNext summary", oninput: (e) => { state.draft = e.target.value; } }, state.draft);
   const chk = h("input", { type: "checkbox", checked: state.firstLineHeader, onchange: (e) => { state.firstLineHeader = e.target.checked; } });
   const file = h("input", { type: "file", accept: ".csv,text/csv", style: "display:none", onchange: async (e) => {
     const f = e.target.files[0]; if (!f) return;
@@ -416,14 +587,33 @@ function viewAdd(org) {
     if (!rows.length) { note("No rows found. The CSV needs a header row with columns named header, body and link.", true); render(); return; }
     finish(addItems(rows));
   } });
-  const finish = (r) => {
+  const finish = (r, wasSingle) => {
     note("Added " + r.added + (r.added === 1 ? " item" : " items") + (r.skipped ? ", skipped " + r.skipped + " duplicates" : "") + ".");
-    if (r.added) { state.draft = ""; state.tab = "queue"; }
+    if (r.added) { if (wasSingle) state.single = blankSingle(); else state.draft = ""; state.tab = "queue"; }
     render();
   };
   return h("div", {},
-    h("p", { class: "mute small" }, "Separate items with a line of three dashes, or with a blank line. A line that is just a link, or starts with link:, becomes the source." +
-      (org.type === "newscast" ? " News items need a header and a source link." : "")),
+    h("h2", {}, "One post"),
+    h("p", { class: "mute small" }, "Text, a picture or sticker, a voice note, or any mix. A source link is optional." +
+      (org.type === "newscast" ? " News posts need a header." : "")),
+    h("label", { class: "field" }, h("span", {}, "Header", count), hdr),
+    h("label", { class: "field" }, h("span", {}, "Text"), body),
+    h("label", { class: "field" }, h("span", {}, "Link"), link),
+    ed,
+    h("div", { class: "dlg-acts", style: "margin-top:0" },
+      h("button", { class: "btn", disabled: state.busy, onclick: () => { const raw = checked(); if (raw) finish(addItems([raw]), true); } }, "Add to queue"),
+      h("button", { class: "btn ghost", disabled: state.busy, onclick: () => {
+        const raw = checked(); if (!raw) return;
+        const r = addItems([raw]);
+        if (!r.added) { note("That exact post is already in the queue.", true); render(); return; }
+        const it = state.items[state.items.length - 1];
+        state.single = blankSingle(); state.tab = "queue";
+        postMany([it]);
+      } }, "Post now")),
+
+    h("hr", { class: "sep" }),
+    h("h2", {}, "Paste several at once"),
+    h("p", { class: "mute small" }, "Separate items with a line of three dashes, or with a blank line. A line that is just a link, or starts with link:, becomes the source. To add a picture or voice note to a pasted item, tap Edit on it in the queue."),
     h("label", { class: "field" }, h("span", {}, "Paste items"), ta),
     h("label", { class: "check" }, chk, "First line of each item is the header"),
     h("div", { class: "dlg-acts", style: "margin-top:0" },
@@ -434,7 +624,7 @@ function viewAdd(org) {
       } }, "Add to queue"),
       h("button", { class: "btn ghost", onclick: () => file.click() }, "Upload a CSV")),
     file,
-    h("p", { class: "small mute", style: "margin-top:16px" }, "CSV columns: header, body, link. Items are saved on this device until you post or delete them.")
+    h("p", { class: "small mute", style: "margin-top:16px" }, "CSV columns: header, body, link. Items are saved on this device until you post or delete them. Pictures and voice notes are uploaded the moment you add them.")
   );
 }
 
@@ -444,6 +634,8 @@ function viewPosted(org) {
   return h("div", {}, done.map((it) => h("div", { class: "item" },
     it.header ? h("h3", {}, it.header) : null,
     it.body ? h("div", { class: "body" }, it.body) : null,
+    it.stickerUrl ? h("div", { class: "thumb" }, mediaThumb(it.stickerUrl)) : null,
+    it.audioUrl ? h("div", { class: "thumb" }, h("audio", { controls: true, src: it.audioUrl, preload: "none" })) : null,
     h("div", { class: "src" }, "Posted " + new Date(it.postedAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })),
     h("div", { class: "acts" },
       h("button", { class: "link", style: "color:var(--red)", onclick: () =>
@@ -472,7 +664,7 @@ function viewDesk() {
   root.append(
     h("div", { class: "orgs", role: "group", "aria-label": "Organisation" },
       state.orgs.map((o) => h("button", { class: "chip", "aria-pressed": String(o.id === state.orgId), onclick: async () => {
-        state.orgId = o.id; note(""); await refreshToday(); render();
+        stopActiveRec(); state.orgId = o.id; note(""); await refreshToday(); render();
       } }, h("span", { class: "dot", style: "background:" + (o.crest_color || "#D4AF37") }), o.name))),
     viewMeter(org)
   );
@@ -480,7 +672,7 @@ function viewDesk() {
   const nP = state.items.filter((i) => i.orgId === org.id && i.status === "posted").length;
   const tabs = [["queue", "Queue (" + nQ + ")"], ["add", "Add"], ["posted", "Posted (" + nP + ")"]];
   root.append(h("div", { class: "tabs", role: "tablist" },
-    tabs.map(([k, label]) => h("button", { class: "tab", role: "tab", "aria-selected": String(state.tab === k), onclick: () => { state.tab = k; note(""); render(); } }, label))));
+    tabs.map(([k, label]) => h("button", { class: "tab", role: "tab", "aria-selected": String(state.tab === k), onclick: () => { stopActiveRec(); state.tab = k; note(""); render(); } }, label))));
   if (state.notice) root.append(h("div", { class: "notice" + (state.notice.bad ? " bad" : ""), role: "status" }, state.notice.text));
   root.append(state.tab === "add" ? viewAdd(org) : state.tab === "posted" ? viewPosted(org) : viewQueue(org));
   return root;
