@@ -9807,20 +9807,21 @@ document.getElementById('sticker-picker-close').addEventListener('click', ()=>{
 /* ============================================================
    SHRINK STICKER -- animated pictures only, before they go to storage. Still pictures are left exactly as they are.
    An animated sticker (GIF / animated WebP / animated PNG) is redrawn smaller and lighter and saved as a GIF:
-     - longest side 220 px or less (stickers show at 150 px in feeds), about 9 frames a second, 96 colours
-     - 6 seconds at most (a longer one keeps its first 6 seconds)
-     - if it is still over about 350 KB it is tried again smaller (2 more levels, down to 150 px / 48 colours)
+     - longest side 220 px or less (stickers show at 150 px in feeds), about 16 frames a second, 128 colours, one shared palette
+     - 3 seconds at most (a longer one keeps its first 3 seconds)
+     - if it is still over about 350 KB it is tried again smaller (3 more levels, down to 150 px / 64 colours)
    It still plays on its own in feeds, like before; it is just a lot lighter to download.
    If this browser can't redraw animations (no ImageDecoder), a GIF up to 1 MB is uploaded as it is and a bigger
    one is refused with a friendly message. Any failure falls back to the original file, so shrinking never breaks an upload.
    ============================================================ */
-const STICKER_ANIM_MAX_MS = 6000;
-const STICKER_ANIM_TARGET_BYTES = 350 * 1024;
+const STICKER_ANIM_MAX_MS = 3000;               // shorter loop: 3 seconds at most
+const STICKER_ANIM_TARGET_BYTES = 400 * 1024;
 const STICKER_ANIM_PASSTHROUGH_BYTES = 1024 * 1024;
 const STICKER_ANIM_LEVELS = [                   // longest side, gap between kept frames (ms), colours
-  { side: 220, gap: 110, colors: 96 },
-  { side: 180, gap: 140, colors: 64 },
-  { side: 150, gap: 180, colors: 48 }
+  { side: 220, gap: 60,  colors: 128 },       // about 16 frames a second: smooth
+  { side: 200, gap: 70,  colors: 112 },
+  { side: 180, gap: 90,  colors: 96 },
+  { side: 150, gap: 110, colors: 64 }
 ];
 
 // Which kind of picture is this? Looks at the first bytes, not the file name.
@@ -9887,9 +9888,29 @@ async function encodeStickerGif(dec, frameCount, level){
   }
   if(!kept.length) return null;
   const gif = lib.GIFEncoder();
+  // One shared colour palette for the whole animation (when nothing is see-through). A separate palette per frame
+  // makes colours shimmer and flicker from frame to frame -- that was the "cracking" look.
+  let sharedPalette = null;
+  if(!kept.some(f => f.hasAlpha)){
+    const stride = Math.max(1, Math.floor(kept.length / 12));      // sample about 12 frames, every 3rd pixel
+    const parts = [];
+    for(let i = 0; i < kept.length; i += stride){
+      const d = kept[i].data, px = [];
+      for(let p = 0; p < d.length; p += 12){ px.push(d[p], d[p+1], d[p+2], d[p+3]); }
+      parts.push(Uint8Array.from(px));
+    }
+    let total = 0; parts.forEach(a => total += a.length);
+    const sample = new Uint8Array(total); let o = 0; parts.forEach(a => { sample.set(a, o); o += a.length; });
+    sharedPalette = lib.quantize(sample, level.colors);
+  }
+  let firstFrame = true;
   for(const f of kept){
     const delay = Math.max(20, Math.round(f.delay / 10) * 10);
-    if(f.hasAlpha){
+    if(sharedPalette){
+      const index = lib.applyPalette(f.data, sharedPalette);
+      gif.writeFrame(index, w, h, firstFrame ? { palette: sharedPalette, delay } : { delay });
+      firstFrame = false;
+    } else if(f.hasAlpha){
       const palette = lib.quantize(f.data, level.colors, { format: 'rgba4444', oneBitAlpha: true });
       const index = lib.applyPalette(f.data, palette, 'rgba4444');
       const ti = palette.findIndex(c => c.length > 3 && c[3] === 0);
