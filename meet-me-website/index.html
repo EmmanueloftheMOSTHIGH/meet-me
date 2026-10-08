@@ -7020,6 +7020,10 @@ document.addEventListener('click', (e)=>{
   }
 });
 
+document.addEventListener('click', (e)=>{
+  if(e.target.closest('#orgs-retry')){ orgsFeedLoadedAt = 0; ensureOrgs(true).then(()=> loadOrgsFeed(true)); }
+});
+
 function renderRantPost(post, userLiked, likeCount, inspirationLabels){
   const isCommunity = !!post.community_id;
   const isOrg = !isCommunity && !!post.organization_id;
@@ -7213,7 +7217,11 @@ async function renderOrgsFeed(){
     .range(0, ORGS_FEED_LIMIT - 1);
   if(error){
     console.error('Error loading organisation posts:', error);
-    if(!list.children.length) list.innerHTML = '<div class="orgs-note">Couldn\'t load organisations right now. Try again in a moment.</div>';
+    if(!list.children.length){
+      const why = String((error && (error.message || error.code)) || 'unknown error').slice(0, 140);
+      list.innerHTML = '<div class="orgs-note">Couldn\'t load organisations right now.<br><span class="orgs-note-btn" id="orgs-retry">Try again</span>'
+        + '<div style="font-size:10.5px; opacity:0.6; margin-top:10px; word-break:break-word;">' + escapeHtml(why) + '</div></div>';
+    }
     return;
   }
   await ensureOrgs();
@@ -10712,6 +10720,10 @@ function saveSnapshot(){
       let n = 0; const keep = [];
       for(const el of Array.from(orgsEl.children)){ if(el.classList.contains('post') && ++n > 20) break; keep.push(snapHtml(el)); }
       snap.orgs = keep.join(''); snap.orgsTs = Date.now();
+    } else if(orgsEl && orgsFeedLoadedAt){
+      // The page was loaded fresh and has no posts (the last one was deleted, or there are none): forget the saved copy,
+      // otherwise the old posts come back every time the app opens.
+      delete snap.orgs; delete snap.orgsTs;
     }
     let str = JSON.stringify(snap);
     if(str.length >= 1500000){ delete snap.orgs; str = JSON.stringify(snap); }
