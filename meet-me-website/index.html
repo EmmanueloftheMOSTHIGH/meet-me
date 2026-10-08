@@ -352,8 +352,8 @@
   #orgs-list{ display:flex; flex-direction:column; gap:14px; }
   .orgs-head{ display:flex; align-items:center; justify-content:space-between; padding:6px 2px 0; }
   .orgs-head-title{ font-family:'Fraunces',serif; font-size:19px; color:var(--ivory); }
-  .orgs-head-btn{ font-size:11.5px; color:var(--muted); border:1px solid var(--card-border); border-radius:12px; padding:5px 12px; cursor:pointer; }
-  .orgs-head-btn:active{ color:var(--gold-light); }
+  .orgs-head-btn{ font-size:12.5px; font-weight:600; color:var(--bg); background:var(--gold); border:1px solid transparent; border-radius:14px; padding:7px 16px; cursor:pointer; box-shadow:0 0 0 1px var(--gold-dim), 0 4px 14px rgba(212,168,87,0.22); transition:transform 0.12s ease, opacity 0.12s ease; }
+  .orgs-head-btn:active{ transform:scale(0.96); opacity:0.85; }
   .orgs-section{ font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted-dim); padding:4px 2px 0; }
   .orgs-note{ font-size:12.5px; line-height:1.5; color:var(--muted); background:rgba(0,0,0,0.25); border:1px solid var(--card-border); border-radius:12px; padding:12px 14px; }
   .orgs-note b{ display:block; color:var(--ivory); font-weight:600; margin-bottom:3px; }
