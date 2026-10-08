@@ -5792,8 +5792,13 @@ function videoPosterUrl(url){
 // element instead -- <img> can't render mp4/webm at all).
 // The .sticker-tap class + data-sticker-url is what the click delegate
 // below opens the full-size viewer.
-function stickerMediaTag(url, size, withSound){
+function stickerMediaTag(url, size, withSound, autoplay){
   size = size || 120;
+  if(isVideoStickerUrl(url) && autoplay){
+    // Rant feed only (for now): a silent looping video that plays while it is on screen. Tapping still opens the viewer.
+    // Organisation feed keeps the tap-to-play still picture until video moves to Cloudflare.
+    return `<span class="sticker-tap vid-poster" data-sticker-url="${escapeHtml(url)}" data-sticker-video="true"${withSound ? ' data-sticker-sound="true"' : ''} style="width:${size}px; height:${size}px;"><video class="feed-vid" src="${escapeHtml(url)}" poster="${escapeHtml(videoPosterUrl(url))}" muted loop playsinline preload="metadata" style="width:100%; height:100%; object-fit:contain; display:block;"></video></span>`;
+  }
   if(isVideoStickerUrl(url)){
     // withSound = organisation posts only. The feed copy stays a silent loop either way; the flag only tells the
     // full-size viewer that it may play this one with sound after a tap.
@@ -5803,11 +5808,11 @@ function stickerMediaTag(url, size, withSound){
   return `<img class="sticker-tap" data-sticker-url="${escapeHtml(url)}" src="${escapeHtml(url)}" style="width:${size}px; height:${size}px; object-fit:contain; display:block;">`;
 }
 
-function stickerHtml(stickerUrl, size, withSound){
+function stickerHtml(stickerUrl, size, withSound, autoplay){
   if(!stickerUrl) return '';
   const alreadyMine = myStickers.includes(stickerUrl);
   const saveBtn = alreadyMine ? '' : `<div class="post-action save-sticker-trigger" data-sticker-url="${escapeHtml(stickerUrl)}" style="margin-top:4px; font-size:10.5px; display:inline-block;">save sticker</div>`;
-  return `<div style="margin-bottom:8px;">${stickerMediaTag(stickerUrl, size, withSound)}<br>${saveBtn}</div>`;
+  return `<div style="margin-bottom:8px;">${stickerMediaTag(stickerUrl, size, withSound, autoplay)}<br>${saveBtn}</div>`;
 }
 
 // Builds the full body of a post -- sticker, voice note, and text can
@@ -5817,9 +5822,9 @@ function stickerHtml(stickerUrl, size, withSound){
 // full-width feeds (Rant/Spill/Your Posts/bookmarks). tapExpand adds
 // the .text-tap hook (currently unused) so tapping the text opens the larger, scrollable reading view --
 // see TEXT VIEWER below.
-function postBodyHtml(post, textClass, stickerSize, tapExpand, withSound){
+function postBodyHtml(post, textClass, stickerSize, tapExpand, withSound, autoplay){
   let parts = '';
-  if(post.sticker_url) parts += stickerHtml(post.sticker_url, stickerSize, withSound);
+  if(post.sticker_url) parts += stickerHtml(post.sticker_url, stickerSize, withSound, autoplay);
   if(post.audio_url) parts += voiceNoteHtml(post.audio_url, post.duration_seconds);
   if(post.content) parts += `<div class="${textClass}${tapExpand ? ' text-tap' : ''}">${escapeHtml(post.content)}</div>`;
   return parts;
@@ -5860,6 +5865,19 @@ function tutorialCardEl(space){
   }
   return el;
 }
+
+/* Rant feed video stickers: play only while at least half on screen, pause when scrolled away (saves battery and data). */
+const feedVidObs = ('IntersectionObserver' in window)
+  ? new IntersectionObserver(es => es.forEach(en => {
+      if(en.isIntersecting){ en.target.play().catch(()=>{}); } else { en.target.pause(); }
+    }), { threshold: 0.5 })
+  : null;
+new MutationObserver(() => {
+  document.querySelectorAll('video.feed-vid:not([data-obs])').forEach(v => {
+    v.dataset.obs = '1';
+    if(feedVidObs) feedVidObs.observe(v); else v.play().catch(()=>{});
+  });
+}).observe(document.body, { childList: true, subtree: true });
 
 /* ============================================================
    STICKER VIEWER — tapping any sticker (in a feed or the
@@ -7328,7 +7346,7 @@ document.addEventListener('click', async (e)=>{
   await loadOrgsFeed(true);
 });
 
-function renderRantPost(post, userLiked, likeCount, inspirationLabels){
+function renderRantPost(post, userLiked, likeCount, inspirationLabels, autoplayVid){
   const isCommunity = !!post.community_id;
   const isOrg = !isCommunity && !!post.organization_id;
   const isFounder = !isCommunity && !isOrg && !!post.as_founder;
@@ -7342,7 +7360,7 @@ function renderRantPost(post, userLiked, likeCount, inspirationLabels){
       ? org.name
       : (post.users?.meet_number || ('Meet ' + post.user_id.slice(0,6)));
   const vidLink = isOrg ? extractVideoLink(post.content) : null;   // organisation posts only
-  const bodyHtml = postBodyHtml(vidLink ? Object.assign({}, post, { content: vidLink.rest }) : post, 'post-body', 150, false, isOrg) + (vidLink ? videoLinkCardHtml(vidLink, post) : '');
+  const bodyHtml = postBodyHtml(vidLink ? Object.assign({}, post, { content: vidLink.rest }) : post, 'post-body', 150, false, isOrg, !!autoplayVid) + (vidLink ? videoLinkCardHtml(vidLink, post) : '');
   const inspiredLine = post.inspired_by_post_id && inspirationLabels[post.inspired_by_post_id]
     ? `<div class="post-action inspired-source-link" data-source-id="${post.inspired_by_post_id}" style="font-size:11px; color:var(--muted-dim); margin-bottom:8px;">↻ inspired by ${escapeHtml(inspirationLabels[post.inspired_by_post_id])}</div>` : '';
   const fresh = isOrg && (Date.now() - new Date(post.created_at).getTime() < ORG_FRESH_MS) && !orgSeenSet().has(String(post.id));
@@ -7417,7 +7435,7 @@ async function loadFeed(){
   feed.querySelectorAll('.post, #boundary-marker').forEach(el => el.remove());
   if(isNewAccount()) feed.appendChild(tutorialCardEl('rant'));
   posts.forEach(post => {
-    feed.appendChild(renderRantPost(post, likedIds.has(post.id), likeCounts[post.id] || 0, inspirationLabels));
+    feed.appendChild(renderRantPost(post, likedIds.has(post.id), likeCounts[post.id] || 0, inspirationLabels, true));
   });
 
   const boundary = document.createElement('div');
@@ -7469,7 +7487,7 @@ async function loadMoreFeed(){
     const feed = document.getElementById('feed');
     const boundaryEl = document.getElementById('boundary-marker');
     posts.forEach(post => {
-      feed.insertBefore(renderRantPost(post, likedIds.has(post.id), likeCounts[post.id] || 0, inspirationLabels), boundaryEl);
+      feed.insertBefore(renderRantPost(post, likedIds.has(post.id), likeCounts[post.id] || 0, inspirationLabels, true), boundaryEl);
     });
   }
   renderFeedBoundary();
@@ -8600,7 +8618,7 @@ async function ensureRantPostLoaded(post){
   const likeCounts = await fetchLikeCounts([post.id]);
   const inspirationLabels = await fetchInspirationLabels([post]);
   const boundary = document.getElementById('boundary-marker');
-  const cardEl = renderRantPost(post, userLiked, likeCounts[post.id] || 0, inspirationLabels);
+  const cardEl = renderRantPost(post, userLiked, likeCounts[post.id] || 0, inspirationLabels, true);
   cardEl.classList.add('nav-injected-post');
   feed.insertBefore(cardEl, feed.firstChild && feed.firstChild.id === 'feed-new-posts-banner' ? feed.firstChild.nextSibling : feed.firstChild);
 }
