@@ -1628,6 +1628,15 @@
   border:1px solid var(--card-border);
 }
 .account-choice.active{ background:rgba(212,168,87,0.14); color:var(--gold-light); border-color:var(--gold-dim); }
+/* Organisation picker inside "Start a community" -- only shown to people who own more than one organisation */
+#new-community-org-row{ display:none; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+#new-community-org-row.show{ display:flex; }
+.org-pick-chip{
+  display:flex; align-items:center; gap:7px; padding:8px 13px; border-radius:12px; font-size:13px; cursor:pointer;
+  color:var(--muted); background:var(--card); border:1px solid var(--card-border); max-width:100%;
+}
+.org-pick-chip .org-dot{ flex-shrink:0; }
+.org-pick-chip.active{ background:rgba(212,168,87,0.14); color:var(--gold-light); border-color:var(--gold-dim); }
 .account-input{
   width:100%; background:var(--card); border:1px solid var(--card-border);
   border-radius:10px; padding:12px 14px; color:var(--ivory);
@@ -2590,6 +2599,7 @@
     <div class="account-panel">
       <div class="account-title">Start a community</div>
       <div class="account-sub" id="new-community-for">Needs you plus 2 moderators before it's real and joinable.</div>
+      <div id="new-community-org-row"></div>
       <input id="new-community-name" class="account-input" type="text" placeholder="Community name">
       <input id="new-community-icon" class="account-input" type="text" placeholder="An emoji, e.g. 🌀" maxlength="4">
       <div class="account-choice-row">
@@ -4938,9 +4948,37 @@ function renderCommunitiesList(data){
 async function openNewCommunity(){
   await ensureOrgs();
   if(!myOrgs.length){ showNavToast('Only organisations can start communities.'); return; }
-  const who = myOrgs[0];
-  document.getElementById('new-community-for').textContent = 'This community will belong to ' + who.name + '. It needs you plus 2 moderators before it\u2019s real and joinable.';
+  // One organisation: it owns the community automatically. Two or more: pick which one.
+  if(!myOrgs.some(o => o.id === selectedNewCommunityOrgId)) selectedNewCommunityOrgId = myOrgs[0].id;
+  renderNewCommunityOrgPicker();
   document.getElementById('new-community-overlay').classList.add('show');
+}
+let selectedNewCommunityOrgId = null;
+function renderNewCommunityOrgPicker(){
+  const row = document.getElementById('new-community-org-row');
+  const sub = document.getElementById('new-community-for');
+  const who = myOrgs.find(o => o.id === selectedNewCommunityOrgId) || myOrgs[0];
+  row.innerHTML = '';
+  if(myOrgs.length > 1){
+    myOrgs.forEach(o => {
+      const info = orgInfo(o.id);
+      const chip = document.createElement('div');
+      chip.className = 'org-pick-chip' + (o.id === who.id ? ' active' : '');
+      const dot = document.createElement('span');
+      dot.className = 'org-dot';
+      dot.style.background = info.color; dot.style.marginRight = '0';
+      const label = document.createElement('span');
+      label.textContent = o.name;
+      chip.appendChild(dot); chip.appendChild(label);
+      chip.addEventListener('click', ()=>{ selectedNewCommunityOrgId = o.id; renderNewCommunityOrgPicker(); });
+      row.appendChild(chip);
+    });
+    row.classList.add('show');
+    sub.textContent = 'Choose which organisation this community belongs to. It needs you plus 2 moderators before it\u2019s real and joinable.';
+  } else {
+    row.classList.remove('show');
+    sub.textContent = 'This community will belong to ' + who.name + '. It needs you plus 2 moderators before it\u2019s real and joinable.';
+  }
 }
 
 async function loadCommunitiesList(){
@@ -5046,7 +5084,7 @@ document.getElementById('new-community-submit-btn').addEventListener('click', as
   await ensureOrgs();
   if(!myOrgs.length){ showNavToast('Only organisations can start communities.'); return; }
   const { data: newCommunity, error } = await sb.from('communities').insert({
-    name, icon: icon || '🌀', created_by: currentUserId, visibility: selectedNewCommunityVisibility, organization_id: myOrgs[0].id
+    name, icon: icon || '🌀', created_by: currentUserId, visibility: selectedNewCommunityVisibility, organization_id: (myOrgs.find(o => o.id === selectedNewCommunityOrgId) || myOrgs[0]).id
   }).select('id').single();
   if(error){
     toast.textContent = (error.code === '42501' || /row-level security/i.test(error.message || '')) ? 'Only organisations can start communities.' : 'Could not create community.';

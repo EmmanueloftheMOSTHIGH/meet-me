@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#000000">
+<title>Content desk</title>
+<style>
+:root{
+  --bg:#000;
+  --ink:#EFE6D2;
+  --mute:#8F8975;
+  --line:rgba(239,230,210,.16);
+  --gold:#D4AF37;
+  --red:#E5484D;
+  --green:#46B96B;
+  --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 var(--sans)}
+main{max-width:640px;margin:0 auto;padding:max(22px,env(safe-area-inset-top)) 18px 90px}
+h1{font:600 30px/1.1 var(--serif);margin:0;letter-spacing:.2px}
+h2{font:600 20px/1.2 var(--serif);margin:0 0 6px}
+p{margin:0 0 10px}
+.mute{color:var(--mute)}
+.small{font-size:14px}
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:22px}
+.who{font-size:14px;color:var(--mute);margin-top:4px}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer;background:none;border:0;padding:0}
+:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.link{color:var(--gold);text-decoration:underline;text-underline-offset:3px;min-height:44px;padding:0 4px}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:46px;padding:0 22px;border-radius:999px;background:var(--gold);color:#000;font-weight:600;box-shadow:0 0 18px rgba(212,175,55,.28)}
+.btn[disabled]{opacity:.4;box-shadow:none;cursor:default}
+.btn.ghost{background:none;color:var(--ink);border:1px solid var(--line);box-shadow:none}
+.btn.danger{background:var(--red);color:#fff;box-shadow:none}
+.field{display:block;margin-bottom:16px}
+.field span{display:block;font-size:14px;color:var(--mute);margin-bottom:6px}
+input[type=text],input[type=email],input[type=password],input[type=number],textarea{width:100%;background:none;border:1px solid var(--line);border-radius:10px;padding:12px 14px;min-height:46px}
+textarea{resize:vertical;line-height:1.45}
+input::placeholder,textarea::placeholder{color:rgba(143,137,117,.7)}
+.orgs{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin-bottom:18px;scrollbar-width:none}
+.orgs::-webkit-scrollbar{display:none}
+.chip{flex:none;display:flex;align-items:center;gap:8px;min-height:44px;padding:0 16px;border:1px solid var(--line);border-radius:999px;white-space:nowrap}
+.chip[aria-pressed=true]{border-color:var(--gold);background:rgba(212,175,55,.1)}
+.dot{width:10px;height:10px;border-radius:50%;flex:none}
+.meter{margin-bottom:22px}
+.ticks{display:flex;gap:4px;margin:8px 0 6px}
+.tick{flex:1;height:8px;border-radius:2px;background:var(--line)}
+.tick.on{background:var(--gold)}
+.bar{height:8px;border-radius:2px;background:var(--line);overflow:hidden;margin:8px 0 6px}
+.bar i{display:block;height:100%;background:var(--gold)}
+.tabs{display:flex;gap:22px;border-bottom:1px solid var(--line);margin-bottom:18px}
+.tab{min-height:46px;color:var(--mute);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab[aria-selected=true]{color:var(--ink);border-bottom-color:var(--gold)}
+.notice{border-left:3px solid var(--gold);padding:6px 12px;margin-bottom:16px;color:var(--ink)}
+.notice.bad{border-left-color:var(--red)}
+.batch{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+.batch input{width:76px;text-align:center}
+.item{padding:16px 0;border-bottom:1px solid var(--line)}
+.item h3{font:600 18px/1.3 var(--serif);margin:0 0 4px}
+.item .body{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:6px;white-space:pre-line}
+.item .src{font-size:14px;color:var(--mute);word-break:break-all}
+.item .err{font-size:14px;color:var(--red);margin-top:4px}
+.acts{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.acts .link{padding:0 10px 0 0}
+.empty{padding:28px 0;color:var(--mute)}
+.check{display:flex;align-items:center;gap:10px;min-height:44px;margin-bottom:12px}
+.check input{width:20px;height:20px;accent-color:#D4AF37}
+dialog{background:#000;color:var(--ink);border:1px solid var(--line);border-radius:18px;width:min(560px,calc(100vw - 24px));padding:20px}
+dialog::backdrop{background:rgba(0,0,0,.78)}
+.dlg-acts{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.count{float:right;font-size:13px}
+.count.over{color:var(--red)}
+.quote{border-left:2px solid var(--line);padding-left:12px;margin:10px 0 4px;color:var(--mute);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+@media (prefers-reduced-motion:no-preference){.btn{transition:transform .12s}.btn:active{transform:scale(.97)}}
+</style>
+</head>
+<body>
+<main id="app"></main>
+<dialog id="dlg"></dialog>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/* Meet Me content desk, version 1 (no scheduler).
+   Signs in as a normal Meet Me account and posts as an organisation that account owns.
+   The database enforces ownership, headers and the daily limit; this page only helps you fill the queue. */
+
+const SUPABASE_URL = "https://ixdgthkovlkhdfrnqyav.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml4ZGd0aGtvdmxraGRmcm5xeWF2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgxODM1MDIsImV4cCI6MjEwMzc1OTUwMn0.YWM40sBEVBB8_r1POB1ynnlVt4nrg7RdeMAn4aEISFA";
+const HEADER_MAX = 60;
+const GAP_MS = 1200;
+
+// A separate storage key, so signing in here never touches the app's own session on the same site.
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: { storageKey: "meetme-desk-auth", persistSession: true, autoRefreshToken: true }
+});
+
+const state = {
+  uid: null, meetNumber: "", orgs: [], orgId: null,
+  items: [], tab: "queue", today: 0, busy: false,
+  notice: null, draft: "", firstLineHeader: true, batch: 3, loginError: ""
+};
+
+const $app = document.getElementById("app");
+const $dlg = document.getElementById("dlg");
+
+/* ---------- helpers ---------- */
+function h(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === "class") e.className = v;
+    else if (k === "style") e.style.cssText = v;
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else if (v === true) e.setAttribute(k, "");
+    else if (v !== false && v != null) e.setAttribute(k, v);
+  }
+  for (const k of kids.flat(Infinity)) {
+    if (k == null || k === false) continue;
+    e.append(k.nodeType ? k : document.createTextNode(String(k)));
+  }
+  return e;
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const curOrg = () => state.orgs.find((o) => o.id === state.orgId) || null;
+const storeKey = () => "desk:v1:" + state.uid;
+function save() { try { localStorage.setItem(storeKey(), JSON.stringify(state.items)); } catch (e) {} }
+function load() {
+  try { state.items = JSON.parse(localStorage.getItem(storeKey()) || "[]"); } catch (e) { state.items = []; }
+}
+function host(link) { try { return new URL(link).hostname.replace(/^www\./, ""); } catch (e) { return link; } }
+function note(text, bad) { state.notice = text ? { text, bad: !!bad } : null; }
+
+function lagosDayStartISO() {
+  const day = new Date(Date.now() + 3600000).toISOString().slice(0, 10); // Lagos is UTC+1 all year
+  return new Date(day + "T00:00:00+01:00").toISOString();
+}
+
+function validate(it, org) {
+  if (!org) return "No organisation selected";
+  const header = (it.header || "").trim();
+  const link = (it.link || "").trim();
+  if (header.length > HEADER_MAX) return "Header is " + header.length + " characters, the limit is " + HEADER_MAX;
+  if (link && !/^https?:\/\/\S+$/i.test(link)) return "The link must start with http:// or https://";
+  if (org.type === "newscast") {
+    if (!header) return "News posts need a header";
+    if (!link) return "News posts need a source link";
+  } else if (!header && !(it.body || "").trim()) {
+    return "Add a header or a body";
+  }
+  return "";
+}
+function buildContent(it, org) {
+  const parts = [];
+  if ((it.body || "").trim()) parts.push(it.body.trim());
+  if ((it.link || "").trim()) parts.push((org.type === "newscast" ? "Source: " : "") + it.link.trim());
+  return parts.join("\n\n");
+}
+function friendly(msg) {
+  msg = msg || "";
+  if (/org_daily_limit/.test(msg)) return "Daily limit reached for this organisation";
+  if (/org_header_required/.test(msg)) return "News posts need a header";
+  if (/org_not_owner/.test(msg)) return "This account does not own that organisation";
+  if (/violates check constraint.*header/i.test(msg)) return "Header is longer than " + HEADER_MAX + " characters";
+  return msg;
+}
+
+/* ---------- parsing ---------- */
+function parsePaste(text, firstLineHeader) {
+  const t = text.replace(/\r\n?/g, "\n").trim();
+  if (!t) return [];
+  const chunks = /^\s*---\s*$/m.test(t) ? t.split(/^\s*---\s*$/m) : t.split(/\n\s*\n/);
+  const out = [];
+  for (const chunk of chunks) {
+    const lines = chunk.split("\n").map((l) => l.trim()).filter(Boolean);
+    if (!lines.length) continue;
+    let link = "";
+    const rest = [];
+    for (const l of lines) {
+      const m = l.match(/^(?:link|source|url)\s*:\s*(\S+)$/i);
+      if (m) link = m[1];
+      else if (/^https?:\/\/\S+$/i.test(l)) link = l;
+      else rest.push(l);
+    }
+    let header = "", body = "";
+    if (firstLineHeader) { header = rest[0] || ""; body = rest.slice(1).join("\n"); }
+    else body = rest.join("\n");
+    out.push({ header, body, link });
+  }
+  return out;
+}
+function parseCSV(text) {
+  const rows = []; let row = [], cur = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; }
+      else cur += c;
+    } else if (c === '"') q = true;
+    else if (c === ",") { row.push(cur); cur = ""; }
+    else if (c === "\n" || c === "\r") {
+      if (c === "\r" && text[i + 1] === "\n") i++;
+      row.push(cur); cur = ""; rows.push(row); row = [];
+    } else cur += c;
+  }
+  if (cur !== "" || row.length) { row.push(cur); rows.push(row); }
+  const clean = rows.filter((r) => r.some((x) => x.trim()));
+  if (!clean.length) return [];
+  const head = clean[0].map((x) => x.trim().toLowerCase());
+  const find = (names) => head.findIndex((x) => names.includes(x));
+  const iH = find(["header", "title", "headline"]);
+  const iB = find(["body", "text", "content", "summary"]);
+  const iL = find(["link", "url", "source"]);
+  if (iH < 0 && iB < 0) return [];
+  return clean.slice(1).map((r) => ({
+    header: (iH >= 0 ? r[iH] : "") || "",
+    body: (iB >= 0 ? r[iB] : "") || "",
+    link: (iL >= 0 ? r[iL] : "") || ""
+  }));
+}
+function addItems(list) {
+  const org = curOrg();
+  const seen = new Set(state.items.filter((i) => i.orgId === org.id).map((i) => key(i)));
+  let added = 0, skipped = 0;
+  for (const raw of list) {
+    const it = { id: crypto.randomUUID(), orgId: org.id, header: raw.header.trim(), body: raw.body.trim(), link: raw.link.trim(), status: "queued", error: "", postId: null, postedAt: null };
+    if (!it.header && !it.body && !it.link) continue;
+    if (seen.has(key(it))) { skipped++; continue; }
+    seen.add(key(it)); state.items.push(it); added++;
+  }
+  save();
+  return { added, skipped };
+}
+const key = (i) => [i.header, i.body, i.link].join("|").toLowerCase();
+
+/* ---------- data ---------- */
+async function refreshToday() {
+  const org = curOrg();
+  if (!org) { state.today = 0; return; }
+  const { count } = await sb.from("posts").select("id", { count: "exact", head: true })
+    .eq("organization_id", org.id).gte("created_at", lagosDayStartISO());
+  state.today = count || 0;
+}
+async function afterSignIn(session) {
+  state.uid = session.user.id;
+  const { data: me } = await sb.from("users").select("meet_number").eq("id", state.uid).maybeSingle();
+  state.meetNumber = me && me.meet_number ? me.meet_number : "";
+  const { data: orgs, error } = await sb.rpc("my_organizations");
+  state.orgs = error ? [] : (orgs || []);
+  state.orgId = state.orgs.length ? state.orgs[0].id : null;
+  load();
+  await refreshToday();
+  render();
+}
+async function signIn(email, pin) {
+  state.loginError = "";
+  const { data, error } = await sb.auth.signInWithPassword({ email, password: pin });
+  if (error || !data.session) { state.loginError = "That email and PIN did not work."; render(); return; }
+  await afterSignIn(data.session);
+}
+async function signOut() { await sb.auth.signOut(); state.uid = null; state.orgs = []; state.items = []; render(); }
+
+async function postItem(it) {
+  const org = state.orgs.find((o) => o.id === it.orgId);
+  const bad = validate(it, org);
+  if (bad) { it.error = bad; return { ok: false }; }
+  const { data, error } = await sb.from("posts").insert({
+    user_id: state.uid, organization_id: org.id,
+    content: buildContent(it, org), header: it.header.trim() || null, post_type: "rant"
+  }).select("id").single();
+  if (error) { it.error = friendly(error.message); return { ok: false, limit: /org_daily_limit/.test(error.message || "") }; }
+  it.status = "posted"; it.postId = data.id; it.postedAt = Date.now(); it.error = "";
+  return { ok: true };
+}
+async function postMany(list) {
+  state.busy = true; note(""); render();
+  let done = 0, hitLimit = false;
+  for (let i = 0; i < list.length; i++) {
+    const r = await postItem(list[i]);
+    save();
+    if (r.ok) done++;
+    note("Posting " + (i + 1) + " of " + list.length + "...");
+    render();
+    if (r.limit) { hitLimit = true; break; }
+    if (i < list.length - 1) await sleep(GAP_MS);
+  }
+  await refreshToday();
+  state.busy = false;
+  if (hitLimit) note("Posted " + done + ". The daily limit was reached, so the rest stay in the queue.", true);
+  else if (done < list.length) note("Posted " + done + " of " + list.length + ". Check the items marked in red.", true);
+  else note("Posted " + done + (done === 1 ? " item." : " items."));
+  render();
+}
+
+/* ---------- dialogs ---------- */
+function openEdit(it) {
+  const org = state.orgs.find((o) => o.id === it.orgId);
+  const f = {
+    header: h("input", { type: "text", value: it.header, maxlength: 200 }),
+    body: h("textarea", { rows: 5 }, it.body),
+    link: h("input", { type: "text", value: it.link, placeholder: "https://" })
+  };
+  const count = h("span", { class: "count mute" });
+  const upd = () => { const n = f.header.value.trim().length; count.textContent = n + "/" + HEADER_MAX; count.className = "count " + (n > HEADER_MAX ? "over" : "mute"); };
+  f.header.addEventListener("input", upd); upd();
+  $dlg.replaceChildren(
+    h("h2", {}, "Edit item"),
+    h("label", { class: "field" }, h("span", {}, "Header", count), f.header),
+    h("label", { class: "field" }, h("span", {}, org && org.type === "newscast" ? "One-line summary, in your own words" : "Body"), f.body),
+    h("label", { class: "field" }, h("span", {}, "Link"), f.link),
+    h("div", { class: "dlg-acts" },
+      h("button", { class: "btn", onclick: () => {
+        it.header = f.header.value.trim(); it.body = f.body.value.trim(); it.link = f.link.value.trim();
+        it.error = ""; save(); $dlg.close(); render();
+      } }, "Save changes"),
+      h("button", { class: "btn ghost", onclick: () => $dlg.close() }, "Cancel"))
+  );
+  $dlg.showModal();
+}
+function openConfirm(title, text, quote, yes, no, fn) {
+  $dlg.replaceChildren(
+    h("h2", {}, title),
+    text ? h("p", { class: "mute" }, text) : null,
+    quote ? h("div", { class: "quote" }, quote) : null,
+    h("div", { class: "dlg-acts" },
+      h("button", { class: "btn danger", onclick: async () => { $dlg.close(); await fn(); } }, yes),
+      h("button", { class: "btn ghost", onclick: () => $dlg.close() }, no))
+  );
+  $dlg.showModal();
+}
+const snippet = (it) => it.header || it.body || it.link;
+
+/* ---------- views ---------- */
+function viewLogin() {
+  const email = h("input", { type: "email", autocomplete: "username", required: true, placeholder: "you@example.com" });
+  const pin = h("input", { type: "password", autocomplete: "current-password", required: true, placeholder: "PIN" });
+  return h("div", {},
+    h("h1", {}, "Content desk"),
+    h("p", { class: "mute", style: "margin:6px 0 26px" }, "Sign in with your Meet Me account. Posts go out as the organisations that account owns."),
+    h("form", { onsubmit: (e) => { e.preventDefault(); signIn(email.value.trim(), pin.value); } },
+      h("label", { class: "field" }, h("span", {}, "Email"), email),
+      h("label", { class: "field" }, h("span", {}, "PIN"), pin),
+      state.loginError ? h("p", { style: "color:var(--red)" }, state.loginError) : null,
+      h("button", { class: "btn", type: "submit" }, "Sign in"))
+  );
+}
+
+function viewMeter(org) {
+  const limit = org.daily_post_limit;
+  const wrap = h("div", { class: "meter" });
+  if (limit && limit <= 24) {
+    wrap.append(h("div", { class: "ticks", "aria-hidden": "true" },
+      Array.from({ length: limit }, (_, i) => h("div", { class: "tick" + (i < state.today ? " on" : "") }))));
+  } else if (limit) {
+    wrap.append(h("div", { class: "bar", "aria-hidden": "true" }, h("i", { style: "width:" + Math.min(100, state.today / limit * 100) + "%" })));
+  }
+  wrap.append(h("div", { class: "small" },
+    limit ? "Posted today: " + state.today + " of " + limit : "Posted today: " + state.today + ", no daily limit on this organisation"));
+  return wrap;
+}
+
+function viewQueue(org) {
+  const mine = state.items.filter((i) => i.orgId === org.id && i.status !== "posted");
+  const valid = mine.filter((i) => !validate(i, org));
+  const remaining = org.daily_post_limit ? Math.max(0, org.daily_post_limit - state.today) : Infinity;
+  const n = Math.max(1, Math.min(state.batch, 20));
+  const will = Math.min(n, valid.length, remaining);
+  const root = h("div", {});
+
+  const num = h("input", { type: "number", min: 1, max: 20, value: n, "aria-label": "How many to post", onchange: (e) => { state.batch = Math.max(1, Math.min(20, parseInt(e.target.value, 10) || 1)); render(); } });
+  root.append(
+    h("div", { class: "batch" },
+      h("span", {}, "Post next"), num,
+      h("button", { class: "btn", disabled: state.busy || will < 1, onclick: () => postMany(valid.slice(0, will)) },
+        will < 1 ? (remaining === 0 ? "Daily limit reached" : "Nothing ready") : "Post " + will + " now")),
+    h("p", { class: "small mute", style: "margin:4px 0 12px" }, "Each post can notify followers, so small batches are kinder than one big drop.")
+  );
+
+  if (!mine.length) { root.append(h("div", { class: "empty" }, "The queue is empty. Add items to start.")); return root; }
+  for (const it of mine) {
+    const problem = validate(it, org);
+    root.append(h("div", { class: "item" },
+      it.header ? h("h3", {}, it.header) : null,
+      it.body ? h("div", { class: "body" }, it.body) : null,
+      it.link ? h("div", { class: "src" }, host(it.link)) : null,
+      (it.error || problem) ? h("div", { class: "err" }, it.error || problem) : null,
+      h("div", { class: "acts" },
+        h("button", { class: "link", disabled: state.busy || !!problem, onclick: () => postMany([it]) }, "Post now"),
+        h("button", { class: "link", disabled: state.busy, onclick: () => openEdit(it) }, "Edit"),
+        h("button", { class: "link", style: "color:var(--red)", disabled: state.busy, onclick: () =>
+          openConfirm("Delete this item?", "", snippet(it), "Delete item", "Keep it", () => {
+            state.items = state.items.filter((x) => x.id !== it.id); save(); render();
+          }) }, "Delete"))
+    ));
+  }
+  return root;
+}
+
+function viewAdd(org) {
+  const ta = h("textarea", { rows: 12, placeholder: "Header on the first line\nOne-line summary in your own words\nhttps://source-link\n---\nNext header\nNext summary\nhttps://link", oninput: (e) => { state.draft = e.target.value; } }, state.draft);
+  const chk = h("input", { type: "checkbox", checked: state.firstLineHeader, onchange: (e) => { state.firstLineHeader = e.target.checked; } });
+  const file = h("input", { type: "file", accept: ".csv,text/csv", style: "display:none", onchange: async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    const rows = parseCSV(await f.text());
+    if (!rows.length) { note("No rows found. The CSV needs a header row with columns named header, body and link.", true); render(); return; }
+    finish(addItems(rows));
+  } });
+  const finish = (r) => {
+    note("Added " + r.added + (r.added === 1 ? " item" : " items") + (r.skipped ? ", skipped " + r.skipped + " duplicates" : "") + ".");
+    if (r.added) { state.draft = ""; state.tab = "queue"; }
+    render();
+  };
+  return h("div", {},
+    h("p", { class: "mute small" }, "Separate items with a line of three dashes, or with a blank line. A line that is just a link, or starts with link:, becomes the source." +
+      (org.type === "newscast" ? " News items need a header and a source link." : "")),
+    h("label", { class: "field" }, h("span", {}, "Paste items"), ta),
+    h("label", { class: "check" }, chk, "First line of each item is the header"),
+    h("div", { class: "dlg-acts", style: "margin-top:0" },
+      h("button", { class: "btn", onclick: () => {
+        const rows = parsePaste(state.draft, state.firstLineHeader);
+        if (!rows.length) { note("Nothing to add yet.", true); render(); return; }
+        finish(addItems(rows));
+      } }, "Add to queue"),
+      h("button", { class: "btn ghost", onclick: () => file.click() }, "Upload a CSV")),
+    file,
+    h("p", { class: "small mute", style: "margin-top:16px" }, "CSV columns: header, body, link. Items are saved on this device until you post or delete them.")
+  );
+}
+
+function viewPosted(org) {
+  const done = state.items.filter((i) => i.orgId === org.id && i.status === "posted").sort((a, b) => b.postedAt - a.postedAt);
+  if (!done.length) return h("div", { class: "empty" }, "Nothing posted from the desk yet.");
+  return h("div", {}, done.map((it) => h("div", { class: "item" },
+    it.header ? h("h3", {}, it.header) : null,
+    it.body ? h("div", { class: "body" }, it.body) : null,
+    h("div", { class: "src" }, "Posted " + new Date(it.postedAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })),
+    h("div", { class: "acts" },
+      h("button", { class: "link", style: "color:var(--red)", onclick: () =>
+        openConfirm("Remove from the app?", "This deletes the live post. It cannot be undone.", snippet(it), "Remove post", "Keep it", async () => {
+          const { data, error } = await sb.from("posts").delete().eq("id", it.postId).select("id");
+          if (error || !data || !data.length) { note("Could not remove that post" + (error ? ": " + error.message : "."), true); }
+          else { state.items = state.items.filter((x) => x.id !== it.id); save(); await refreshToday(); note("Post removed."); }
+          render();
+        }) }, "Remove from app")))));
+}
+
+function viewDesk() {
+  const org = curOrg();
+  const root = h("div", {},
+    h("div", { class: "top" },
+      h("div", {}, h("h1", {}, "Content desk"), h("div", { class: "who" }, state.meetNumber ? "Signed in as " + state.meetNumber : "Signed in")),
+      h("button", { class: "link", onclick: signOut }, "Sign out"))
+  );
+  if (!org) {
+    root.append(h("p", {}, "This account does not own an organisation yet."),
+      h("p", { class: "mute small" }, "Create one and claim it with its invite code in the app, then reopen this page."));
+    return root;
+  }
+  root.append(
+    h("div", { class: "orgs", role: "group", "aria-label": "Organisation" },
+      state.orgs.map((o) => h("button", { class: "chip", "aria-pressed": String(o.id === state.orgId), onclick: async () => {
+        state.orgId = o.id; note(""); await refreshToday(); render();
+      } }, h("span", { class: "dot", style: "background:" + (o.crest_color || "#D4AF37") }), o.name))),
+    viewMeter(org)
+  );
+  const nQ = state.items.filter((i) => i.orgId === org.id && i.status !== "posted").length;
+  const nP = state.items.filter((i) => i.orgId === org.id && i.status === "posted").length;
+  const tabs = [["queue", "Queue (" + nQ + ")"], ["add", "Add"], ["posted", "Posted (" + nP + ")"]];
+  root.append(h("div", { class: "tabs", role: "tablist" },
+    tabs.map(([k, label]) => h("button", { class: "tab", role: "tab", "aria-selected": String(state.tab === k), onclick: () => { state.tab = k; note(""); render(); } }, label))));
+  if (state.notice) root.append(h("div", { class: "notice" + (state.notice.bad ? " bad" : ""), role: "status" }, state.notice.text));
+  root.append(state.tab === "add" ? viewAdd(org) : state.tab === "posted" ? viewPosted(org) : viewQueue(org));
+  return root;
+}
+
+function render() {
+  const y = window.scrollY;
+  $app.replaceChildren(state.uid ? viewDesk() : viewLogin());
+  window.scrollTo(0, y);
+}
+
+/* ---------- start ---------- */
+(async function init() {
+  const { data } = await sb.auth.getSession();
+  if (data.session) await afterSignIn(data.session); else render();
+})();
+</script>
+</body>
+</html>
