@@ -221,6 +221,11 @@
   .screen{ display:none; flex:1; flex-direction:column; min-height:0; }
   .screen.active{ display:flex; }
 
+  /* Rant <-> Spill swipe: the incoming side slides in a little from the direction you swiped */
+  @keyframes twinInFromRight{ from{ opacity:0; transform:translateX(28px); } to{ opacity:1; transform:translateX(0); } }
+  @keyframes twinInFromLeft{ from{ opacity:0; transform:translateX(-28px); } to{ opacity:1; transform:translateX(0); } }
+  .twin-slide-from-right{ animation:twinInFromRight .26s ease-out; }
+  .twin-slide-from-left{ animation:twinInFromLeft .26s ease-out; }
   #twin-toggle{ display:flex; margin:2px 20px 14px; background:var(--bg-elevated); border-radius:14px; padding:4px; flex-shrink:0; max-height:80px; overflow:hidden; transition:max-height .3s ease, opacity .25s ease, margin .3s ease, padding .3s ease; }
   .twin-btn{ flex:1; text-align:center; padding:9px 0; border-radius:11px; font-size:12.5px; letter-spacing:0.05em; text-transform:uppercase; color:var(--muted); cursor:pointer; transition:all 0.25s ease; }
   .twin-btn.active{ background:rgba(212,168,87,0.12); color:var(--gold-light); }
@@ -3774,6 +3779,64 @@ function setupSpillSwipes(){
     if (x < rect.width / 2) spillPrev(); else spillNext();
   });
 }
+
+/* ============================================================
+   SWIPE BETWEEN RANT AND SPILL
+   ------------------------------------------------------------
+   Rant  -> swipe left anywhere on the feed -> Spill
+   Spill -> swipe right, but NEVER from the cards: anything that starts
+   on the Spill card stack belongs to the card swipe and is ignored here.
+   Back to Rant from Spill: swipe the Rant/Spill toggle bar, or tap it.
+   ============================================================ */
+(function setupTwinSwipe(){
+  const twinScreen = document.getElementById('screen-twin');
+  if(!twinScreen) return;
+  const MIN_DX = 70;          // how far the finger must travel sideways
+  const MAX_MS = 700;         // slow drags don't count as swipes
+  let sx = 0, sy = 0, st = 0, startMode = null, tracking = false;
+
+  // Anything that scrolls sideways, plays media, or takes typing keeps its own gesture.
+  function blocked(target){
+    if(!target || !target.closest) return true;
+    if(target.closest('input, textarea, select, audio, video, .post-action, .like-btn, .sticker-tap, [data-noswipe]')) return true;
+    if(currentTwinMode === 'spill' && target.closest('#spill-stack')) return true; // card swiping stays card swiping
+    for(let el = target; el && el !== twinScreen; el = el.parentElement){
+      const ox = getComputedStyle(el).overflowX;
+      if((ox === 'auto' || ox === 'scroll') && el.scrollWidth > el.clientWidth + 2) return true;
+    }
+    return false;
+  }
+
+    twinScreen.addEventListener('touchstart', (e)=>{
+    tracking = false;
+    if(currentScreenKey !== 'twin' || e.touches.length !== 1) return;
+    if(blocked(e.target)) return;
+    sx = e.touches[0].clientX; sy = e.touches[0].clientY; st = Date.now();
+    startMode = currentTwinMode;
+    tracking = true;
+  }, { passive:true, capture:true });
+
+  twinScreen.addEventListener('touchend', (e)=>{
+    if(!tracking) return;
+    tracking = false;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - sx, dy = t.clientY - sy;
+    if(Date.now() - st > MAX_MS) return;
+    if(Math.abs(dx) < MIN_DX || Math.abs(dx) < Math.abs(dy) * 1.8) return; // must be clearly sideways, not a scroll
+    if(currentTwinMode !== startMode) return;
+
+    if(startMode === 'rant' && dx < 0){
+      setTwinMode('spill');
+      document.getElementById('spill-screen').classList.add('twin-slide-from-right');
+      setTimeout(()=>document.getElementById('spill-screen').classList.remove('twin-slide-from-right'), 320);
+    } else if(startMode === 'spill' && dx > 0){
+      setTwinMode('rant');
+      document.getElementById('feed').classList.add('twin-slide-from-left');
+      setTimeout(()=>document.getElementById('feed').classList.remove('twin-slide-from-left'), 320);
+    }
+  }, { passive:true });
+  twinScreen.addEventListener('touchcancel', ()=>{ tracking = false; }, { passive:true });
+})();
 
 /* ============================================================
    LIKES / REPLIES — delegated on feed
