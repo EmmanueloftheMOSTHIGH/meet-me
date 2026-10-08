@@ -2213,7 +2213,7 @@
       <div id="org-sheet-sub"></div>
       <div class="org-sheet-row" id="org-sheet-follow"><span>Follow</span><span class="org-state"></span></div>
       <div class="org-sheet-row" id="org-sheet-notify"><span>Notifications<small>Tell me when they post</small></span><span class="org-switch"></span></div>
-      <div class="org-sheet-row" id="org-sheet-mute"><span>Mute<small>Hide their posts from Rant</small></span><span class="org-state"></span></div>
+      <div class="org-sheet-row" id="org-sheet-mute"><span>Mute<small>Hide their posts from your Organisations page</small></span><span class="org-state"></span></div>
       <div id="org-sheet-close">close</div>
     </div>
   </div>
@@ -7166,8 +7166,9 @@ async function loadFeed(){
 
   const [likedIds, likeCounts, inspirationLabels] = await Promise.all([
     (async ()=>{
-      if(!currentUserId) return new Set();
-      const { data: likeRows } = await sb.from('likes').select('post_id').eq('user_id', currentUserId);
+      const ids = (posts || []).map(p => p.id);
+      if(!currentUserId || !ids.length) return new Set();
+      const { data: likeRows } = await sb.from('likes').select('post_id').eq('user_id', currentUserId).in('post_id', ids);
       return new Set((likeRows || []).map(l => l.post_id));
     })(),
     fetchLikeCounts((posts||[]).map(p => p.id)),
@@ -7302,8 +7303,9 @@ async function renderOrgsFeed(){
 
   const [likedIds, likeCounts, inspirationLabels] = await Promise.all([
     (async ()=>{
-      if(!currentUserId) return new Set();
-      const { data: likeRows } = await sb.from('likes').select('post_id').eq('user_id', currentUserId);
+      const ids = rows.map(p => p.id);
+      if(!currentUserId || !ids.length) return new Set();
+      const { data: likeRows } = await sb.from('likes').select('post_id').eq('user_id', currentUserId).in('post_id', ids);
       return new Set((likeRows || []).map(l => l.post_id));
     })(),
     fetchLikeCounts(rows.map(p => p.id)),
@@ -7634,8 +7636,8 @@ async function renderSpills(spills){
   }
 
   let likedIds = new Set();
-  if(currentUserId){
-    const { data: likeRows } = await sb.from('likes').select('post_id').eq('user_id', currentUserId);
+  if(currentUserId && spills.length){
+    const { data: likeRows } = await sb.from('likes').select('post_id').eq('user_id', currentUserId).in('post_id', spills.map(sp => sp.id));
     likedIds = new Set((likeRows || []).map(l => l.post_id));
   }
   const inspirationLabels = await fetchInspirationLabels(spills);
