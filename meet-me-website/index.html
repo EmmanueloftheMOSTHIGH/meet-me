@@ -823,6 +823,30 @@
     color:var(--muted-dim); padding:10px; cursor:pointer;
   }
 
+  /* In-app confirmation sheet (replaces the browser's own pop-up) */
+  #confirm-overlay{
+    position:absolute; inset:0; background:rgba(6,6,7,0.78); z-index:300;
+    display:flex; align-items:flex-end; opacity:0; pointer-events:none; transition:opacity 0.22s ease;
+  }
+  #confirm-overlay.show{ opacity:1; pointer-events:auto; }
+  #confirm-panel{
+    width:100%; background:var(--bg-elevated); border-radius:20px 20px 0 0;
+    padding:24px 20px 26px; transform:translateY(18px); transition:transform 0.25s ease;
+    border-top:1px solid var(--card-border);
+  }
+  #confirm-overlay.show #confirm-panel{ transform:translateY(0); }
+  #confirm-title{ font-family:'Fraunces',serif; font-size:18px; color:var(--ivory); margin-bottom:6px; }
+  #confirm-msg{ font-size:13px; line-height:1.55; color:var(--muted); margin-bottom:20px; }
+  #confirm-msg:empty{ display:none; }
+  #confirm-actions{ display:flex; gap:10px; }
+  .confirm-btn{
+    flex:1; text-align:center; padding:13px 10px; border-radius:14px; font-size:14px; cursor:pointer;
+    border:1px solid var(--card-border); color:var(--ivory); user-select:none; -webkit-tap-highlight-color:transparent;
+  }
+  .confirm-btn:active{ opacity:0.7; }
+  #confirm-ok{ border-color:var(--gold-dim); color:var(--gold-light); }
+  #confirm-ok.danger{ border-color:#c9302c; color:#e8746c; background:rgba(201,48,44,0.08); }
+
   /* Insights sheet (organisation owners only) */
   #org-insights-overlay{
     position:absolute; inset:0; background:rgba(6,6,7,0.75); z-index:78;
@@ -2160,6 +2184,17 @@
       <div id="org-list-sub">Newscasts, creators and groups that broadcast here. Follow or mute them.</div>
       <div id="org-list-body"></div>
       <div id="org-list-close">close</div>
+    </div>
+  </div>
+
+  <div id="confirm-overlay">
+    <div id="confirm-panel">
+      <div id="confirm-title"></div>
+      <div id="confirm-msg"></div>
+      <div id="confirm-actions">
+        <div class="confirm-btn" id="confirm-cancel">Cancel</div>
+        <div class="confirm-btn" id="confirm-ok">OK</div>
+      </div>
     </div>
   </div>
 
@@ -4035,7 +4070,7 @@ document.getElementById('sheet-send-founder-msg').addEventListener('click', asyn
 
 document.getElementById('action-sheet-block').addEventListener('click', async ()=>{
   if(!activeReceiverId) return;
-  if(!confirm("Block this person? They won't be able to reach you, and you won't see each other's posts.")) return;
+  if(!(await askConfirm({ title:'Block this person?', message:"They won't be able to reach you, and you won't see each other's posts.", okText:'Block', danger:true }))) return;
   closeActionSheet();
   await blockUser(activeReceiverId);
 });
@@ -5445,6 +5480,30 @@ async function unfriendUser(otherUserId){
   toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 2200);
 }
 
+/* In-app replacement for window.confirm(): resolves true on OK, false on Cancel, tap outside, or the phone's Back button. */
+let confirmResolve = null;
+function askConfirm({ title, message = '', okText = 'OK', cancelText = 'Cancel', danger = false }){
+  return new Promise(resolve => {
+    if(confirmResolve) confirmResolve(false);
+    confirmResolve = resolve;
+    document.getElementById('confirm-title').textContent = title;
+    document.getElementById('confirm-msg').textContent = message;
+    const ok = document.getElementById('confirm-ok');
+    ok.textContent = okText;
+    ok.classList.toggle('danger', !!danger);
+    document.getElementById('confirm-cancel').textContent = cancelText;
+    document.getElementById('confirm-overlay').classList.add('show');
+  });
+}
+function closeConfirm(result){
+  document.getElementById('confirm-overlay').classList.remove('show');
+  const r = confirmResolve; confirmResolve = null;
+  if(r) r(result);
+}
+document.getElementById('confirm-ok').addEventListener('click', ()=> closeConfirm(true));
+document.getElementById('confirm-cancel').addEventListener('click', ()=> closeConfirm(false));
+document.getElementById('confirm-overlay').addEventListener('click', (e)=>{ if(e.target.id === 'confirm-overlay') closeConfirm(false); });
+
 // Deleting a post that is already gone (deleted elsewhere, or only still showing from the saved copy of the page)
 // is a success, not an error: take it off the screen and refresh the saved copy so it can't come back.
 async function deletePostRow(postId){
@@ -5460,7 +5519,7 @@ document.addEventListener('click', async (e)=>{
   const deleteBtn = e.target.closest('.delete-post-trigger');
   if(deleteBtn){
     e.stopPropagation();
-    if(!confirm('Delete this post? This can\'t be undone.')) return;
+    if(!(await askConfirm({ title:'Delete this post?', message:'This can\'t be undone.', okText:'Delete', danger:true }))) return;
     const postId = deleteBtn.dataset.postId;
     const res = await deletePostRow(postId);
     if(!res.ok){ console.error('Delete post failed:', res.error); showNavToast('Couldn\'t delete that post.'); return; }
@@ -5488,7 +5547,7 @@ document.addEventListener('click', async (e)=>{
     timer = setTimeout(async ()=>{
       timer = null; fired = true;
       if(navigator.vibrate) navigator.vibrate(30);
-      if(!confirm('Delete this post as admin? This can\'t be undone.')) return;
+      if(!(await askConfirm({ title:'Delete this post as admin?', message:'This can\'t be undone.', okText:'Delete', danger:true }))) return;
       const res = await deletePostRow(postEl.dataset.postId);
       if(!res.ok){ console.error('Admin delete failed:', res.error); showNavToast('Couldn\'t delete that post.'); return; }
       if(res.already) showNavToast('That post was already deleted.');
@@ -7201,6 +7260,7 @@ async function loadMoreFeed(){
 const ORGS_FEED_LIMIT = 40;
 const ORGS_FEED_STALE_MS = 45 * 1000;
 const ORGS_MIN_FOR_FULL_PAGE = 3;
+const ORGS_STALE_MS = 24 * 60 * 60 * 1000;   // nothing new from organisations for a day counts as stale
 let orgsFeedLoadedAt = 0;
 let orgsFeedLoading = null;
 
@@ -7265,9 +7325,12 @@ async function renderOrgsFeed(){
     addPosts(rows);
   }
 
-  if(rows.length < ORGS_MIN_FOR_FULL_PAGE){
-    note((rows.length ? '' : '<b>No organisation posts yet.</b>') + 'Organisations are just getting started here. Rant is where people are talking right now.<br><span class="orgs-note-btn" id="orgs-open-rant">Open Rant</span>');
-  }
+  const orgsStale = rows.length >= ORGS_MIN_FOR_FULL_PAGE && (Date.now() - new Date(rows[0].created_at).getTime() > ORGS_STALE_MS);
+  // The Open Rant card always closes the page. When organisations are thin or stale it also says so.
+  const orgsThin = rows.length < ORGS_MIN_FOR_FULL_PAGE;
+  note((rows.length ? '' : '<b>No organisation posts yet.</b>')
+    + (orgsThin ? 'Organisations are just getting started here. ' : (orgsStale ? 'Nothing new from organisations today. ' : ''))
+    + 'Rant is where people are talking right now.<br><span class="orgs-note-btn" id="orgs-open-rant">Open Rant</span>');
 
   const orgsScroller = document.getElementById('orgs-feed');
   const keepScroll = orgsScroller.scrollTop;
@@ -8970,7 +9033,7 @@ document.getElementById('chat-thread-input').addEventListener('keydown', (e)=>{ 
 
 document.getElementById('chat-thread-unfriend').addEventListener('click', async ()=>{
   if(!currentChatOtherUserId) return;
-  if(!confirm('Unfriend this person? Your chat history goes with it.')) return;
+  if(!(await askConfirm({ title:'Unfriend this person?', message:'Your chat history goes with it.', okText:'Unfriend', danger:true }))) return;
   const otherId = currentChatOtherUserId;
   closeChatThread();
   await unfriendUser(otherId);
@@ -8978,7 +9041,7 @@ document.getElementById('chat-thread-unfriend').addEventListener('click', async 
 });
 document.getElementById('chat-thread-block').addEventListener('click', async ()=>{
   if(!currentChatOtherUserId) return;
-  if(!confirm("Block this person? They won't be able to reach you, and you won't see each other's posts.")) return;
+  if(!(await askConfirm({ title:'Block this person?', message:"They won't be able to reach you, and you won't see each other's posts.", okText:'Block', danger:true }))) return;
   const otherId = currentChatOtherUserId;
   closeChatThread();
   await blockUser(otherId);
@@ -9450,11 +9513,12 @@ async function removeMySticker(url){
   myStickers = myStickers.filter(u => u !== url);
   renderStickerPicker();
 }
-document.getElementById('sticker-picker-grid').addEventListener('click', (e)=>{
+document.getElementById('sticker-picker-grid').addEventListener('click', async (e)=>{
   const removeBtn = e.target.closest('.sticker-tile-remove');
   if(!removeBtn) return;
   e.stopPropagation();
-  if(confirm('Remove this sticker from your collection?')) removeMySticker(removeBtn.dataset.stickerUrl);
+  const url = removeBtn.dataset.stickerUrl;
+  if(await askConfirm({ title:'Remove this sticker?', message:'It will be taken out of your collection.', okText:'Remove', danger:true })) removeMySticker(url);
 });
 
 document.getElementById('compose-sticker-btn').addEventListener('click', async ()=>{
@@ -11506,7 +11570,7 @@ const BACK_LAYERS = [
   ['door-admin-overlay','door-admin-close'], ['moment-admin-overlay','moment-admin-close'],
   ['admin-code-overlay','admin-code-close'], ['admin-dashboard-overlay','admin-dashboard-close'], ['daily-visitors-overlay','daily-visitors-close'],
   ['community-invite-overlay','community-invite-close'], ['new-community-overlay','new-community-close'],
-  ['org-sheet-overlay','org-sheet-close'], ['org-list-overlay','org-list-close'], ['org-insights-overlay','org-insights-close'], ['notif-overlay','notif-close'],
+  ['org-sheet-overlay','org-sheet-close'], ['org-list-overlay','org-list-close'], ['org-insights-overlay','org-insights-close'], ['confirm-overlay','confirm-cancel'], ['notif-overlay','notif-close'],
   ['watch-screen','watch-close'], ['stand-screen','stand-close'],   // video response, then the stand on top of it: phone Back closes these instead of leaving the app
   ['moment', null], ['crisis-overlay','crisis-close'], ['anon-review-overlay','anon-review-close'], ['anon-report-overlay','anon-report-close'],
   ['anon-replies-overlay','anon-replies-close'], ['anon-reply-overlay','anon-reply-close'], ['anon-overlay','anon-back'],
