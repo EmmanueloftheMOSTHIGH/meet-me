@@ -2479,7 +2479,9 @@
       <div id="compose-voice-row" style="display:flex; align-items:center; gap:10px; margin:-6px 0 14px;">
         <div id="compose-mic-btn" title="Record a voice note" style="width:38px; height:38px; border-radius:50%; background:var(--card); border:1px solid var(--card-border); display:flex; align-items:center; justify-content:center; font-size:15px; cursor:pointer; flex-shrink:0; color:var(--gold-dim);">🎙</div>
         <div id="compose-sticker-btn" title="Add a sticker" style="width:38px; height:38px; border-radius:50%; background:var(--card); border:1px solid var(--card-border); display:flex; align-items:center; justify-content:center; font-size:15px; cursor:pointer; flex-shrink:0; color:var(--gold-dim);">🏷</div>
-        <div id="compose-voice-status" style="font-size:12px; color:var(--muted-dim); flex:1;">or add a sticker or voice note</div>
+        <div id="compose-video-btn" title="Add a video" style="display:none; width:38px; height:38px; border-radius:50%; background:var(--card); border:1px solid var(--card-border); align-items:center; justify-content:center; font-size:15px; cursor:pointer; flex-shrink:0; color:var(--gold-dim);">🎬</div>
+        <input type="file" id="compose-video-input" accept="video/webm,video/mp4" style="display:none;">
+        <div id="compose-voice-status" style="font-size:12px; color:var(--muted-dim); flex:1;">or add a sticker, video or voice note</div>
         <div id="compose-voice-preview-play" style="display:none; width:32px; height:32px; border-radius:50%; background:var(--gold-dim); align-items:center; justify-content:center; font-size:11px; color:var(--bg); cursor:pointer; flex-shrink:0;">▶</div>
         <div id="compose-voice-discard" style="display:none; font-size:11px; color:var(--muted-dim); text-decoration:underline; cursor:pointer; flex-shrink:0;">discard</div>
       </div>
@@ -2512,7 +2514,7 @@
       <div class="account-title">Your stickers</div>
       <div class="account-sub">Tap one to use it, or add a new one.</div>
       <div id="sticker-picker-grid" style="display:grid; grid-template-columns:repeat(4,1fr); gap:10px; max-height:280px; overflow-y:auto; margin-bottom:14px;"></div>
-      <input type="file" id="sticker-upload-input" accept="image/png,image/webp,image/jpeg,image/gif,video/webm,video/mp4" style="display:none;">
+      <input type="file" id="sticker-upload-input" accept="image/png,image/webp,image/jpeg,image/gif" style="display:none;">
       <div class="account-btn primary" id="sticker-upload-btn">+ Upload a sticker</div>
       <div class="account-close" id="sticker-picker-close">close</div>
     </div>
@@ -9491,6 +9493,7 @@ function closeComposeOverlay(){
 }
 function discardSticker(){
   selectedStickerUrl = null;
+  document.getElementById('compose-sticker-remove').textContent = 'remove sticker';
   document.getElementById('compose-sticker-preview-row').style.display = 'none';
   document.getElementById('compose-sticker-preview-media').innerHTML = '';
 }
@@ -9765,6 +9768,7 @@ function renderStickerPicker(){
         return;
       }
       selectedStickerUrl = url;
+      document.getElementById('compose-sticker-remove').textContent = 'remove sticker';
       document.getElementById('compose-sticker-preview-media').innerHTML = stickerMediaTag(url, 56);
       document.getElementById('compose-sticker-preview-row').style.display = 'flex';
       document.getElementById('sticker-picker-overlay').classList.remove('show');
@@ -10141,7 +10145,7 @@ async function prepareVideoForUpload(file){
 
 /* CLOUDFLARE R2 STICKER UPLOADS: files go through the meetme-upload Worker into the meetme-media bucket (no download fees).
    Fill in STICKER_UPLOAD_WORKER with your Worker's address once it is deployed. */
-const STICKER_UPLOAD_WORKER = 'https://meetme-upload.YOUR-SUBDOMAIN.workers.dev';
+const STICKER_UPLOAD_WORKER = 'https://meetme-upload.abolainemmanuel.workers.dev';
 const R2_PUBLIC_BASE = 'https://pub-941936d2e1bf410197360e797162615a.r2.dev';
 async function uploadStickerFile(path, blob){
   try{
@@ -10159,11 +10163,8 @@ async function uploadStickerFile(path, blob){
 }
 
 document.getElementById('sticker-upload-btn').addEventListener('click', async ()=>{
-  // Video stickers are for organisation owners only (the database enforces it too). Everyone else is offered pictures only.
-  await ensureOrgs();
-  document.getElementById('sticker-upload-input').accept = myOrgs.length
-    ? 'image/png,image/webp,image/jpeg,image/gif,video/webm,video/mp4'
-    : 'image/png,image/webp,image/jpeg,image/gif';
+  // The sticker picker is for pictures only. Video has its own button in the compose box.
+  document.getElementById('sticker-upload-input').accept = 'image/png,image/webp,image/jpeg,image/gif';
   document.getElementById('sticker-upload-input').click();
 });
 document.getElementById('sticker-upload-input').addEventListener('change', async (e)=>{
@@ -10225,6 +10226,46 @@ document.getElementById('sticker-upload-input').addEventListener('change', async
   renderStickerPicker();
 });
 document.getElementById('compose-sticker-remove').addEventListener('click', discardSticker);
+
+/* ---------- compose: VIDEO (its own button, separate from stickers) ---------- */
+// Same rules as before: organisation owners only, 30 seconds max, trim + shrink on the phone.
+// The finished video attaches to this post directly. It is NOT added to the person's sticker collection.
+async function refreshComposeVideoBtn(){
+  const b = document.getElementById('compose-video-btn');
+  try{ await ensureOrgs(); }catch(e){}
+  b.style.display = (typeof myOrgs !== 'undefined' && myOrgs.length) ? 'flex' : 'none';
+}
+new MutationObserver(()=>{
+  if(document.getElementById('compose-overlay').classList.contains('show')) refreshComposeVideoBtn();
+}).observe(document.getElementById('compose-overlay'), { attributes:true, attributeFilter:['class'] });
+document.getElementById('compose-video-btn').addEventListener('click', ()=>{
+  document.getElementById('compose-video-input').click();
+});
+document.getElementById('compose-video-input').addEventListener('change', async (e)=>{
+  const file0 = e.target.files[0];
+  e.target.value = '';
+  if(!file0 || !currentUserId) return;
+  const flash = (t, ms)=>{ toast.textContent = t; toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), ms || 3000); };
+  await ensureOrgs();
+  if(!myOrgs.length){ flash('Only organisations can upload videos.'); return; }
+  const r = await prepareVideoForUpload(file0);
+  if(r.cancelled) return;
+  if(r.error){ flash(r.error, 3200); return; }
+  const file = r.file, posterBlob = r.poster || null;
+  const stamp = Date.now();
+  const ext = (file.type === 'video/webm' && !/\.webm$/i.test(file.name)) ? 'webm' : (file.name.split('.').pop() || 'webm');
+  const up = await uploadStickerFile(`${currentUserId}/${stamp}.${ext}`, file);
+  if(up.error){
+    console.error('Video upload failed:', up.error);
+    flash(/organisation/i.test(up.error) ? 'Only organisations can upload videos.' : 'Could not upload video.', 2400);
+    return;
+  }
+  if(posterBlob) await uploadStickerFile(`${currentUserId}/${stamp}-poster.jpg`, posterBlob);
+  selectedStickerUrl = up.url;   // posts store video in the same media column stickers use
+  document.getElementById('compose-sticker-preview-media').innerHTML = stickerMediaTag(up.url, 56);
+  document.getElementById('compose-sticker-remove').textContent = 'remove video';
+  document.getElementById('compose-sticker-preview-row').style.display = 'flex';
+});
 
 // Lets anyone save a sticker they see on a post into their OWN
 // collection -- the "steal it because it's beautiful" mechanic, minus

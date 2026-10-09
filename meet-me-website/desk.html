@@ -320,7 +320,8 @@ async function postMany(list) {
 
 /* ---------- media (pictures, stickers, voice notes) ---------- */
 // Same buckets and columns the app itself uses: "stickers" -> posts.sticker_url, "voice-notes" -> posts.audio_url.
-const STICKER_ACCEPT = "image/png,image/webp,image/jpeg,image/gif,video/webm,video/mp4";
+const STICKER_ACCEPT = "image/png,image/webp,image/jpeg,image/gif";
+const VIDEO_ACCEPT = "video/webm,video/mp4";
 const REC_MAX_SECONDS = 300;
 let activeRec = null;
 const fmt = (n) => Math.floor(n / 60) + ":" + String(n % 60).padStart(2, "0");
@@ -528,8 +529,21 @@ async function prepareVideoForUpload(file, onProgress) {
   }
 }
 
+// Pictures and videos ("stickers") go to Cloudflare R2 through the meetme-upload Worker. Voice notes still go to Supabase.
+const STICKER_UPLOAD_WORKER = "https://meetme-upload.abolainemmanuel.workers.dev";
+async function uploadToR2(path, blob) {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) throw new Error("Not signed in");
+  const res = await fetch(STICKER_UPLOAD_WORKER + "/?path=" + encodeURIComponent(path), {
+    method: "PUT", headers: { Authorization: "Bearer " + session.access_token }, body: blob
+  });
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(out.error || ("Upload failed (" + res.status + ")"));
+  return out.url;
+}
 async function uploadMedia(bucket, blob, ext, type, name) {
   const path = state.uid + "/" + (name || Date.now()) + "." + ext;
+  if (bucket === "stickers") return uploadToR2(path, blob);
   // cacheControl = one year, so a phone that has seen this file once never downloads it again
   const { error } = await sb.storage.from(bucket).upload(path, blob, { contentType: type, cacheControl: "31536000" });
   if (error) throw error;
@@ -560,18 +574,27 @@ function mediaEditor(m, onChange) {
     busy = true; say("Uploading picture..."); draw();
     try {
       let small, posterBlob = null;
-      if (f.type.startsWith("video/")) {
-        // Videos: 30 seconds at most. Longer ones open the trimmer so the front and back can be cut.
-        const r = await prepareVideoForUpload(f, (t) => say(t));
-        if (r.cancelled) { say(""); busy = false; draw(); return; }
-        if (r.error) { say(r.error, true); busy = false; draw(); return; }
-        small = r.file; posterBlob = r.poster || null; say("Uploading video...");
-      } else { small = await shrinkPhoto(f); }
+      small = await shrinkPhoto(f);
+      const stamp = Date.now();
+      m.stickerUrl = await uploadMedia("stickers", small, small === f ? extFor(f, "png") : "jpg", small.type || f.type, stamp);
+      say("");
+    } catch (err) { failed(err); }
+    busy = false; fire();
+  } });
+  const videoIn = h("input", { type: "file", accept: VIDEO_ACCEPT, style: "display:none", onchange: async (e) => {
+    const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+    busy = true; say("Checking video..."); draw();
+    try {
+      const r = await prepareVideoForUpload(f, (t) => say(t));
+      if (r.cancelled) { say(""); busy = false; draw(); return; }
+      if (r.error) { say(r.error, true); busy = false; draw(); return; }
+      say("Uploading video...");
+      const small = r.file, posterBlob = r.poster || null;
       const isNewVid = small !== f && small.type === "video/webm";
       const stamp = Date.now();
-      m.stickerUrl = await uploadMedia("stickers", small, isNewVid ? "webm" : small === f ? extFor(f, "png") : "jpg", small.type || f.type, stamp);
-      if (posterBlob) {   // the still picture lives next to the video; if it fails the video still works
-        try { await uploadMedia("stickers", posterBlob, "jpg", "image/jpeg", stamp + "-poster"); } catch (e) { console.warn("Poster upload failed", e); }
+      m.stickerUrl = await uploadMedia("stickers", small, isNewVid ? "webm" : extFor(f, "mp4"), small.type || f.type, stamp);
+      if (posterBlob) {
+        try { await uploadMedia("stickers", posterBlob, "jpg", "image/jpeg", stamp + "-poster"); } catch (er) { console.warn("Poster upload failed", er); }
       }
       say("");
     } catch (err) { failed(err); }
@@ -625,15 +648,16 @@ function mediaEditor(m, onChange) {
     const recording = !!(activeRec && activeRec.owner === box);
     box.replaceChildren(
       m.stickerUrl ? h("div", { class: "thumb" }, mediaThumb(m.stickerUrl),
-        h("button", { class: "link", type: "button", style: "color:var(--red)", disabled: busy, onclick: () => { m.stickerUrl = ""; fire(); } }, "Remove picture")) : null,
+        h("button", { class: "link", type: "button", style: "color:var(--red)", disabled: busy, onclick: () => { m.stickerUrl = ""; fire(); } }, "Remove picture or video")) : null,
       m.audioUrl ? h("div", { class: "thumb" }, h("audio", { controls: true, src: m.audioUrl, preload: "metadata" }),
         h("span", { class: "small mute" }, fmt(m.audioDur || 0)),
         h("button", { class: "link", type: "button", style: "color:var(--red)", disabled: busy, onclick: () => { m.audioUrl = ""; m.audioDur = 0; fire(); } }, "Remove voice note")) : null,
       h("div", { class: "media" },
         !m.stickerUrl ? h("button", { class: "btn ghost", type: "button", disabled: busy || recording, onclick: () => pictureIn.click() }, "Add picture or sticker") : null,
+        !m.stickerUrl ? h("button", { class: "btn ghost", type: "button", disabled: busy || recording, onclick: () => videoIn.click() }, "Add video") : null,
         !m.audioUrl ? h("button", { class: "btn ghost", type: "button", disabled: busy, onclick: toggleRec }, recording ? "Stop recording" : "Record voice note") : null,
         !m.audioUrl && !recording ? h("button", { class: "btn ghost", type: "button", disabled: busy, onclick: () => audioIn.click() }, "Upload audio file") : null),
-      status, pictureIn, audioIn);
+      status, pictureIn, videoIn, audioIn);
   }
   box.isBusy = () => busy || !!(activeRec && activeRec.owner === box);
   draw();
