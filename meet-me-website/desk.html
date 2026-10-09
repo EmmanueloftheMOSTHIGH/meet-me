@@ -320,7 +320,7 @@ async function postMany(list) {
 
 /* ---------- media (pictures, stickers, voice notes) ---------- */
 // Same buckets and columns the app itself uses: "stickers" -> posts.sticker_url, "voice-notes" -> posts.audio_url.
-const STICKER_ACCEPT = "image/png,image/webp,image/jpeg,image/gif";
+const STICKER_ACCEPT = "image/*";
 const VIDEO_ACCEPT = "video/webm,video/mp4";
 const REC_MAX_SECONDS = 300;
 let activeRec = null;

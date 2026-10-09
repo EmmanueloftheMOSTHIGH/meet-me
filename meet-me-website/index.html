@@ -10170,8 +10170,9 @@ async function uploadStickerFile(path, blob){
 }
 
 document.getElementById('sticker-upload-btn').addEventListener('click', async ()=>{
-  // The sticker picker is for pictures only. Video has its own button in the compose box.
-  document.getElementById('sticker-upload-input').accept = 'image/png,image/webp,image/jpeg,image/gif';
+  // Pictures and animated pictures (GIF / WebP) for everyone. Videos too, for organisation owners (the Worker enforces it as well).
+  await ensureOrgs();
+  document.getElementById('sticker-upload-input').accept = myOrgs.length ? 'image/*,video/*' : 'image/*';
   document.getElementById('sticker-upload-input').click();
 });
 document.getElementById('sticker-upload-input').addEventListener('change', async (e)=>{
@@ -10179,6 +10180,11 @@ document.getElementById('sticker-upload-input').addEventListener('change', async
   e.target.value = '';
   if(!file || !currentUserId) return;
   let posterBlob = null;
+  if(!/^(image\/(png|jpeg|webp|gif)|video\/(mp4|webm))$/.test(file.type)){
+    toast.textContent = 'Use a PNG, JPG, GIF or WebP picture' + (file.type.startsWith('video/') ? ', or an MP4 / WebM video.' : '.');
+    toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 3200);
+    return;
+  }
   if(file.type.startsWith('video/')){
     await ensureOrgs();
     if(!myOrgs.length){
