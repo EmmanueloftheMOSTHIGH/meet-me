@@ -1014,7 +1014,7 @@
     object-fit:contain; border-radius:8px;
   }
   .sticker-tap{ cursor:pointer; }
-  /* Video stickers in feeds: a still picture with a golden play button. The video itself only loads when tapped (saves bandwidth). */
+  /* Video stickers in feeds: autoplay silent loop while on screen (poster picture shows first; golden play button only if the video is missing). */
   .vid-poster{ position:relative; display:block; background:#0b0b0b; border-radius:8px; overflow:hidden; }
   .vid-poster img{ width:100%; height:100%; object-fit:contain; display:block; }
   .vid-play{ position:absolute; left:50%; top:50%; width:44px; height:44px; margin:-22px 0 0 -22px; border-radius:50%;
@@ -5792,27 +5792,22 @@ function videoPosterUrl(url){
 // element instead -- <img> can't render mp4/webm at all).
 // The .sticker-tap class + data-sticker-url is what the click delegate
 // below opens the full-size viewer.
-function stickerMediaTag(url, size, withSound, autoplay){
+function stickerMediaTag(url, size, withSound){
   size = size || 120;
-  if(isVideoStickerUrl(url) && autoplay){
-    // Rant feed only (for now): a silent looping video that plays while it is on screen. Tapping still opens the viewer.
-    // Organisation feed keeps the tap-to-play still picture until video moves to Cloudflare.
-    return `<span class="sticker-tap vid-poster" data-sticker-url="${escapeHtml(url)}" data-sticker-video="true"${withSound ? ' data-sticker-sound="true"' : ''} style="width:${size}px; height:${size}px;"><video class="feed-vid" src="${escapeHtml(url)}" poster="${escapeHtml(videoPosterUrl(url))}" muted loop playsinline preload="metadata" style="width:100%; height:100%; object-fit:contain; display:block;"></video></span>`;
-  }
   if(isVideoStickerUrl(url)){
     // withSound = organisation posts only. The feed copy stays a silent loop either way; the flag only tells the
     // full-size viewer that it may play this one with sound after a tap.
     // Tap to play: only the small still picture loads in the feed. The video loads when the viewer opens.
-    return `<span class="sticker-tap vid-poster" data-sticker-url="${escapeHtml(url)}" data-sticker-video="true"${withSound ? ' data-sticker-sound="true"' : ''} style="width:${size}px; height:${size}px;"><img src="${escapeHtml(videoPosterUrl(url))}" alt="" loading="lazy" onerror="this.style.display='none'"><span class="vid-play${size < 90 ? ' sm' : ''}"></span></span>`;
+    return `<span class="sticker-tap vid-poster" data-sticker-url="${escapeHtml(url)}" data-sticker-video="true"${withSound ? ' data-sticker-sound="true"' : ''} style="width:${size}px; height:${size}px;"><img src="${escapeHtml(videoPosterUrl(url))}" alt="" loading="lazy" onerror="this.style.display='none'"><video class="vid-auto" data-src="${escapeHtml(url)}" muted loop playsinline preload="none" style="position:absolute; inset:0; width:100%; height:100%; object-fit:contain; pointer-events:none;"></video><span class="vid-play${size < 90 ? ' sm' : ''}" style="display:none"></span></span>`;
   }
   return `<img class="sticker-tap" data-sticker-url="${escapeHtml(url)}" src="${escapeHtml(url)}" style="width:${size}px; height:${size}px; object-fit:contain; display:block;">`;
 }
 
-function stickerHtml(stickerUrl, size, withSound, autoplay){
+function stickerHtml(stickerUrl, size, withSound){
   if(!stickerUrl) return '';
   const alreadyMine = myStickers.includes(stickerUrl);
   const saveBtn = alreadyMine ? '' : `<div class="post-action save-sticker-trigger" data-sticker-url="${escapeHtml(stickerUrl)}" style="margin-top:4px; font-size:10.5px; display:inline-block;">save sticker</div>`;
-  return `<div style="margin-bottom:8px;">${stickerMediaTag(stickerUrl, size, withSound, autoplay)}<br>${saveBtn}</div>`;
+  return `<div style="margin-bottom:8px;">${stickerMediaTag(stickerUrl, size, withSound)}<br>${saveBtn}</div>`;
 }
 
 // Builds the full body of a post -- sticker, voice note, and text can
@@ -5822,9 +5817,9 @@ function stickerHtml(stickerUrl, size, withSound, autoplay){
 // full-width feeds (Rant/Spill/Your Posts/bookmarks). tapExpand adds
 // the .text-tap hook (currently unused) so tapping the text opens the larger, scrollable reading view --
 // see TEXT VIEWER below.
-function postBodyHtml(post, textClass, stickerSize, tapExpand, withSound, autoplay){
+function postBodyHtml(post, textClass, stickerSize, tapExpand, withSound){
   let parts = '';
-  if(post.sticker_url) parts += stickerHtml(post.sticker_url, stickerSize, withSound, autoplay);
+  if(post.sticker_url) parts += stickerHtml(post.sticker_url, stickerSize, withSound);
   if(post.audio_url) parts += voiceNoteHtml(post.audio_url, post.duration_seconds);
   if(post.content) parts += `<div class="${textClass}${tapExpand ? ' text-tap' : ''}">${escapeHtml(post.content)}</div>`;
   return parts;
@@ -5866,19 +5861,6 @@ function tutorialCardEl(space){
   return el;
 }
 
-/* Rant feed video stickers: play only while at least half on screen, pause when scrolled away (saves battery and data). */
-const feedVidObs = ('IntersectionObserver' in window)
-  ? new IntersectionObserver(es => es.forEach(en => {
-      if(en.isIntersecting){ en.target.play().catch(()=>{}); } else { en.target.pause(); }
-    }), { threshold: 0.5 })
-  : null;
-new MutationObserver(() => {
-  document.querySelectorAll('video.feed-vid:not([data-obs])').forEach(v => {
-    v.dataset.obs = '1';
-    if(feedVidObs) feedVidObs.observe(v); else v.play().catch(()=>{});
-  });
-}).observe(document.body, { childList: true, subtree: true });
-
 /* ============================================================
    STICKER VIEWER — tapping any sticker (in a feed or the
    compose preview) opens it full-size over a dark backdrop.
@@ -5887,6 +5869,40 @@ new MutationObserver(() => {
    triggering whatever card-level handler it landed inside (Spill's
    swipe stack, in particular).
    ============================================================ */
+/* AUTOPLAY VIDEO STICKERS (feeds): silent loop that plays while on screen and pauses when scrolled away.
+   Files now live on Cloudflare R2 (no download fees), so this is free to leave on. Tapping still opens the full viewer. */
+const vidAutoIO = ('IntersectionObserver' in window) ? new IntersectionObserver((entries)=>{
+  entries.forEach(en=>{
+    const v = en.target;
+    if(en.isIntersecting){
+      if(!v.getAttribute('src')) v.src = v.dataset.src;
+      v.muted = true;
+      const p = v.play(); if(p && p.catch) p.catch(()=>{});
+    } else if(v.getAttribute('src')){
+      v.pause();
+    }
+  });
+}, { threshold: 0.35 }) : null;
+function wireVidAuto(v){
+  if(v._wired) return; v._wired = true;
+  v.addEventListener('error', ()=>{      // expired / missing video: fall back to the still picture with a play button
+    if(vidAutoIO) vidAutoIO.unobserve(v);
+    const box = v.parentElement; v.remove();
+    const pb = box && box.querySelector('.vid-play'); if(pb) pb.style.display = '';
+  });
+  v.addEventListener('playing', ()=>{ const pb = v.parentElement && v.parentElement.querySelector('.vid-play'); if(pb) pb.style.display = 'none'; });
+  if(vidAutoIO) vidAutoIO.observe(v);
+  else { const pb = v.parentElement.querySelector('.vid-play'); if(pb) pb.style.display = ''; }  // very old browser: keep tap-to-play
+}
+new MutationObserver((muts)=>{
+  muts.forEach(m=>m.addedNodes.forEach(n=>{
+    if(n.nodeType !== 1) return;
+    if(n.matches && n.matches('video.vid-auto')) wireVidAuto(n);
+    if(n.querySelectorAll) n.querySelectorAll('video.vid-auto').forEach(wireVidAuto);
+  }));
+}).observe(document.body, { childList:true, subtree:true });
+document.querySelectorAll('video.vid-auto').forEach(wireVidAuto);
+
 const stickerViewerOverlay = document.getElementById('sticker-viewer-overlay');
 const stickerViewerMediaWrap = document.getElementById('sticker-viewer-media-wrap');
 
@@ -7346,7 +7362,7 @@ document.addEventListener('click', async (e)=>{
   await loadOrgsFeed(true);
 });
 
-function renderRantPost(post, userLiked, likeCount, inspirationLabels, autoplayVid){
+function renderRantPost(post, userLiked, likeCount, inspirationLabels){
   const isCommunity = !!post.community_id;
   const isOrg = !isCommunity && !!post.organization_id;
   const isFounder = !isCommunity && !isOrg && !!post.as_founder;
@@ -7360,7 +7376,7 @@ function renderRantPost(post, userLiked, likeCount, inspirationLabels, autoplayV
       ? org.name
       : (post.users?.meet_number || ('Meet ' + post.user_id.slice(0,6)));
   const vidLink = isOrg ? extractVideoLink(post.content) : null;   // organisation posts only
-  const bodyHtml = postBodyHtml(vidLink ? Object.assign({}, post, { content: vidLink.rest }) : post, 'post-body', 150, false, isOrg, !!autoplayVid) + (vidLink ? videoLinkCardHtml(vidLink, post) : '');
+  const bodyHtml = postBodyHtml(vidLink ? Object.assign({}, post, { content: vidLink.rest }) : post, 'post-body', 150, false, isOrg) + (vidLink ? videoLinkCardHtml(vidLink, post) : '');
   const inspiredLine = post.inspired_by_post_id && inspirationLabels[post.inspired_by_post_id]
     ? `<div class="post-action inspired-source-link" data-source-id="${post.inspired_by_post_id}" style="font-size:11px; color:var(--muted-dim); margin-bottom:8px;">↻ inspired by ${escapeHtml(inspirationLabels[post.inspired_by_post_id])}</div>` : '';
   const fresh = isOrg && (Date.now() - new Date(post.created_at).getTime() < ORG_FRESH_MS) && !orgSeenSet().has(String(post.id));
@@ -7435,7 +7451,7 @@ async function loadFeed(){
   feed.querySelectorAll('.post, #boundary-marker').forEach(el => el.remove());
   if(isNewAccount()) feed.appendChild(tutorialCardEl('rant'));
   posts.forEach(post => {
-    feed.appendChild(renderRantPost(post, likedIds.has(post.id), likeCounts[post.id] || 0, inspirationLabels, true));
+    feed.appendChild(renderRantPost(post, likedIds.has(post.id), likeCounts[post.id] || 0, inspirationLabels));
   });
 
   const boundary = document.createElement('div');
@@ -7487,7 +7503,7 @@ async function loadMoreFeed(){
     const feed = document.getElementById('feed');
     const boundaryEl = document.getElementById('boundary-marker');
     posts.forEach(post => {
-      feed.insertBefore(renderRantPost(post, likedIds.has(post.id), likeCounts[post.id] || 0, inspirationLabels, true), boundaryEl);
+      feed.insertBefore(renderRantPost(post, likedIds.has(post.id), likeCounts[post.id] || 0, inspirationLabels), boundaryEl);
     });
   }
   renderFeedBoundary();
@@ -8618,7 +8634,7 @@ async function ensureRantPostLoaded(post){
   const likeCounts = await fetchLikeCounts([post.id]);
   const inspirationLabels = await fetchInspirationLabels([post]);
   const boundary = document.getElementById('boundary-marker');
-  const cardEl = renderRantPost(post, userLiked, likeCounts[post.id] || 0, inspirationLabels, true);
+  const cardEl = renderRantPost(post, userLiked, likeCounts[post.id] || 0, inspirationLabels);
   cardEl.classList.add('nav-injected-post');
   feed.insertBefore(cardEl, feed.firstChild && feed.firstChild.id === 'feed-new-posts-banner' ? feed.firstChild.nextSibling : feed.firstChild);
 }
@@ -9807,21 +9823,20 @@ document.getElementById('sticker-picker-close').addEventListener('click', ()=>{
 /* ============================================================
    SHRINK STICKER -- animated pictures only, before they go to storage. Still pictures are left exactly as they are.
    An animated sticker (GIF / animated WebP / animated PNG) is redrawn smaller and lighter and saved as a GIF:
-     - longest side 220 px or less (stickers show at 150 px in feeds), about 16 frames a second, 128 colours, one shared palette
-     - 3 seconds at most (a longer one keeps its first 3 seconds)
-     - if it is still over about 350 KB it is tried again smaller (3 more levels, down to 150 px / 64 colours)
+     - longest side 220 px or less (stickers show at 150 px in feeds), about 9 frames a second, 96 colours
+     - 6 seconds at most (a longer one keeps its first 6 seconds)
+     - if it is still over about 350 KB it is tried again smaller (2 more levels, down to 150 px / 48 colours)
    It still plays on its own in feeds, like before; it is just a lot lighter to download.
    If this browser can't redraw animations (no ImageDecoder), a GIF up to 1 MB is uploaded as it is and a bigger
    one is refused with a friendly message. Any failure falls back to the original file, so shrinking never breaks an upload.
    ============================================================ */
-const STICKER_ANIM_MAX_MS = 3000;               // shorter loop: 3 seconds at most
-const STICKER_ANIM_TARGET_BYTES = 400 * 1024;
+const STICKER_ANIM_MAX_MS = 6000;
+const STICKER_ANIM_TARGET_BYTES = 350 * 1024;
 const STICKER_ANIM_PASSTHROUGH_BYTES = 1024 * 1024;
 const STICKER_ANIM_LEVELS = [                   // longest side, gap between kept frames (ms), colours
-  { side: 220, gap: 60,  colors: 128 },       // about 16 frames a second: smooth
-  { side: 200, gap: 70,  colors: 112 },
-  { side: 180, gap: 90,  colors: 96 },
-  { side: 150, gap: 110, colors: 64 }
+  { side: 220, gap: 110, colors: 96 },
+  { side: 180, gap: 140, colors: 64 },
+  { side: 150, gap: 180, colors: 48 }
 ];
 
 // Which kind of picture is this? Looks at the first bytes, not the file name.
@@ -9888,29 +9903,9 @@ async function encodeStickerGif(dec, frameCount, level){
   }
   if(!kept.length) return null;
   const gif = lib.GIFEncoder();
-  // One shared colour palette for the whole animation (when nothing is see-through). A separate palette per frame
-  // makes colours shimmer and flicker from frame to frame -- that was the "cracking" look.
-  let sharedPalette = null;
-  if(!kept.some(f => f.hasAlpha)){
-    const stride = Math.max(1, Math.floor(kept.length / 12));      // sample about 12 frames, every 3rd pixel
-    const parts = [];
-    for(let i = 0; i < kept.length; i += stride){
-      const d = kept[i].data, px = [];
-      for(let p = 0; p < d.length; p += 12){ px.push(d[p], d[p+1], d[p+2], d[p+3]); }
-      parts.push(Uint8Array.from(px));
-    }
-    let total = 0; parts.forEach(a => total += a.length);
-    const sample = new Uint8Array(total); let o = 0; parts.forEach(a => { sample.set(a, o); o += a.length; });
-    sharedPalette = lib.quantize(sample, level.colors);
-  }
-  let firstFrame = true;
   for(const f of kept){
     const delay = Math.max(20, Math.round(f.delay / 10) * 10);
-    if(sharedPalette){
-      const index = lib.applyPalette(f.data, sharedPalette);
-      gif.writeFrame(index, w, h, firstFrame ? { palette: sharedPalette, delay } : { delay });
-      firstFrame = false;
-    } else if(f.hasAlpha){
+    if(f.hasAlpha){
       const palette = lib.quantize(f.data, level.colors, { format: 'rgba4444', oneBitAlpha: true });
       const index = lib.applyPalette(f.data, palette, 'rgba4444');
       const ti = palette.findIndex(c => c.length > 3 && c[3] === 0);
@@ -10144,6 +10139,25 @@ async function prepareVideoForUpload(file){
   }
 }
 
+/* CLOUDFLARE R2 STICKER UPLOADS: files go through the meetme-upload Worker into the meetme-media bucket (no download fees).
+   Fill in STICKER_UPLOAD_WORKER with your Worker's address once it is deployed. */
+const STICKER_UPLOAD_WORKER = 'https://meetme-upload.YOUR-SUBDOMAIN.workers.dev';
+const R2_PUBLIC_BASE = 'https://pub-941936d2e1bf410197360e797162615a.r2.dev';
+async function uploadStickerFile(path, blob){
+  try{
+    const { data: { session } } = await sb.auth.getSession();
+    if(!session) return { error: 'Not signed in' };
+    const res = await fetch(STICKER_UPLOAD_WORKER + '/?path=' + encodeURIComponent(path), {
+      method: 'PUT',
+      headers: { Authorization: 'Bearer ' + session.access_token },
+      body: blob
+    });
+    const out = await res.json().catch(()=>({}));
+    if(!res.ok) return { error: out.error || ('Upload failed (' + res.status + ')') };
+    return { url: out.url || (R2_PUBLIC_BASE + '/' + path) };
+  }catch(e){ return { error: e.message || 'Upload failed' }; }
+}
+
 document.getElementById('sticker-upload-btn').addEventListener('click', async ()=>{
   // Video stickers are for organisation owners only (the database enforces it too). Everyone else is offered pictures only.
   await ensureOrgs();
@@ -10195,18 +10209,17 @@ document.getElementById('sticker-upload-input').addEventListener('change', async
   const stamp = Date.now();
   const ext = forcedExt || (file.type === 'video/webm' && !/\.webm$/i.test(file.name) ? 'webm' : (file.name.split('.').pop() || 'png'));
   const path = `${currentUserId}/${stamp}.${ext}`;
-  // cacheControl = one year, so a phone that has seen this file once never downloads it again (saves egress)
-  const { error: uploadErr } = await sb.storage.from('stickers').upload(path, file, { contentType: file.type, cacheControl: '31536000' });
-  if(uploadErr){
-    console.error('Sticker upload failed:', uploadErr);
-    toast.textContent = 'Could not upload sticker.';
-    toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 2200);
+  const up = await uploadStickerFile(path, file);
+  if(up.error){
+    console.error('Sticker upload failed:', up.error);
+    toast.textContent = /organisation/i.test(up.error) ? 'Only organisations can upload videos.' : 'Could not upload sticker.';
+    toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 2400);
     return;
   }
   if(posterBlob){   // the still picture lives next to the video; if it fails the video still works
-    await sb.storage.from('stickers').upload(`${currentUserId}/${stamp}-poster.jpg`, posterBlob, { contentType: 'image/jpeg', cacheControl: '31536000' });
+    await uploadStickerFile(`${currentUserId}/${stamp}-poster.jpg`, posterBlob);
   }
-  const { data } = sb.storage.from('stickers').getPublicUrl(path);
+  const data = { publicUrl: up.url };
   await sb.from('user_stickers').insert({ user_id: currentUserId, image_url: data.publicUrl });
   await loadMyStickers();
   renderStickerPicker();
