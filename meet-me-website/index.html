@@ -993,6 +993,7 @@
     transition:opacity 0.25s ease;
   }
   #sticker-viewer-overlay.show{ opacity:1; pointer-events:auto; }
+  #sticker-viewer-overlay{ touch-action:none; }
   #sticker-viewer-close{
     position:absolute; top:max(18px, env(safe-area-inset-top)); right:18px;
     width:34px; height:34px; border-radius:50%;
@@ -5973,6 +5974,54 @@ document.addEventListener('click', (e)=>{
   }
   if(e.target === stickerViewerOverlay || e.target.closest('#sticker-viewer-close')) closeStickerViewer();
 });
+// SWIPE AWAY: drag the picture or video in any direction to close it (an alternative to the X).
+// The picture follows the finger and fades; far enough = closes, short drag = springs back. A plain tap is not a drag,
+// so tap-to-pause still works.
+(function(){
+  const wrap = stickerViewerMediaWrap, ov = stickerViewerOverlay;
+  const DRAG_START = 10, DISMISS_DIST = 90, DISMISS_SPEED = 0.6;   // px, px, px per ms
+  let sx = 0, sy = 0, st = 0, dragging = false, down = false, pid = null, suppressClick = false;
+  function resetStyles(){
+    wrap.style.transition = ''; wrap.style.transform = ''; ov.style.transition = ''; ov.style.opacity = '';
+  }
+  ov.addEventListener('pointerdown', (e)=>{
+    if(!ov.classList.contains('show')) return;
+    if(e.target.closest('#sticker-viewer-close, #sticker-viewer-mute')) return;
+    down = true; dragging = false; pid = e.pointerId; sx = e.clientX; sy = e.clientY; st = performance.now();
+    wrap.style.transition = 'none'; ov.style.transition = 'none';
+  });
+  ov.addEventListener('pointermove', (e)=>{
+    if(!down || e.pointerId !== pid) return;
+    const dx = e.clientX - sx, dy = e.clientY - sy, d = Math.hypot(dx, dy);
+    if(!dragging && d < DRAG_START) return;
+    if(!dragging){ dragging = true; try{ ov.setPointerCapture(pid); }catch(_){} }
+    wrap.style.transform = `translate(${dx}px, ${dy}px) scale(${Math.max(0.7, 1 - d / 900)})`;
+    ov.style.opacity = String(Math.max(0.15, 1 - d / 320));
+  });
+  function end(e){
+    if(!down || (e && e.pointerId !== pid)) return;
+    down = false;
+    if(!dragging) { resetStyles(); return; }
+    suppressClick = true; setTimeout(()=>{ suppressClick = false; }, 350);   // the lift-off must not count as a tap
+    const dx = e.clientX - sx, dy = e.clientY - sy, d = Math.hypot(dx, dy), speed = d / Math.max(1, performance.now() - st);
+    dragging = false;
+    try{ ov.releasePointerCapture(pid); }catch(_){}
+    if(e.type !== 'pointercancel' && (d > DISMISS_DIST || (speed > DISMISS_SPEED && d > 30))){
+      const k = 600 / Math.max(1, d);
+      wrap.style.transition = 'transform 0.18s ease'; ov.style.transition = 'opacity 0.18s ease';
+      wrap.style.transform = `translate(${dx * k}px, ${dy * k}px) scale(0.7)`; ov.style.opacity = '0';
+      setTimeout(()=>{ closeStickerViewer(); resetStyles(); }, 190);
+    } else {
+      wrap.style.transition = 'transform 0.2s ease'; ov.style.transition = 'opacity 0.2s ease';
+      wrap.style.transform = ''; ov.style.opacity = '';
+      setTimeout(resetStyles, 220);
+    }
+  }
+  ov.addEventListener('pointerup', end);
+  ov.addEventListener('pointercancel', end);
+  // capture phase: swallow the click that follows a drag so it neither pauses the video nor closes on the backdrop
+  ov.addEventListener('click', (e)=>{ if(suppressClick){ e.stopPropagation(); e.preventDefault(); } }, true);
+})();
 // Sound stops the moment the app goes to the background (or the phone is locked).
 document.addEventListener('visibilitychange', ()=>{ if(document.hidden) closeStickerViewer(); });
 
