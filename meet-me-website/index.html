@@ -1008,7 +1008,8 @@
     font-size:15px; cursor:pointer; z-index:1;
   }
   #sticker-viewer-mute.show{ display:flex; }
-  #sticker-viewer-media-wrap{ max-width:88vw; max-height:80vh; display:flex; }
+  #sticker-viewer-media-wrap{ max-width:88vw; max-height:80vh; display:flex; position:relative; }
+  #sticker-viewer-media-wrap video{ cursor:pointer; -webkit-tap-highlight-color:transparent; }
   #sticker-viewer-media-wrap img, #sticker-viewer-media-wrap video{
     max-width:88vw; max-height:80vh; width:auto; height:auto;
     object-fit:contain; border-radius:8px;
@@ -5921,10 +5922,22 @@ function watchViewerVideoExpired(){
     stickerViewerMediaWrap.innerHTML = '<div class="vid-expired">This video has expired.</div>';
   });
 }
+// One tap on a playing video pauses it (a gold play button shows); one more tap plays it again.
+const VIEWER_PAUSE_MARK = '<span class="vid-play" id="sticker-viewer-pausemark" style="display:none"></span>';
+function toggleViewerVideo(v){
+  const mark = document.getElementById('sticker-viewer-pausemark');
+  if(v.paused){
+    const p = v.play(); if(p && p.catch) p.catch(()=>{});
+    if(mark) mark.style.display = 'none';
+  } else {
+    v.pause();
+    if(mark) mark.style.display = '';
+  }
+}
 function openStickerViewer(url, isVideo, withSound){
   stickerViewerMute.classList.remove('show');
   if(isVideo && withSound){
-    stickerViewerMediaWrap.innerHTML = `<video src="${escapeHtml(url)}" loop playsinline></video>`;
+    stickerViewerMediaWrap.innerHTML = `<video src="${escapeHtml(url)}" loop playsinline></video>` + VIEWER_PAUSE_MARK;
     const v = stickerViewerMediaWrap.querySelector('video');
     v.muted = false;
     const p = v.play();
@@ -5933,7 +5946,7 @@ function openStickerViewer(url, isVideo, withSound){
     stickerViewerMute.classList.add('show');
   } else {
     stickerViewerMediaWrap.innerHTML = isVideo
-      ? `<video src="${escapeHtml(url)}" autoplay loop muted playsinline></video>`
+      ? `<video src="${escapeHtml(url)}" autoplay loop muted playsinline></video>` + VIEWER_PAUSE_MARK
       : `<img src="${escapeHtml(url)}">`;
   }
   watchViewerVideoExpired();
@@ -5945,6 +5958,8 @@ function closeStickerViewer(){
   stickerViewerMediaWrap.innerHTML = '';
 }
 document.addEventListener('click', (e)=>{
+  const viewerVideo = e.target.closest('#sticker-viewer-media-wrap video');
+  if(viewerVideo){ e.stopPropagation(); toggleViewerVideo(viewerVideo); return; }
   const media = e.target.closest('.sticker-tap');
   if(media){
     e.stopPropagation();
@@ -10154,19 +10169,43 @@ async function prepareVideoForUpload(file){
    Fill in STICKER_UPLOAD_WORKER with your Worker's address once it is deployed. */
 const STICKER_UPLOAD_WORKER = 'https://meetme-upload.abolainemmanuel.workers.dev';
 const R2_PUBLIC_BASE = 'https://pub-941936d2e1bf410197360e797162615a.r2.dev';
-async function uploadStickerFile(path, blob){
-  try{
-    const { data: { session } } = await sb.auth.getSession();
-    if(!session) return { error: 'Not signed in' };
-    const res = await fetch(STICKER_UPLOAD_WORKER + '/?path=' + encodeURIComponent(path), {
-      method: 'PUT',
-      headers: { Authorization: 'Bearer ' + session.access_token },
-      body: blob
-    });
-    const out = await res.json().catch(()=>({}));
-    if(!res.ok) return { error: out.error || ('Upload failed (' + res.status + ')') };
-    return { url: out.url || (R2_PUBLIC_BASE + '/' + path) };
-  }catch(e){ return { error: e.message || 'Upload failed' }; }
+// Shows one upload notice at a time. Pass ms to make it disappear on its own; leave it out to keep it up (e.g. while uploading).
+let _uploadNoticeTimer = null;
+function uploadNotice(text, ms){
+  clearTimeout(_uploadNoticeTimer);
+  toast.textContent = text; toast.classList.add('show');
+  if(ms) _uploadNoticeTimer = setTimeout(()=>toast.classList.remove('show'), ms);
+}
+// Returns a progress callback that keeps the notice up to date: "Uploading video… 45%"
+function uploadProgressNotice(label){
+  let last = -1;
+  return (pct)=>{
+    if(pct === last) return; last = pct;
+    uploadNotice(pct >= 100 ? 'Finishing ' + label + '…' : 'Uploading ' + label + '… ' + pct + '%');
+  };
+}
+function uploadStickerFile(path, blob, onProgress){
+  return new Promise(async (resolve)=>{
+    try{
+      const { data: { session } } = await sb.auth.getSession();
+      if(!session){ resolve({ error: 'Not signed in' }); return; }
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', STICKER_UPLOAD_WORKER + '/?path=' + encodeURIComponent(path));
+      xhr.setRequestHeader('Authorization', 'Bearer ' + session.access_token);
+      if(onProgress && xhr.upload){
+        xhr.upload.onprogress = (ev)=>{ if(ev.lengthComputable) onProgress(Math.round(ev.loaded / ev.total * 100)); };
+      }
+      xhr.onload = ()=>{
+        let out = {};
+        try{ out = JSON.parse(xhr.responseText); }catch(e){}
+        if(xhr.status < 200 || xhr.status >= 300){ resolve({ error: out.error || ('Upload failed (' + xhr.status + ')') }); return; }
+        resolve({ url: out.url || (R2_PUBLIC_BASE + '/' + path) });
+      };
+      xhr.onerror = ()=> resolve({ error: 'Upload failed' });
+      xhr.ontimeout = ()=> resolve({ error: 'Upload timed out' });
+      xhr.send(blob);
+    }catch(e){ resolve({ error: e.message || 'Upload failed' }); }
+  });
 }
 
 document.getElementById('sticker-upload-btn').addEventListener('click', async ()=>{
@@ -10223,18 +10262,22 @@ document.getElementById('sticker-upload-input').addEventListener('change', async
   const stamp = Date.now();
   const ext = forcedExt || (file.type === 'video/webm' && !/\.webm$/i.test(file.name) ? 'webm' : (file.name.split('.').pop() || 'png'));
   const path = `${currentUserId}/${stamp}.${ext}`;
-  const up = await uploadStickerFile(path, file);
+  const isVid = file.type.startsWith('video/');
+  const label = isVid ? 'video' : 'sticker';
+  uploadNotice('Uploading ' + label + '…');
+  const up = await uploadStickerFile(path, file, uploadProgressNotice(label));
   if(up.error){
     console.error('Sticker upload failed:', up.error);
-    toast.textContent = /organisation/i.test(up.error) ? 'Only organisations can upload videos.' : 'Could not upload sticker.';
-    toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 2400);
+    uploadNotice(/organisation/i.test(up.error) ? 'Only organisations can upload videos.' : 'Could not upload ' + label + '.', 3000);
     return;
   }
   if(posterBlob){   // the still picture lives next to the video; if it fails the video still works
     await uploadStickerFile(`${currentUserId}/${stamp}-poster.jpg`, posterBlob);
   }
   const data = { publicUrl: up.url };
-  await sb.from('user_stickers').insert({ user_id: currentUserId, image_url: data.publicUrl });
+  const { error: saveErr } = await sb.from('user_stickers').insert({ user_id: currentUserId, image_url: data.publicUrl });
+  if(saveErr){ console.error('Sticker save failed:', saveErr); uploadNotice('Uploaded, but could not add it to your stickers.', 3200); }
+  else uploadNotice((isVid ? 'Video' : 'Sticker') + ' uploaded ✓', 2600);
   await loadMyStickers();
   renderStickerPicker();
 });
@@ -10267,13 +10310,15 @@ document.getElementById('compose-video-input').addEventListener('change', async 
   const file = r.file, posterBlob = r.poster || null;
   const stamp = Date.now();
   const ext = (file.type === 'video/webm' && !/\.webm$/i.test(file.name)) ? 'webm' : (file.name.split('.').pop() || 'webm');
-  const up = await uploadStickerFile(`${currentUserId}/${stamp}.${ext}`, file);
+  uploadNotice('Uploading video…');
+  const up = await uploadStickerFile(`${currentUserId}/${stamp}.${ext}`, file, uploadProgressNotice('video'));
   if(up.error){
     console.error('Video upload failed:', up.error);
-    flash(/organisation/i.test(up.error) ? 'Only organisations can upload videos.' : 'Could not upload video.', 2400);
+    uploadNotice(/organisation/i.test(up.error) ? 'Only organisations can upload videos.' : 'Could not upload video.', 3000);
     return;
   }
   if(posterBlob) await uploadStickerFile(`${currentUserId}/${stamp}-poster.jpg`, posterBlob);
+  uploadNotice('Video uploaded ✓', 2600);
   selectedStickerUrl = up.url;   // posts store video in the same media column stickers use
   document.getElementById('compose-sticker-preview-media').innerHTML = stickerMediaTag(up.url, 56);
   document.getElementById('compose-sticker-remove').textContent = 'remove video';
