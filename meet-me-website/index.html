@@ -9834,13 +9834,14 @@ document.getElementById('sticker-picker-close').addEventListener('click', ()=>{
    If this browser can't redraw animations (no ImageDecoder), a GIF up to 1 MB is uploaded as it is and a bigger
    one is refused with a friendly message. Any failure falls back to the original file, so shrinking never breaks an upload.
    ============================================================ */
-const STICKER_ANIM_MAX_MS = 6000;
-const STICKER_ANIM_TARGET_BYTES = 350 * 1024;
-const STICKER_ANIM_PASSTHROUGH_BYTES = 1024 * 1024;
+const STICKER_ANIM_MAX_MS = 8000;
+const STICKER_ANIM_KEEP_ORIGINAL_BYTES = 4 * 1024 * 1024;   // an animation up to 4 MB is uploaded exactly as it is: full smoothness and colour
+const STICKER_ANIM_TARGET_BYTES = 2 * 1024 * 1024;
+const STICKER_ANIM_PASSTHROUGH_BYTES = 6 * 1024 * 1024;
 const STICKER_ANIM_LEVELS = [                   // longest side, gap between kept frames (ms), colours
-  { side: 220, gap: 110, colors: 96 },
-  { side: 180, gap: 140, colors: 64 },
-  { side: 150, gap: 180, colors: 48 }
+  { side: 360, gap: 40, colors: 256 },
+  { side: 300, gap: 60, colors: 200 },
+  { side: 240, gap: 80, colors: 128 }
 ];
 
 // Which kind of picture is this? Looks at the first bytes, not the file name.
@@ -9954,6 +9955,7 @@ async function shrinkAnimatedSticker(file){
 async function prepareStickerImage(file){
   let kind = 'still';
   try{ kind = await sniffStickerKind(file); }catch(e){}
+  if(kind === 'animated' && file.size <= STICKER_ANIM_KEEP_ORIGINAL_BYTES) return { file };   // small enough: keep the original untouched
   return kind === 'animated' ? await shrinkAnimatedSticker(file) : { file };   // pictures stay as they are
 }
 
@@ -9968,10 +9970,10 @@ async function prepareStickerImage(file){
    uploaded only if it is already small, otherwise the person is asked for a smaller one.
    ============================================================ */
 const VIDEO_MAX_SECONDS = 30;
-const VIDEO_SKIP_BYTES  = 700 * 1024;        // already this small: no need to re-record
-const VIDEO_FALLBACK_MAX_BYTES = 3 * 1024 * 1024;
-const VIDEO_MAX_W = 480, VIDEO_MAX_H = 640;
-const VIDEO_BITS = 450000, AUDIO_BITS = 48000;
+const VIDEO_SKIP_BYTES  = 30 * 1024 * 1024;   // Cloudflare has no download fees, so an untrimmed clip up to 30 MB is uploaded exactly as it was filmed (instant, smooth, original sound)
+const VIDEO_FALLBACK_MAX_BYTES = 30 * 1024 * 1024;
+const VIDEO_MAX_W = 720, VIDEO_MAX_H = 960;   // only used by the fallback path (browsers that can't capture the video directly)
+const VIDEO_BITS = 3000000, AUDIO_BITS = 128000;   // only used when a long clip is trimmed (it has to be re-recorded)
 
 function showShrinkToast(text){
   toast.textContent = text; toast.classList.add('show');
@@ -10093,7 +10095,12 @@ async function prepareVideoForUpload(file){
     const w = Math.max(2, Math.round(v.videoWidth * scale / 2) * 2), h = Math.max(2, Math.round(v.videoHeight * scale / 2) * 2);
     const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
     const g = canvas.getContext('2d');
-    const tracks = canvas.captureStream(24).getTracks();
+    // Best path: take the picture track straight from the player (keeps the real frame rate and quality).
+    // Fallback: redraw onto a canvas.
+    let directV = [];
+    try{ const cs = v.captureStream ? v.captureStream() : (v.mozCaptureStream ? v.mozCaptureStream() : null); if(cs) directV = cs.getVideoTracks(); }catch(e){}
+    const useCanvas = !directV.length;
+    const tracks = useCanvas ? canvas.captureStream(30).getTracks() : [...directV];
     let ctx = null;
     try{
       const AC = window.AudioContext || window.webkitAudioContext;
@@ -10111,7 +10118,7 @@ async function prepareVideoForUpload(file){
     const done = new Promise(res => { rec.onstop = res; });
 
     let raf = 0, stopped = false;
-    const draw = ()=>{ g.drawImage(v, 0, 0, w, h); if(trimmed && v.currentTime >= endT){ finish(); return; } if(!stopped) raf = requestAnimationFrame(draw); };
+    const draw = ()=>{ if(useCanvas) g.drawImage(v, 0, 0, w, h); if(trimmed && v.currentTime >= endT){ finish(); return; } if(!stopped) raf = requestAnimationFrame(draw); };
     const finish = ()=>{ if(stopped) return; stopped = true; cancelAnimationFrame(raf); if(rec.state !== 'inactive') rec.stop(); };
     v.onended = finish;
     const safety = setTimeout(finish, (clipLen + 5) * 1000);

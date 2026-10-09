@@ -368,10 +368,10 @@ async function shrinkPhoto(file) {
 }
 /* ---------- video: 30 seconds at most, trim front and back, shrink (same rules as the Meet Me app) ---------- */
 const VIDEO_MAX_SECONDS = 30;
-const VIDEO_SKIP_BYTES = 700 * 1024;            // already this small and not trimmed: upload as it is
-const VIDEO_FALLBACK_MAX_BYTES = 3 * 1024 * 1024;
-const VIDEO_MAX_W = 480, VIDEO_MAX_H = 640;
-const VIDEO_BITS = 450000, AUDIO_BITS = 48000;
+const VIDEO_SKIP_BYTES = 30 * 1024 * 1024;     // untrimmed clip up to 30 MB: upload exactly as filmed (instant, smooth, original sound)
+const VIDEO_FALLBACK_MAX_BYTES = 30 * 1024 * 1024;
+const VIDEO_MAX_W = 720, VIDEO_MAX_H = 960;
+const VIDEO_BITS = 3000000, AUDIO_BITS = 128000;
 
 // A small still picture of the first moment of the kept part. Feeds show this instead of the video.
 async function captureVideoPoster(v, atTime) {
@@ -481,7 +481,10 @@ async function prepareVideoForUpload(file, onProgress) {
     const w = Math.max(2, Math.round(v.videoWidth * scale / 2) * 2), hh = Math.max(2, Math.round(v.videoHeight * scale / 2) * 2);
     const canvas = document.createElement("canvas"); canvas.width = w; canvas.height = hh;
     const g = canvas.getContext("2d");
-    const tracks = canvas.captureStream(24).getTracks();
+    let directV = [];
+    try { const cs = v.captureStream ? v.captureStream() : (v.mozCaptureStream ? v.mozCaptureStream() : null); if (cs) directV = cs.getVideoTracks(); } catch (e) {}
+    const useCanvas = !directV.length;
+    const tracks = useCanvas ? canvas.captureStream(30).getTracks() : [...directV];
     let ctx = null;
     try {
       const AC = window.AudioContext || window.webkitAudioContext;
@@ -500,7 +503,7 @@ async function prepareVideoForUpload(file, onProgress) {
 
     let raf = 0, stopped = false;
     const finish = () => { if (stopped) return; stopped = true; cancelAnimationFrame(raf); if (rec.state !== "inactive") rec.stop(); };
-    const draw = () => { g.drawImage(v, 0, 0, w, hh); if (trimmed && v.currentTime >= endT) { finish(); return; } if (!stopped) raf = requestAnimationFrame(draw); };
+    const draw = () => { if (useCanvas) g.drawImage(v, 0, 0, w, hh); if (trimmed && v.currentTime >= endT) { finish(); return; } if (!stopped) raf = requestAnimationFrame(draw); };
     v.onended = finish;
     const safety = setTimeout(finish, (clipLen + 5) * 1000);
     const tick = setInterval(() => { say("Preparing video... " + Math.max(0, Math.min(99, Math.round((v.currentTime - startT) / clipLen * 100))) + "%"); }, 400);
