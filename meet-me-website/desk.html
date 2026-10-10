@@ -139,6 +139,18 @@ function h(tag, attrs, ...kids) {
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const curOrg = () => state.orgs.find((o) => o.id === state.orgId) || null;
+/* Most recently opened organisation comes first in the chip row (remembered on this device). */
+const recentKey = () => "desk:recent:" + state.uid;
+function getRecent() { try { return JSON.parse(localStorage.getItem(recentKey()) || "[]"); } catch (e) { return []; } }
+function markRecent(id) {
+  const r = [id].concat(getRecent().filter((x) => x !== id)).slice(0, 50);
+  try { localStorage.setItem(recentKey(), JSON.stringify(r)); } catch (e) {}
+}
+function orderedOrgs() {
+  const r = getRecent();
+  const rank = (o) => { const i = r.indexOf(o.id); return i < 0 ? 1e6 : i; };
+  return state.orgs.map((o, i) => ({ o, i })).sort((a, b) => (rank(a.o) - rank(b.o)) || (a.i - b.i)).map((x) => x.o);
+}
 const storeKey = () => "desk:v1:" + state.uid;
 function save() { try { localStorage.setItem(storeKey(), JSON.stringify(state.items)); } catch (e) {} }
 function load() {
@@ -270,7 +282,8 @@ async function afterSignIn(session) {
   state.meetNumber = me.meet_number ? me.meet_number : "";
   const { data: orgs, error } = await sb.rpc("my_organizations");
   state.orgs = error ? [] : (orgs || []);
-  state.orgId = state.orgs.length ? state.orgs[0].id : null;
+  const ordered = orderedOrgs();
+  state.orgId = ordered.length ? ordered[0].id : null;
   load();
   await refreshToday();
   render();
@@ -883,8 +896,8 @@ function viewDesk() {
   }
   root.append(
     h("div", { class: "orgs", role: "group", "aria-label": "Organisation" },
-      state.orgs.map((o) => h("button", { class: "chip", "aria-pressed": String(o.id === state.orgId), onclick: async () => {
-        stopActiveRec(); state.orgId = o.id; note(""); await refreshToday(); render();
+      orderedOrgs().map((o) => h("button", { class: "chip", "aria-pressed": String(o.id === state.orgId), onclick: async () => {
+        stopActiveRec(); state.orgId = o.id; markRecent(o.id); note(""); await refreshToday(); render();
       } }, h("span", { class: "dot", style: "background:" + (o.crest_color || "#D4AF37") }), o.name))),
     viewMeter(org)
   );
