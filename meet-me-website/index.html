@@ -7211,10 +7211,15 @@ async function fetchInspirationLabels(posts){
   await fetchDoorQuestionTexts(posts);
   const ids = [...new Set(posts.filter(p => p.inspired_by_post_id).map(p => p.inspired_by_post_id))];
   if(!ids.length) return {};
-  const { data } = await sb.from('posts').select('id, user_id, community_id, users!posts_user_id_fkey(meet_number), communities(name)').in('id', ids);
+  const { data } = await sb.from('posts').select('id, user_id, community_id, organization_id, as_founder, users!posts_user_id_fkey(meet_number), communities(name)').in('id', ids);
+  // A post made as an organisation is credited to that organisation, not to the person running it.
+  if((data || []).some(p => p.organization_id)){ try{ await ensureOrgs(); }catch(e){} }
   const map = {};
   (data || []).forEach(p => {
-    map[p.id] = p.community_id ? (p.communities?.name || 'a community') : (p.users?.meet_number || 'someone');
+    map[p.id] = p.community_id ? (p.communities?.name || 'a community')
+      : p.organization_id ? orgInfo(p.organization_id).name
+      : p.as_founder ? 'Meet Founder'
+      : (p.users?.meet_number || 'someone');
   });
   return map;
 }
