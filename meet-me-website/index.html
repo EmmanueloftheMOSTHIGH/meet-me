@@ -707,6 +707,7 @@
   .spill-card::-webkit-scrollbar{ width:0; }
   .spill-card{ scrollbar-width:none; }
   .spill-card-id{ font-size:11.5px; letter-spacing:0.08em; color:var(--moon); opacity:0.85; margin-bottom:14px; }
+  .story-tag{ margin-left:10px; font-style:italic; letter-spacing:0.02em; opacity:0.7; }
   .spill-card-body{ font-family:'Fraunces',serif; font-weight:400; font-size:17px; line-height:1.55; color:var(--ivory); }
   .spill-card-time{ margin-top:18px; font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted-dim); }
   #spill-progress{ display:flex; gap:5px; margin-top:24px; }
@@ -4099,6 +4100,7 @@ async function loadYourPosts(){
     .from('posts')
     .select('id, content, post_type, category, sticker_url, audio_url, duration_seconds, created_at, happening_id, happenings(name)')
     .eq('user_id', currentUserId)
+    .is('story_number', null)   // curated stories published from the desk are not "your posts"
     .order('created_at', { ascending: false });
   if(error){ console.error('Error loading your posts:', error); return; }
 
@@ -8501,17 +8503,18 @@ async function loadSpills(){
   // you posted before swiping into strangers' -- then everyone else's.
   const { data: own, error: ownErr } = await sb
     .from('posts')
-    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, inspired_by_post_id, door_question_id, as_founder, users!posts_user_id_fkey(meet_number)')
+    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, inspired_by_post_id, door_question_id, as_founder, story_number, users!posts_user_id_fkey(meet_number)')
     .eq('post_type', 'spill')
     .eq('user_id', currentUserId)
+    .is('story_number', null)   // curated stories are never "yours", even for Meet 8
     .order('created_at', { ascending: false });
   if(ownErr) console.error('Error loading own spills:', ownErr);
 
   const { data: others, error } = await sb
     .from('posts')
-    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, inspired_by_post_id, door_question_id, as_founder, users!posts_user_id_fkey(meet_number)')
+    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, inspired_by_post_id, door_question_id, as_founder, story_number, users!posts_user_id_fkey(meet_number)')
     .eq('post_type', 'spill')
-    .neq('user_id', currentUserId)
+    .or(`user_id.neq.${currentUserId},story_number.not.is.null`)   // everyone else's, plus the curated stories
     .order('created_at', { ascending: false })
     .limit(30);
   if(error){ console.error('Error loading spills:', error); return own || []; }
@@ -8554,10 +8557,11 @@ async function renderSpills(spills){
   stack.innerHTML = '';
   if(isNewAccount()) stack.appendChild(tutorialCardEl('spill'));
   spills.forEach(spill => {
-    const isOwn = spill.user_id === currentUserId;
+    const isStory = !!spill.story_number;   // a curated story under a reserved number
+    const isOwn = spill.user_id === currentUserId && !isStory;
     const userLiked = likedIds.has(spill.id);
-    const isFounder = !!spill.as_founder;
-    const displayName = isFounder ? ('Meet Founder' + (isOwn ? ' (you)' : '')) : ((spill.users?.meet_number || ('Meet ' + spill.user_id.slice(0,6))) + (isOwn ? ' (you)' : ''));
+    const isFounder = !!spill.as_founder && !isStory;
+    const displayName = isStory ? ('Meet ' + spill.story_number) : isFounder ? ('Meet Founder' + (isOwn ? ' (you)' : '')) : ((spill.users?.meet_number || ('Meet ' + spill.user_id.slice(0,6))) + (isOwn ? ' (you)' : ''));
     const bodyHtml = postBodyHtml(spill, 'spill-card-body', 150);
     const inspiredLine = spill.inspired_by_post_id && inspirationLabels[spill.inspired_by_post_id]
       ? `<div class="post-action inspired-source-link" data-source-id="${spill.inspired_by_post_id}" style="font-size:11px; color:var(--muted-dim); margin-bottom:6px;">↻ inspired by ${escapeHtml(inspirationLabels[spill.inspired_by_post_id])}</div>` : '';
@@ -8566,13 +8570,13 @@ async function renderSpills(spills){
     card.dataset.postId = spill.id;
     card.dataset.isOwn = isOwn ? 'true' : 'false';
     card.innerHTML = `
-      <div class="spill-card-id">${isFounder ? `<span class="org-crest-dot crest-founder" style="margin-right:7px;"></span><span>${escapeHtml(displayName)}</span>` : `<span class="user-link" data-user-id="${spill.user_id}">${escapeHtml(displayName)}</span>`}</div>
+      <div class="spill-card-id">${isStory ? `<span>${escapeHtml(displayName)}</span><span class="story-tag">shared with us</span>` : isFounder ? `<span class="org-crest-dot crest-founder" style="margin-right:7px;"></span><span>${escapeHtml(displayName)}</span>` : `<span class="user-link" data-user-id="${spill.user_id}">${escapeHtml(displayName)}</span>`}</div>
       ${doorTagHtml(spill)}
       ${inspiredLine}
       ${bodyHtml}
       <div class="spill-card-time">${formatRelativeTime(spill.created_at)}</div>
       <div class="spill-card-actions" style="display:flex; gap:14px; margin-top:14px; flex-wrap:wrap;">
-        ${postActionsHtml(spill.id, (isFounder && !isOwn) ? null : spill.user_id, spill.content, spill.sticker_url, spill.audio_url, spill.duration_seconds, displayName, 'Spill', userLiked)}
+        ${postActionsHtml(spill.id, (isStory || (isFounder && !isOwn)) ? null : spill.user_id, spill.content, spill.sticker_url, spill.audio_url, spill.duration_seconds, displayName, 'Spill', userLiked)}
       </div>`;
     stack.appendChild(card);
   });
@@ -9212,7 +9216,7 @@ async function navigateToPost(postId){
   if(!postId) return;
   const { data: post, error } = await sb
     .from('posts')
-    .select('id, post_type, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, inspired_by_post_id, door_question_id, happening_id, happenings(name), users!posts_user_id_fkey(meet_number), communities(name, icon)')
+    .select('id, post_type, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), users!posts_user_id_fkey(meet_number), communities(name, icon)')
     .eq('id', postId)
     .single();
   if(error || !post){
@@ -11857,6 +11861,7 @@ async function loadUserProfilePosts(){
     .select('id, user_id, content, sticker_url, audio_url, duration_seconds, post_type, category, created_at, happening_id, happenings(name)')
     .eq('user_id', currentProfileUserId)
     .eq('as_founder', false)   // Meet Founder posts never show on Meet 8's profile
+    .is('story_number', null)  // neither do curated stories
     .order('created_at', { ascending: false })
     .limit(100);
   if(error){ console.error('Error loading user profile posts:', error); feed.innerHTML = ''; return; }
@@ -11930,7 +11935,7 @@ async function loadBookmarksList(){
 
   const { data, error } = await sb
     .from('bookmarks')
-    .select('post_id, posts(id, user_id, content, sticker_url, audio_url, duration_seconds, post_type, category, created_at, users!posts_user_id_fkey(meet_number))')
+    .select('post_id, posts(id, user_id, content, sticker_url, audio_url, duration_seconds, post_type, category, created_at, story_number, users!posts_user_id_fkey(meet_number))')
     .eq('user_id', currentUserId)
     .order('created_at', { ascending: false });
   if(error){ console.error('Error loading bookmarks:', error); feed.innerHTML = ''; return; }
@@ -11942,15 +11947,16 @@ async function loadBookmarksList(){
     return;
   }
   rows.forEach(post => {
-    const displayName = post.users?.meet_number || ('Meet ' + post.user_id.slice(0,6));
+    const isStory = !!post.story_number;
+    const displayName = isStory ? ('Meet ' + post.story_number) : (post.users?.meet_number || ('Meet ' + post.user_id.slice(0,6)));
     const spaceLabel = post.post_type;
     const bodyHtml = postBodyHtml(post, 'yp-post-body', 150);
-    const isOwn = post.user_id === currentUserId;
+    const isOwn = post.user_id === currentUserId && !isStory;
     const wrap = document.createElement('div');
     wrap.className = 'yp-post';
     wrap.dataset.postId = post.id;
     wrap.innerHTML = `
-      <div class="yp-post-space">${isOwn ? escapeHtml(spaceLabel) : `<span class="user-link" data-user-id="${post.user_id}">${escapeHtml(displayName)}</span> · ${escapeHtml(spaceLabel)}`}</div>
+      <div class="yp-post-space">${isOwn ? escapeHtml(spaceLabel) : isStory ? `${escapeHtml(displayName)} · ${escapeHtml(spaceLabel)}` : `<span class="user-link" data-user-id="${post.user_id}">${escapeHtml(displayName)}</span> · ${escapeHtml(spaceLabel)}`}</div>
       ${bodyHtml}
       <div class="yp-post-time">${formatRelativeTime(post.created_at)}</div>
       <div class="post-foot" style="margin-top:8px;">

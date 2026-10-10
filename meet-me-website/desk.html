@@ -88,6 +88,23 @@ dialog::backdrop{background:rgba(0,0,0,.78)}
 .vplay{position:absolute;left:50%;top:50%;width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:50%;background:var(--gold);box-shadow:0 0 12px rgba(212,175,55,.45);pointer-events:none}
 .vplay::before{content:"";position:absolute;left:11px;top:8px;border-style:solid;border-width:7px 0 7px 11px;border-color:transparent transparent transparent #000}
 .bad{color:var(--red)}
+.modes{display:flex;gap:6px;margin-bottom:20px;padding:4px;border:1px solid var(--line);border-radius:999px}
+.mode{flex:1;min-height:42px;border-radius:999px;color:var(--mute)}
+.mode[aria-pressed=true]{background:rgba(212,175,55,.14);color:var(--ink)}
+.nums{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 6px}
+.num{display:inline-flex;align-items:baseline;gap:6px;padding:4px 12px;border:1px solid var(--line);border-radius:999px;font-size:14px}
+.num small{color:var(--mute);font-size:12px}
+.num.half{border-color:rgba(212,175,55,.5)}
+.num.full{opacity:.4}
+select{width:100%;background:#000;border:1px solid var(--line);border-radius:10px;padding:0 12px;min-height:46px}
+.story-text{white-space:pre-line;margin-bottom:6px}
+.pubbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+.pubbar select{width:auto;min-width:150px}
+.pubrow{display:flex;gap:12px;align-items:flex-start}
+.pubrow>input{width:22px;height:22px;margin-top:3px;accent-color:#D4AF37;flex:none}
+.pubrow>div{flex:1;min-width:0}
+.stats{font-size:14px;color:var(--mute);margin-bottom:4px}
+.item .who-num{font:600 18px/1.3 var(--serif);margin:0 0 4px}
 .sep{border:0;border-top:1px solid var(--line);margin:26px 0 18px}
 @media (prefers-reduced-motion:no-preference){.btn{transition:transform .12s}.btn:active{transform:scale(.97)}}
 </style>
@@ -98,7 +115,7 @@ dialog::backdrop{background:rgba(0,0,0,.78)}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-/* Meet Me content desk, version 2 (no scheduler; pictures, stickers and voice notes; source link optional).
+/* Meet Me content desk, version 3 (adds Spill stories under reserved numbers; no scheduler; pictures, stickers and voice notes; source link optional).
    Signs in as a normal Meet Me account and posts as an organisation that account owns.
    The database enforces ownership, headers and the daily limit; this page only helps you fill the queue. */
 
@@ -112,12 +129,14 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { storageKey: "meetme-desk-auth", persistSession: true, autoRefreshToken: true }
 });
 
+function blankStory() { return { text: "", source: "", permission: false, removed: false, number: "" }; }
 function blankSingle() { return { header: "", body: "", link: "", stickerUrl: "", audioUrl: "", audioDur: 0 }; }
 const state = {
   uid: null, meetNumber: "", orgs: [], orgId: null,
   items: [], tab: "queue", today: 0, busy: false,
   orgQuery: "", notice: null, draft: "", firstLineHeader: true, batch: 3, loginError: "",
-  single: blankSingle()
+  single: blankSingle(),
+  mode: "orgs", storyTab: "drafts", stories: [], published: [], reserved: [], storyForm: blankStory(), storyPaste: "", pubSel: new Set(), pubFilter: ""
 };
 
 const $app = document.getElementById("app");
@@ -191,6 +210,13 @@ function friendly(msg) {
   if (/org_header_required/.test(msg)) return "News posts need a header";
   if (/org_not_owner/.test(msg)) return "This account does not own that organisation";
   if (/violates check constraint.*header/i.test(msg)) return "Header is longer than " + HEADER_MAX + " characters";
+  if (/story_number_full/.test(msg)) return "That number has already been used twice";
+  if (/story_number_none/.test(msg)) return "Every reserved number is full or was used very recently. Reserve more numbers, or wait a little.";
+  if (/story_number_unknown/.test(msg)) return "That number is not reserved";
+  if (/story_source_required/.test(msg)) return "Say where the story came from";
+  if (/story_empty/.test(msg)) return "The story has no text";
+  if (/story_not_found/.test(msg)) return "That story is no longer in the app";
+  if (/story_not_allowed/.test(msg)) return "Only Meet 8 can publish stories";
   return msg;
 }
 
@@ -276,7 +302,7 @@ async function afterSignIn(session) {
   if (!me || Number(me.display_number) !== 8) {
     // The desk is for Meet 8 (Meet Founder) only.
     await sb.auth.signOut();
-    state.uid = null; state.orgs = []; state.items = [];
+    state.uid = null; state.orgs = []; state.items = []; state.stories = [];
     state.loginError = "The content desk is only for Meet 8.";
     render();
     return;
@@ -286,8 +312,9 @@ async function afterSignIn(session) {
   state.orgs = error ? [] : (orgs || []);
   const ordered = orderedOrgs();
   state.orgId = ordered.length ? ordered[0].id : null;
-  load();
+  load(); loadStories();
   await refreshToday();
+  await loadStoryData();
   render();
 }
 async function signIn(email, pin) {
@@ -296,7 +323,7 @@ async function signIn(email, pin) {
   if (error || !data.session) { state.loginError = "That email and PIN did not work."; render(); return; }
   await afterSignIn(data.session);
 }
-async function signOut() { stopActiveRec(); await sb.auth.signOut(); state.uid = null; state.orgs = []; state.items = []; render(); }
+async function signOut() { stopActiveRec(); await sb.auth.signOut(); state.uid = null; state.orgs = []; state.items = []; state.stories = []; state.published = []; state.reserved = []; state.mode = "orgs"; render(); }
 
 async function postItem(it) {
   const org = state.orgs.find((o) => o.id === it.orgId);
@@ -331,6 +358,99 @@ async function postMany(list) {
   else if (done < list.length) note("Posted " + done + " of " + list.length + ". Check the items marked in red.", true);
   else note("Posted " + done + (done === 1 ? " item." : " items."));
   render();
+}
+
+
+/* ---------- Spill stories ---------- */
+/* Real-life stories go into Spill under a reserved number (see the reserved_numbers table).
+   Drafts live on this device. Publishing goes through the publish_story function, which picks or checks the number,
+   keeps each number to two uses, and records the source privately. The app shows "shared with us" on these posts. */
+const STORY_MAX_USES = 2;
+const storiesKey = () => "desk:stories:" + state.uid;
+function saveStories() { try { localStorage.setItem(storiesKey(), JSON.stringify(state.stories)); } catch (e) {} }
+function loadStories() {
+  try { state.stories = JSON.parse(localStorage.getItem(storiesKey()) || "[]"); } catch (e) { state.stories = []; }
+}
+async function loadStoryData() {
+  const [r, p] = await Promise.all([
+    sb.from("reserved_numbers").select("display_number").order("display_number"),
+    sb.from("posts").select("id, content, created_at, story_number, story_sources(source)")
+      .not("story_number", "is", null).order("created_at", { ascending: false })
+  ]);
+  const posts = p.error ? [] : (p.data || []);
+  if (posts.length) {
+    const ids = posts.map((x) => x.id);
+    const [lk, vw] = await Promise.all([
+      sb.from("likes").select("post_id").in("post_id", ids),
+      sb.rpc("my_post_views", { p_post_ids: ids.slice(0, 500) })
+    ]);
+    const likes = {}, views = {};
+    for (const l of (lk.error ? [] : (lk.data || []))) likes[l.post_id] = (likes[l.post_id] || 0) + 1;
+    for (const v of (vw.error ? [] : (vw.data || []))) views[v.post_id] = Number(v.views);
+    for (const x of posts) { x.likes = likes[x.id] || 0; x.views = views[x.id] || 0; }
+  }
+  state.published = posts;
+  state.pubSel = new Set([...state.pubSel].filter((id) => posts.some((x) => x.id === id)));
+  const uses = {};
+  for (const x of posts) uses[x.story_number] = (uses[x.story_number] || 0) + 1;
+  const recent = new Set(posts.slice(0, 4).map((x) => Number(x.story_number)));
+  state.reserved = (r.error ? [] : (r.data || [])).map((x) => {
+    const n = Number(x.display_number);
+    return { n, uses: uses[n] || 0, recent: recent.has(n) };
+  });
+}
+const slotsLeft = () => state.reserved.reduce((a, x) => a + Math.max(0, STORY_MAX_USES - x.uses), 0);
+function storyProblem(it) {
+  if (!(it.text || "").trim()) return "The story has no text";
+  if (!(it.source || "").trim()) return "Say where the story came from";
+  if (!it.permission) return "Tick that the person agreed to share it";
+  if (!it.removed) return "Tick that names and identifying details are removed";
+  return "";
+}
+function addStories(list) {
+  const seen = new Set(state.stories.map((x) => x.text.trim().toLowerCase()));
+  let added = 0, skipped = 0;
+  for (const raw of list) {
+    const text = (raw.text || "").trim();
+    if (!text) continue;
+    if (seen.has(text.toLowerCase())) { skipped++; continue; }
+    seen.add(text.toLowerCase());
+    state.stories.push({ id: crypto.randomUUID(), text, source: (raw.source || "").trim(), permission: !!raw.permission, removed: !!raw.removed, number: raw.number || "", error: "" });
+    added++;
+  }
+  saveStories();
+  return { added, skipped };
+}
+function parseStories(text) {
+  const t = text.replace(/\r\n?/g, "\n").trim();
+  if (!t) return [];
+  const out = [];
+  for (const chunk of t.split(/^\s*---\s*$/m)) {
+    const lines = chunk.split("\n");
+    let source = "";
+    const rest = [];
+    for (const l of lines) {
+      const m = l.trim().match(/^source\s*:\s*(.+)$/i);
+      if (m) source = m[1].trim(); else rest.push(l);
+    }
+    const body = rest.join("\n").trim();
+    if (body) out.push({ text: body, source });
+  }
+  return out;
+}
+async function publishStory(it) {
+  const bad = storyProblem(it);
+  if (bad) { it.error = bad; return false; }
+  const { data, error } = await sb.rpc("publish_story", {
+    p_content: it.text.trim(), p_source: it.source.trim(), p_number: it.number ? Number(it.number) : null
+  });
+  if (error) { it.error = friendly(error.message); return false; }
+  const row = Array.isArray(data) ? data[0] : data;
+  state.stories = state.stories.filter((x) => x.id !== it.id);
+  saveStories();
+  await loadStoryData();
+  note("Published as Meet " + (row ? row.out_number : "") + ".");
+  return true;
 }
 
 /* ---------- media (pictures, stickers, voice notes) ---------- */
@@ -882,6 +1002,206 @@ function viewPosted(org) {
         }) }, "Remove from app")))));
 }
 
+
+/* ---------- Spill stories views ---------- */
+function numberSelect(current, onChange) {
+  const sel = h("select", { "aria-label": "Number for this story", onchange: (e) => onChange(e.target.value) },
+    h("option", { value: "" }, "Pick for me"),
+    state.reserved.filter((x) => x.uses < STORY_MAX_USES).map((x) =>
+      h("option", { value: String(x.n), selected: String(x.n) === String(current) },
+        "Meet " + x.n + " (used " + x.uses + " of " + STORY_MAX_USES + (x.recent ? ", recent" : "") + ")")));
+  return sel;
+}
+function viewNumbers() {
+  const left = slotsLeft();
+  return h("div", { class: "meter" },
+    h("div", { class: "small" }, state.reserved.length
+      ? left + (left === 1 ? " story slot" : " story slots") + " left across " + state.reserved.length + " reserved numbers"
+      : "No reserved numbers found."),
+    h("div", { class: "nums", "aria-label": "Reserved numbers" },
+      state.reserved.map((x) => h("span", { class: "num" + (x.uses >= STORY_MAX_USES ? " full" : x.uses ? " half" : "") },
+        "Meet " + x.n, h("small", {}, x.uses + "/" + STORY_MAX_USES)))));
+}
+function viewStoryDrafts() {
+  const root = h("div", {});
+  if (!state.stories.length) { root.append(h("div", { class: "empty" }, "No drafts yet. Add a story to get started.")); return root; }
+  root.append(h("p", { class: "small mute", style: "margin:0 0 6px" },
+    "Spill shows the newest 30 posts from other people, so a few stories a day keeps real voices in view."));
+  for (const it of state.stories) {
+    const problem = storyProblem(it);
+    root.append(h("div", { class: "item" },
+      h("div", { class: "story-text" }, it.text.length > 280 ? it.text.slice(0, 280) + "..." : it.text),
+      h("div", { class: "src" }, it.source ? "From: " + it.source : "No source yet"),
+      it.number ? h("div", { class: "src" }, "Number: Meet " + it.number) : null,
+      (it.error || problem) ? h("div", { class: "err" }, it.error || problem) : null,
+      h("div", { class: "acts" },
+        h("button", { class: "link", disabled: state.busy || !!problem, onclick: async () => {
+          state.busy = true; note(""); render();
+          const ok = await publishStory(it);
+          state.busy = false;
+          if (!ok) { saveStories(); note(it.error, true); }
+          render();
+        } }, "Publish now"),
+        h("button", { class: "link", disabled: state.busy, onclick: () => openStoryEdit(it) }, "Edit"),
+        h("button", { class: "link", style: "color:var(--red)", disabled: state.busy, onclick: () =>
+          openConfirm("Delete this draft?", "", it.text.slice(0, 160), "Delete draft", "Keep it", () => {
+            state.stories = state.stories.filter((x) => x.id !== it.id); saveStories(); render();
+          }) }, "Delete"))));
+  }
+  return root;
+}
+function storyFields(f, onNumber) {
+  return [
+    h("label", { class: "field" }, h("span", {}, "Story"), f.text),
+    h("label", { class: "field" }, h("span", {}, "Where it came from (kept private)"), f.source),
+    h("label", { class: "field" }, h("span", {}, "Number"), numberSelect(f.numberValue, onNumber)),
+    h("label", { class: "check" }, f.permission, "The person agreed to have this shared"),
+    h("label", { class: "check" }, f.removed, "Names and identifying details are removed")
+  ];
+}
+function viewStoryAdd() {
+  const sf = state.storyForm;
+  const f = {
+    text: h("textarea", { rows: 8, placeholder: "The story, in the person's own voice where you can.", oninput: (e) => { sf.text = e.target.value; } }, sf.text),
+    source: h("input", { type: "text", value: sf.source, placeholder: "For example: told to me by a coursemate", oninput: (e) => { sf.source = e.target.value; } }),
+    permission: h("input", { type: "checkbox", checked: sf.permission, onchange: (e) => { sf.permission = e.target.checked; } }),
+    removed: h("input", { type: "checkbox", checked: sf.removed, onchange: (e) => { sf.removed = e.target.checked; } }),
+    numberValue: sf.number
+  };
+  const finish = (r, wasForm) => {
+    note(r.added ? "Added " + r.added + (r.added === 1 ? " draft" : " drafts") + (r.skipped ? ", skipped " + r.skipped + " duplicates" : "") + "." : "Nothing new to add" + (r.skipped ? ", that story is already a draft." : "."), !r.added);
+    if (r.added) { if (wasForm) state.storyForm = blankStory(); else state.storyPaste = ""; state.storyTab = "drafts"; }
+    render();
+  };
+  const ta = h("textarea", { rows: 9, placeholder: "First story\nsource: where it came from\n---\nSecond story\nsource: where it came from", oninput: (e) => { state.storyPaste = e.target.value; } }, state.storyPaste);
+  return h("div", {},
+    h("h2", {}, "One story"),
+    h("p", { class: "mute small" }, "Stories appear in Spill under a reserved number, with a quiet \"shared with us\" label. The source is never shown in the app."),
+    storyFields(f, (v) => { sf.number = v; }),
+    h("div", { class: "dlg-acts", style: "margin-top:0" },
+      h("button", { class: "btn", disabled: state.busy, onclick: () => {
+        if (!sf.text.trim()) { note("Write the story first.", true); render(); return; }
+        finish(addStories([sf]), true);
+      } }, "Save as draft")),
+    h("hr", { class: "sep" }),
+    h("h2", {}, "Paste several at once"),
+    h("p", { class: "mute small" }, "Separate stories with a line of three dashes. A line starting with source: sets where that story came from. You will tick permission and removed details on each draft before it can publish."),
+    h("label", { class: "field" }, h("span", {}, "Paste stories"), ta),
+    h("div", { class: "dlg-acts", style: "margin-top:0" },
+      h("button", { class: "btn", onclick: () => {
+        const rows = parseStories(state.storyPaste);
+        if (!rows.length) { note("Nothing to add yet.", true); render(); return; }
+        finish(addStories(rows));
+      } }, "Add as drafts"))
+  );
+}
+function openStoryEdit(it) {
+  const f = {
+    text: h("textarea", { rows: 8 }, it.text),
+    source: h("input", { type: "text", value: it.source }),
+    permission: h("input", { type: "checkbox", checked: it.permission }),
+    removed: h("input", { type: "checkbox", checked: it.removed }),
+    numberValue: it.number
+  };
+  let chosen = it.number;
+  $dlg.replaceChildren(
+    h("h2", {}, "Edit draft"),
+    storyFields(f, (v) => { chosen = v; }),
+    h("div", { class: "dlg-acts" },
+      h("button", { class: "btn", onclick: () => {
+        it.text = f.text.value.trim(); it.source = f.source.value.trim();
+        it.permission = f.permission.checked; it.removed = f.removed.checked; it.number = chosen || "";
+        it.error = ""; saveStories(); $dlg.close(); render();
+      } }, "Save changes"),
+      h("button", { class: "btn ghost", onclick: () => $dlg.close() }, "Cancel"))
+  );
+  $dlg.showModal();
+}
+const storySource = (p) => { const ss = p.story_sources; return Array.isArray(ss) ? ((ss[0] || {}).source || "") : ((ss || {}).source || ""); };
+async function removeStories(ids) {
+  const { data, error } = await sb.from("posts").delete().in("id", ids).select("id");
+  const n = data ? data.length : 0;
+  state.pubSel = new Set();
+  await loadStoryData();
+  if (error) note("Removed " + n + ", then hit a problem: " + error.message, true);
+  else if (n < ids.length) note("Removed " + n + " of " + ids.length + ". The rest could not be removed.", true);
+  else note(n === 1 ? "Story removed." : n + " stories removed.");
+  render();
+}
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); note("Copied."); }
+  catch (e) { note("Could not copy. Select the text in Edit instead.", true); }
+  render();
+}
+function openPublishedEdit(p) {
+  const f = {
+    text: h("textarea", { rows: 8 }, p.content || ""),
+    source: h("input", { type: "text", value: storySource(p) })
+  };
+  const err = h("div", { class: "err", style: "display:none" });
+  $dlg.replaceChildren(
+    h("h2", {}, "Edit Meet " + p.story_number),
+    h("p", { class: "mute small" }, "The change goes live in the app straight away."),
+    h("label", { class: "field" }, h("span", {}, "Story"), f.text),
+    h("label", { class: "field" }, h("span", {}, "Where it came from (kept private)"), f.source),
+    err,
+    h("div", { class: "dlg-acts" },
+      h("button", { class: "btn", onclick: async (e) => {
+        e.target.disabled = true;
+        const { error } = await sb.rpc("edit_story", { p_post_id: p.id, p_content: f.text.value, p_source: f.source.value });
+        if (error) { err.textContent = friendly(error.message); err.style.display = "block"; e.target.disabled = false; return; }
+        $dlg.close(); await loadStoryData(); note("Story updated."); render();
+      } }, "Save changes"),
+      h("button", { class: "btn ghost", onclick: () => $dlg.close() }, "Cancel"))
+  );
+  $dlg.showModal();
+}
+function viewStoryPublished() {
+  if (!state.published.length) return h("div", { class: "empty" }, "No stories published yet.");
+  const nums = [...new Set(state.published.map((x) => Number(x.story_number)))].sort((a, b) => a - b);
+  const list = state.pubFilter ? state.published.filter((x) => String(x.story_number) === state.pubFilter) : state.published;
+  const ids = list.map((x) => x.id);
+  const allOn = ids.length > 0 && ids.every((id) => state.pubSel.has(id));
+  const chosen = ids.filter((id) => state.pubSel.has(id));
+  const root = h("div", {});
+  root.append(h("div", { class: "pubbar" },
+    h("select", { "aria-label": "Show one number", onchange: (e) => { state.pubFilter = e.target.value; render(); } },
+      h("option", { value: "" }, "All numbers"),
+      nums.map((n) => h("option", { value: String(n), selected: String(n) === state.pubFilter }, "Meet " + n))),
+    h("button", { class: "link", onclick: () => { if (allOn) ids.forEach((id) => state.pubSel.delete(id)); else ids.forEach((id) => state.pubSel.add(id)); render(); } },
+      allOn ? "Clear selection" : "Select all"),
+    h("button", { class: "btn danger", style: "min-height:40px;padding:0 16px", disabled: !chosen.length, onclick: () =>
+      openConfirm("Remove " + chosen.length + (chosen.length === 1 ? " story?" : " stories?"), "This deletes the live stories and frees their slots. It cannot be undone.", "", "Remove " + chosen.length, "Keep them", () => removeStories(chosen)) },
+      chosen.length ? "Remove " + chosen.length + " selected" : "Remove selected")));
+  if (!list.length) { root.append(h("div", { class: "empty" }, "No stories under that number.")); return root; }
+  for (const p of list) {
+    const src = storySource(p);
+    root.append(h("div", { class: "item" },
+      h("div", { class: "pubrow" },
+        h("input", { type: "checkbox", checked: state.pubSel.has(p.id), "aria-label": "Select the story under Meet " + p.story_number, onchange: (e) => { if (e.target.checked) state.pubSel.add(p.id); else state.pubSel.delete(p.id); render(); } }),
+        h("div", {},
+          h("div", { class: "who-num" }, "Meet " + p.story_number),
+          h("div", { class: "stats" }, (p.likes || 0) + (p.likes === 1 ? " like" : " likes") + ", " + (p.views || 0) + (p.views === 1 ? " view" : " views")),
+          h("div", { class: "body" }, p.content || ""),
+          h("div", { class: "src" }, (src ? "From: " + src + ". " : "") + "Published " + new Date(p.created_at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })),
+          h("div", { class: "acts" },
+            h("button", { class: "link", onclick: () => openPublishedEdit(p) }, "Edit"),
+            h("button", { class: "link", onclick: () => copyText(p.content || "") }, "Copy text"),
+            h("button", { class: "link", style: "color:var(--red)", onclick: () =>
+              openConfirm("Remove from the app?", "This deletes the live story and frees its slot. It cannot be undone.", (p.content || "").slice(0, 160), "Remove story", "Keep it", () => removeStories([p.id])) }, "Remove")))))); 
+  }
+  return root;
+}
+function viewStories() {
+  const root = h("div", {}, viewNumbers());
+  const tabs = [["drafts", "Drafts (" + state.stories.length + ")"], ["add", "Add"], ["published", "Published (" + state.published.length + ")"]];
+  root.append(h("div", { class: "tabs", role: "tablist" },
+    tabs.map(([k, label]) => h("button", { class: "tab", role: "tab", "aria-selected": String(state.storyTab === k), onclick: () => { state.storyTab = k; note(""); render(); } }, label))));
+  if (state.notice) root.append(h("div", { class: "notice" + (state.notice.bad ? " bad" : ""), role: "status" }, state.notice.text));
+  root.append(state.storyTab === "add" ? viewStoryAdd() : state.storyTab === "published" ? viewStoryPublished() : viewStoryDrafts());
+  return root;
+}
+
 /* ---------- organisation search ---------- */
 function orgChipButton(o) {
   return h("button", { class: "chip", "aria-pressed": String(o.id === state.orgId), onclick: async () => {
@@ -922,8 +1242,12 @@ function viewDesk() {
       h("div", {}, h("h1", {}, "Content desk"), h("div", { class: "who" }, state.meetNumber ? "Signed in as " + state.meetNumber : "Signed in")),
       h("div", { style: "display:flex;flex-direction:column;align-items:flex-end" },
         h("a", { class: "link", href: "/", style: "display:inline-flex;align-items:center" }, "Back to Meet Me"),
-        h("button", { class: "link", onclick: signOut }, "Sign out")))
+        h("button", { class: "link", onclick: signOut }, "Sign out"))),
+    h("div", { class: "modes", role: "group", "aria-label": "Desk section" },
+      [["orgs", "Organisations"], ["stories", "Spill stories"]].map(([k, label]) =>
+        h("button", { class: "mode", "aria-pressed": String(state.mode === k), onclick: () => { stopActiveRec(); state.mode = k; note(""); render(); } }, label)))
   );
+  if (state.mode === "stories") { root.append(viewStories()); return root; }
   if (!org) {
     root.append(h("p", {}, "This account does not own an organisation yet."),
       h("p", { class: "mute small" }, "Create one and claim it with its invite code in the app, then reopen this page."));
