@@ -45,6 +45,8 @@ input::placeholder,textarea::placeholder{color:rgba(143,137,117,.7)}
 .orgs{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin-bottom:18px;scrollbar-width:none}
 .orgs::-webkit-scrollbar{display:none}
 .chip{flex:none;display:flex;align-items:center;gap:8px;min-height:44px;padding:0 16px;border:1px solid var(--line);border-radius:999px;white-space:nowrap}
+.osearch{margin-bottom:10px}
+.osearch input{border-radius:999px;padding:0 16px}
 .chip[aria-pressed=true]{border-color:var(--gold);background:rgba(212,175,55,.1)}
 .dot{width:10px;height:10px;border-radius:50%;flex:none}
 .meter{margin-bottom:22px}
@@ -114,7 +116,7 @@ function blankSingle() { return { header: "", body: "", link: "", stickerUrl: ""
 const state = {
   uid: null, meetNumber: "", orgs: [], orgId: null,
   items: [], tab: "queue", today: 0, busy: false,
-  notice: null, draft: "", firstLineHeader: true, batch: 3, loginError: "",
+  orgQuery: "", notice: null, draft: "", firstLineHeader: true, batch: 3, loginError: "",
   single: blankSingle()
 };
 
@@ -880,6 +882,39 @@ function viewPosted(org) {
         }) }, "Remove from app")))));
 }
 
+/* ---------- organisation search ---------- */
+function orgChipButton(o) {
+  return h("button", { class: "chip", "aria-pressed": String(o.id === state.orgId), onclick: async () => {
+    stopActiveRec(); state.orgId = o.id; markRecent(o.id); state.orgQuery = ""; note(""); await refreshToday(); render();
+  } }, h("span", { class: "dot", style: "background:" + (o.crest_color || "#D4AF37") }), o.name);
+}
+function orgMatches() {
+  const q = state.orgQuery.trim().toLowerCase();
+  const all = orderedOrgs();
+  return q ? all.filter((o) => o.name.toLowerCase().includes(q)) : all;
+}
+function fillChips(box) {
+  const list = orgMatches();
+  box.replaceChildren(...(list.length ? list.map(orgChipButton) : [h("span", { class: "mute small", style: "padding:12px 4px" }, "No organisation matches that.")]));
+  box.scrollLeft = 0;
+}
+function orgChips() {
+  const box = h("div", { class: "orgs", id: "orgChips", role: "group", "aria-label": "Organisation" });
+  fillChips(box);
+  return box;
+}
+function orgSearch() {
+  const input = h("input", { type: "text", value: state.orgQuery, placeholder: "Search organisations", "aria-label": "Search organisations", autocomplete: "off",
+    oninput: (e) => { state.orgQuery = e.target.value; fillChips(document.getElementById("orgChips")); },
+    onkeydown: async (e) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      const first = orgMatches()[0]; if (!first) return;
+      stopActiveRec(); state.orgId = first.id; markRecent(first.id); state.orgQuery = ""; note(""); await refreshToday(); render();
+    } });
+  return h("div", { class: "osearch" }, input);
+}
+
 function viewDesk() {
   const org = curOrg();
   const root = h("div", {},
@@ -895,10 +930,8 @@ function viewDesk() {
     return root;
   }
   root.append(
-    h("div", { class: "orgs", role: "group", "aria-label": "Organisation" },
-      orderedOrgs().map((o) => h("button", { class: "chip", "aria-pressed": String(o.id === state.orgId), onclick: async () => {
-        stopActiveRec(); state.orgId = o.id; markRecent(o.id); note(""); await refreshToday(); render();
-      } }, h("span", { class: "dot", style: "background:" + (o.crest_color || "#D4AF37") }), o.name))),
+    orgSearch(),
+    orgChips(),
     viewMeter(org)
   );
   const nQ = state.items.filter((i) => i.orgId === org.id && i.status !== "posted").length;
