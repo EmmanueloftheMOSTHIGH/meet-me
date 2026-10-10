@@ -6048,17 +6048,72 @@ function formatRelativeTime(dateString){
   return new Date(dateString).toLocaleDateString();
 }
 
+/* ============================================================
+   KEEPING BOTS OUT + COUNTING REAL PEOPLE
+   - Automated browsers (headless Chrome, link previewers, crawlers) never
+     get an account, so they can't use up Meet numbers or inflate visitors.
+   - 'Opened the app' is only recorded after a real touch/click/key/scroll.
+   - Add ?test=1 to the address to run the app normally from an automated
+     browser (for your own testing).
+   ============================================================ */
+function isAutomatedVisit(){
+  try{
+    if(new URLSearchParams(location.search).get('test') === '1') return false;
+    if(navigator.webdriver) return true;
+    const ua = navigator.userAgent || '';
+    if(/HeadlessChrome|Google-Read-Aloud|Lighthouse|PageSpeed|GTmetrix|Pingdom|UptimeRobot|facebookexternalhit|Facebot|WhatsApp\/|TelegramBot|Twitterbot|Slackbot|Discordbot|LinkedInBot|Googlebot|GoogleOther|AdsBot|Mediapartners|bingbot|Applebot|Bytespider|PetalBot|\b(bot|crawler|spider)\b/i.test(ua)) return true;
+  }catch(e){}
+  return false;
+}
+
+async function getOrCreateSession(){
+  const run = async ()=>{
+    let { data: { session } } = await sb.auth.getSession();
+    if(!session){
+      const { data, error } = await sb.auth.signInAnonymously();
+      if(error){ console.error('Anonymous sign-in failed:', error); return null; }
+      session = data.session;
+    }
+    return session;
+  };
+  try{
+    if(navigator.locks && navigator.locks.request) return await navigator.locks.request('mm-anon-signin', run);
+  }catch(e){ console.error('Sign-in lock failed, continuing without it:', e); }
+  return run();
+}
+
+let userHasInteracted = false;
+let activityStamped = false;
+(function(){
+  const evts = ['pointerdown','touchstart','keydown','wheel','scroll'];
+  function onReal(e){
+    if(e && e.isTrusted === false) return;       // scripted events don't count
+    userHasInteracted = true;
+    evts.forEach(n => document.removeEventListener(n, onReal, true));
+    stampActivity();
+    recordDailyOpen();
+  }
+  evts.forEach(n => document.addEventListener(n, onReal, { capture:true, passive:true }));
+})();
+
+// Fire-and-forget "last seen" stamp for the admin dashboard. Only after a
+// real interaction (the database also logs a daily open from this stamp).
+function stampActivity(){
+  if(activityStamped || !userHasInteracted || !currentUserId) return;
+  activityStamped = true;
+  sb.from('users').update({ last_active_at: new Date().toISOString() }).eq('id', currentUserId)
+    .then(({error})=>{ if(error){ console.error('Updating last_active_at failed:', error); activityStamped = false; } });
+}
+
 async function initUser(){
   // Restores an existing session automatically if one exists (supabase-js
   // stores its OWN session token in localStorage — that's fine, it's a
   // real signed session, not a spoofable plain number like before).
-  let { data: { session } } = await sb.auth.getSession();
-
-  if(!session){
-    const { data, error } = await sb.auth.signInAnonymously();
-    if(error){ console.error('Anonymous sign-in failed:', error); return; }
-    session = data.session;
-  }
+  // The check-then-sign-in runs inside a browser lock so two tabs/loads that
+  // start at the same moment can't both see "no session" and each create an
+  // account (that's how duplicate Meet numbers got burned).
+  const session = await getOrCreateSession();
+  if(!session) return;
 
   currentUserId = session.user.id;
   loadAutomatchToggle();
@@ -6094,10 +6149,9 @@ async function initUser(){
   accountCreatedAt = profile.created_at;
   isAdmin = !!profile.is_admin;
   updateAdminVisibility();
-  // Fire-and-forget "last seen" stamp for the admin dashboard -- never
-  // awaited, so a slow network never holds up the rest of init.
-  sb.from('users').update({ last_active_at: new Date().toISOString() }).eq('id', currentUserId)
-    .then(({error})=>{ if(error) console.error('Updating last_active_at failed:', error); });
+  // "Last seen" stamp: only once the person has really touched the app
+  // (see stampActivity). If they already have, it goes out now.
+  stampActivity();
   document.getElementById('profile-number').textContent = currentMeetNumber;
   updateAccountUI();
   recordDailyOpen();
@@ -6118,7 +6172,7 @@ async function initUser(){
    ============================================================ */
 let lastDailyOpenAt = 0;
 function recordDailyOpen(){
-  if(!currentUserId) return;
+  if(!currentUserId || !userHasInteracted) return;
   if(Date.now() - lastDailyOpenAt < 30 * 60 * 1000) return;
   lastDailyOpenAt = Date.now();
   sb.rpc('record_daily_open').then(({error})=>{
@@ -13218,6 +13272,9 @@ function setupBackNavigation(){
    INIT
    ============================================================ */
 document.addEventListener('DOMContentLoaded', async function(){
+  // Automated visitors (crawlers, link previews, headless browsers) just
+  // see the splash: no account, no sign-in, no data calls.
+  if(isAutomatedVisit()) return;
   await initUser();
   // Spill: bring back the last deck we saved, so tapping Spill paints at once while a fresh copy loads underneath.
   try{
