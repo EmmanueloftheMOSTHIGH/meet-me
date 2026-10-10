@@ -1107,7 +1107,7 @@
   @keyframes breathe{ 0%,100%{ opacity:0.25; transform:scaleY(0.55); } 50%{ opacity:1; transform:scaleY(1); } }
   @media (prefers-reduced-motion:reduce){ .breath i{ animation:none; opacity:0.85; transform:none; } }
   .vid-poster .breath, #sticker-viewer-overlay .breath, #net-glow .breath{ --gold:#d4a857; --gold-dim:rgba(212,168,87,0.5); }
-  .vid-loading{ position:absolute; left:50%; bottom:10px; transform:translateX(-50%); pointer-events:none; }
+  .vid-loading{ position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); pointer-events:none; }
   .viewer-loading{ position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); pointer-events:none; }
   #net-glow{ position:fixed; left:50%; top:50%; transform:translate(-50%,-50%) scale(0.94); z-index:99999; display:flex; flex-direction:column; align-items:center; gap:12px;
     padding:20px 26px 18px; border-radius:20px; background:rgba(12,12,14,0.94); border:1px solid rgba(212,168,87,0.5); color:#f0e6d2; font-size:12.5px; line-height:1.3; text-align:center;
@@ -6431,7 +6431,7 @@ function stickerMediaTag(url, size, withSound){
     // Tap to play: only the small still picture loads in the feed. The video loads when the viewer opens.
     return `<span class="sticker-tap vid-poster" data-sticker-url="${escapeHtml(url)}" data-sticker-video="true"${withSound ? ' data-sticker-sound="true"' : ''} style="width:${size}px; height:${size}px;"><img src="${escapeHtml(videoPosterUrl(url))}" alt="" loading="lazy" onerror="this.style.display='none'"><video class="vid-auto" data-src="${escapeHtml(url)}" muted loop playsinline preload="none" style="position:absolute; inset:0; width:100%; height:100%; object-fit:contain; pointer-events:none;"></video><span class="vid-play${size < 90 ? ' sm' : ''}" style="display:none"></span></span>`;
   }
-  return `<img class="sticker-tap" data-sticker-url="${escapeHtml(url)}" src="${escapeHtml(url)}" loading="lazy" decoding="async" style="width:${size}px; height:${size}px; object-fit:contain; display:block;">`;
+  return `<img class="sticker-tap" data-sticker-url="${escapeHtml(url)}" src="${escapeHtml(url)}" loading="lazy" decoding="async" onerror="stickerImgRetry(this)" style="width:${size}px; height:${size}px; object-fit:contain; display:block;">`;
 }
 
 function stickerHtml(stickerUrl, size, withSound){
@@ -6610,6 +6610,26 @@ new MutationObserver((muts)=>{
   }));
 }).observe(document.body, { childList:true, subtree:true });
 document.querySelectorAll('video.vid-auto').forEach(wireVidAuto);
+
+// Picture stickers that fail to load (weak network) try again quietly, a few times, then stay dim instead of broken.
+function stickerImgRetry(img){
+  const n = (+img.dataset.r || 0) + 1; img.dataset.r = n;
+  if(!img.dataset.o) img.dataset.o = img.getAttribute('src');
+  if(n > 3){ img.style.opacity = '0.3'; return; }
+  setTimeout(()=>{
+    if(!img.isConnected) return;
+    const o = img.dataset.o;
+    img.src = o + (o.indexOf('?') > -1 ? '&' : '?') + 'r=' + n;
+  }, 2000 * n);
+}
+// The moment the network comes back: videos that gave up try again now, and broken stickers reload.
+window.addEventListener('meetme:back-online', ()=>{
+  document.querySelectorAll('video.vid-auto').forEach(v=>{ v._retryAt = 0; v._tries = 0; });
+  document.querySelectorAll('img.sticker-tap, #sticker-picker-grid img').forEach(img=>{
+    if(img.dataset.o && (!img.complete || img.naturalWidth === 0)){ img.dataset.r = 0; stickerImgRetry(img); }
+  });
+  vidRefresh();
+});
 
 const stickerViewerOverlay = document.getElementById('sticker-viewer-overlay');
 const stickerViewerMediaWrap = document.getElementById('sticker-viewer-media-wrap');
@@ -10532,7 +10552,7 @@ function renderStickerPicker(){
     tile.style.cssText = 'position:relative; width:100%; aspect-ratio:1; background:var(--card); border-radius:10px; border:1px solid var(--card-border); cursor:pointer; overflow:hidden;';
     tile.innerHTML = (isVideoStickerUrl(url)
       ? `<img src="${escapeHtml(videoPosterUrl(url))}" style="width:100%; height:100%; object-fit:contain;" onerror="this.style.display='none'"><span class="vid-play sm"></span>`
-      : `<img src="${escapeHtml(url)}" style="width:100%; height:100%; object-fit:contain;">`)
+      : `<img src="${escapeHtml(url)}" loading="lazy" decoding="async" onerror="stickerImgRetry(this)" style="width:100%; height:100%; object-fit:contain;">`)
       + `<div class="sticker-tile-remove" data-sticker-url="${escapeHtml(url)}" title="Remove from your stickers">×</div>`;
     tile.addEventListener('click', (e)=>{
       if(e.target.closest('.sticker-tile-remove')) return; // handled by its own listener below
@@ -11316,10 +11336,17 @@ function loadImageForCanvas(url){
   return new Promise((resolve, reject)=>{
     const img = new Image();
     img.crossOrigin = 'anonymous';
-    img.onload = ()=>resolve(img);
-    img.onerror = reject;
+    const t = setTimeout(()=>reject(new Error('image timeout')), 10000);
+    img.onload = ()=>{ clearTimeout(t); resolve(img); };
+    img.onerror = (e)=>{ clearTimeout(t); reject(e); };
     img.src = url;
   });
+}
+// A video sticker's small still picture loads faster and more reliably than seeking into the video itself,
+// so the share card tries that first and only then tries grabbing a frame from the video.
+async function loadVideoStickerForCanvas(url){
+  try{ return await loadImageForCanvas(videoPosterUrl(url)); }
+  catch(e){ return await loadVideoFrameForCanvas(url); }
 }
 
 // Video stickers can't be embedded as a still PNG, so this grabs a single
@@ -11339,6 +11366,7 @@ function loadVideoFrameForCanvas(url){
     }, { once:true });
     video.addEventListener('seeked', ()=>resolve(video), { once:true });
     video.addEventListener('error', reject, { once:true });
+    setTimeout(()=>reject(new Error('video timeout')), 10000);
     video.src = url;
   });
 }
@@ -11417,7 +11445,7 @@ async function buildShareCanvas(content, name, spaceLabel, style, stickerUrl, au
 
   if(stickerUrl){
     try{
-      const media = isVideoStickerUrl(stickerUrl) ? await loadVideoFrameForCanvas(stickerUrl) : await loadImageForCanvas(stickerUrl);
+      const media = isVideoStickerUrl(stickerUrl) ? await loadVideoStickerForCanvas(stickerUrl) : await loadImageForCanvas(stickerUrl);
       const naturalW = media.videoWidth || media.naturalWidth || media.width;
       const naturalH = media.videoHeight || media.naturalHeight || media.height;
       const maxW = contentWidth, maxH = contentBottom - contentTop;
@@ -11436,9 +11464,18 @@ async function buildShareCanvas(content, name, spaceLabel, style, stickerUrl, au
       // bucket doesn't send CORS headers) -- fall back to a label rather
       // than leaving the card blank.
       console.error('Could not draw sticker onto share card, falling back to label:', err);
-      ctx.fillStyle = palette.body;
-      ctx.font = '44px Georgia, serif';
-      ctx.fillText('🏷 sticker', contentLeft, contentTop + 60);
+      const bx = contentLeft + contentWidth/2 - 230, by = contentTop + 40, bs = 460;
+      ctx.fillStyle = palette.bg; roundRect(ctx, bx, by, bs, bs, 28); ctx.fill();
+      ctx.fillStyle = isGold ? '#2e2208' : '#d4a857';
+      const cx = bx + bs/2, cy = by + bs/2;
+      ctx.beginPath(); ctx.arc(cx, cy, 70, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = isGold ? '#f3e0ab' : '#0c0c0e';
+      ctx.beginPath(); ctx.moveTo(cx-18, cy-30); ctx.lineTo(cx-18, cy+30); ctx.lineTo(cx+34, cy); ctx.closePath(); ctx.fill();
+      if(content){
+        ctx.fillStyle = palette.body;
+        ctx.font = '34px Georgia, serif';
+        wrapCanvasText(ctx, content, contentLeft, contentBottom + 36, contentWidth, 44);
+      }
     }
   } else if(audioUrl){
     ctx.fillStyle = palette.label;
@@ -11469,7 +11506,7 @@ async function buildShareCanvas(content, name, spaceLabel, style, stickerUrl, au
     ctx.fillStyle = palette.label;
     ctx.font = '26px Karla, sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText(shareUrl.replace(/^https?:\/\//, ''), canvas.width - pad - 60, canvas.height - pad - 60);
+    ctx.fillText(shareUrl.replace(/^https?:\/\//, ''), canvas.width - pad - 60, canvas.height - pad - 110);
     ctx.textAlign = 'left';
   }
 
@@ -11523,6 +11560,7 @@ async function openShareCard(content, name, spaceLabel, stickerUrl, audioUrl, du
     b.style.borderColor = active ? 'var(--gold-dim)' : 'transparent';
   });
   document.getElementById('share-card-overlay').classList.add('show');
+  updateComposeVisibility();
   setupOriginalMediaRow();
   await renderShareCard();
 }
@@ -11651,7 +11689,7 @@ document.getElementById('share-card-link-btn').addEventListener('click', async (
   const ok = await copyText(currentShareUrl);
   showNavToast(ok ? 'Link copied.' : 'Could not copy the link.');
 });
-function closeShareCard(){ document.getElementById('share-card-overlay').classList.remove('show'); }
+function closeShareCard(){ document.getElementById('share-card-overlay').classList.remove('show'); updateComposeVisibility(); }
 document.getElementById('share-card-close').addEventListener('click', closeShareCard);
 document.getElementById('share-card-overlay').addEventListener('click', (e)=>{
   if(e.target.id === 'share-card-overlay') closeShareCard();
@@ -11684,8 +11722,9 @@ function updateComposeVisibility(){
   const isProfile = document.getElementById('screen-profile')?.classList.contains('active');
   const isPostReplies = postRepliesSheet?.classList.contains('show');
   const isWatching = document.getElementById('watch-screen')?.classList.contains('show');
+  const isSharing = document.getElementById('share-card-overlay')?.classList.contains('show');
   const isOrgsScreen = document.getElementById('screen-orgs')?.classList.contains('active');
-  const hide = (isChatScreen && !isCommunitiesTab) || isRoom || isChatThread || isCommunityThread || isProfile || isPostReplies || isWatching || (isOrgsScreen && !myOrgIds.size);
+  const hide = (isChatScreen && !isCommunitiesTab) || isRoom || isChatThread || isCommunityThread || isProfile || isPostReplies || isWatching || isSharing || (isOrgsScreen && !myOrgIds.size);
   composeBtn.style.display = hide ? 'none' : 'flex';
   composeBtn.textContent = isCommunitiesTab ? '👥' : '+';
 }
