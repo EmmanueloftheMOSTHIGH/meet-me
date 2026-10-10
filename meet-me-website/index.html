@@ -3707,7 +3707,7 @@ async function loadYourReplies(){
 const YW_EMOTIONS = {
   hope:  { label:'Hope',  color:'#d4a857', words:['hope','hopeful','believe','faith','grateful','thankful','thank god','thank you','blessed','blessing','pray','prayer','praying','better','strength','strong','healing','heal','will be fine','will be okay','it is well','peace','joy','happy','proud','grace','tomorrow','God','Jesus','amen','🙏','❤','🙌','✨'] },
   laugh: { label:'Laugh', color:'#ecd58f', words:['lol','lmao','haha','hahaha','funny','laugh','laughing','jokes','joke','comedy','hilarious','abeg','😂','🤣','😆','😹'] },
-  vex:   { label:'Vex',   color:'#d9704a', words:['vex','vexed','angry','anger','annoyed','annoying','hate','fed up','furious','rage','mad','wahala','frustrated','frustrating','disrespect','unfair','irritated','sick of','tired of','enough is enough','😡','🤬','😤'] },
+  vex:   { label:'Vex',   color:'#d9704a', words:['vex','vexed','vexing','vexes','vexation','angry','anger','annoyed','annoying','hate','fed up','furious','rage','mad','wahala','frustrated','frustrating','disrespect','unfair','irritated','sick of','tired of','enough is enough','😡','🤬','😤'] },
   heavy: { label:'Heavy', color:'#7f8fc9', words:['sad','cry','crying','cried','lonely','alone','depressed','depression','hurt','hurting','pain','empty','heavy','lost','afraid','scared','anxious','anxiety','stress','stressed','overwhelmed','tired','exhausted','broken','worthless','hopeless','miss','missing','grief','😢','😭','💔','😞','😔'] },
   mixed: { label:'Mixed', color:'#6f6f6f', words:[] }
 };
@@ -3917,8 +3917,8 @@ function renderYwPie(zone, thisPosts, lastPosts, loadFailed){
     else compare = 'Close to last week.';
   }
 
-  const chips = YW_ORDER.filter(k => mix.counts[k] > 0).map(k =>
-    '<span class="yw-chip"><span class="yw-dot" style="background:' + YW_EMOTIONS[k].color + ';"></span>' + YW_EMOTIONS[k].label + '</span>').join('');
+  const chips = YW_ORDER.filter(k => k !== 'mixed' || mix.counts[k] > 0).map(k =>
+    '<span class="yw-chip"' + (mix.counts[k] > 0 ? '' : ' style="opacity:.45;"') + '><span class="yw-dot" style="background:' + YW_EMOTIONS[k].color + ';"></span>' + YW_EMOTIONS[k].label + '</span>').join('');
 
   zone.innerHTML =
     '<div class="yw-pie-row"><svg class="yw-pie" viewBox="0 0 100 100">' + segs + '</svg>' +
@@ -8588,6 +8588,23 @@ document.getElementById('feed-new-posts-banner').addEventListener('click', async
     pullDistance = 0;
   });
 })();
+
+// Coming back from another page (the content desk, say) must never leave the app nudged upward or a
+// "pull to refresh" hint stuck on screen. Reset both whenever the app is shown again.
+try{ history.scrollRestoration = 'manual'; }catch(e){}
+function resetShiftAndPullHints(){
+  window.scrollTo(0, 0);
+  document.documentElement.scrollTop = 0;
+  document.body.scrollTop = 0;
+  ['feed-pull-indicator','orgs-pull-indicator','spill-pull-indicator'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el && !/refreshing/.test(el.textContent)) el.style.opacity = 0;
+  });
+}
+window.addEventListener('pageshow', ()=>{ resetShiftAndPullHints(); setTimeout(resetShiftAndPullHints, 300); });
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) resetShiftAndPullHints(); });
+document.addEventListener('touchcancel', resetShiftAndPullHints, { passive: true });
+resetShiftAndPullHints();
 
 // Spill: the stack doesn't scroll (it's a horizontal swipe deck), so
 // there's no scrollTop to gate on -- instead only treat a drag as a
