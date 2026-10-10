@@ -1099,6 +1099,20 @@
   .vid-play.sm{ width:28px; height:28px; margin:-14px 0 0 -14px; }
   .vid-play.sm::before{ margin-left:2px; border-width:5px 0 5px 8px; }
   .vid-expired{ color:#d4a857; font-size:14px; text-align:center; padding:28px 22px; }
+  /* Loading signal: three short straight golden lights that breathe, one after the other. */
+  .breath{ display:inline-flex; align-items:center; justify-content:center; gap:5px; height:22px; vertical-align:middle; }
+  .breath i{ display:block; width:3px; height:18px; border-radius:2px; background:var(--gold, #d4a857); box-shadow:0 0 8px var(--gold-dim, rgba(212,168,87,0.5)); opacity:0.25; transform:scaleY(0.55); animation:breathe 1.7s ease-in-out infinite; }
+  .breath i:nth-child(2){ animation-delay:0.22s; }
+  .breath i:nth-child(3){ animation-delay:0.44s; }
+  @keyframes breathe{ 0%,100%{ opacity:0.25; transform:scaleY(0.55); } 50%{ opacity:1; transform:scaleY(1); } }
+  @media (prefers-reduced-motion:reduce){ .breath i{ animation:none; opacity:0.85; transform:none; } }
+  .vid-poster .breath, #sticker-viewer-overlay .breath, #net-glow .breath{ --gold:#d4a857; --gold-dim:rgba(212,168,87,0.5); }
+  .vid-loading{ position:absolute; left:50%; bottom:10px; transform:translateX(-50%); pointer-events:none; }
+  .viewer-loading{ position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); pointer-events:none; }
+  #net-glow{ position:fixed; left:50%; top:calc(env(safe-area-inset-top, 0px) + 10px); transform:translate(-50%,-8px); z-index:99999; display:flex; align-items:center; gap:10px;
+    padding:8px 16px 8px 14px; border-radius:999px; background:rgba(12,12,14,0.94); border:1px solid rgba(212,168,87,0.5); color:#f0e6d2; font-size:12px; line-height:1.2;
+    max-width:calc(100vw - 32px); opacity:0; pointer-events:none; transition:opacity 0.3s ease, transform 0.3s ease; }
+  #net-glow.show{ opacity:1; transform:translate(-50%,0); }
 
   #text-viewer-overlay{
     position:absolute; inset:0;
@@ -2100,6 +2114,8 @@
 </script>
 </head>
 <body>
+
+<div id="net-glow" role="status" aria-live="polite"><span class="breath"><i></i><i></i><i></i></span><span id="net-glow-text"></span></div>
 
 <div id="phone">
   <div id="phone-notch"></div>
@@ -3106,6 +3122,44 @@
   </div>
 </div>
 
+<script>
+/* NETWORK WATCHER: when the connection drops, or database calls are slow, three golden lights breathe at the top of the screen
+   instead of the app just looking stuck. Only database calls count (not video or picture uploads, which are slow on purpose). */
+(function(){
+  var nativeFetch = window.fetch ? window.fetch.bind(window) : null;
+  if(!nativeFetch) return;
+  var glow = document.getElementById('net-glow'), txt = document.getElementById('net-glow-text');
+  var pending = 0, slow = false, failed = false, offline = (navigator.onLine === false), slowT = null, failT = null;
+  function paint(){
+    if(!glow) return;
+    var msg = offline ? 'No connection. Waiting for the network' : failed ? 'Connection is weak. Still trying' : slow ? 'Slow connection' : '';
+    if(msg){ txt.textContent = msg; glow.classList.add('show'); } else { glow.classList.remove('show'); }
+  }
+  function isData(u){ return /\/(rest|auth|functions)\/v1\//.test(u); }
+  window.fetch = function(input, init){
+    var url = (typeof input === 'string') ? input : (input && input.url) || '';
+    if(!isData(url)) return nativeFetch(input, init);
+    pending++;
+    if(!slowT) slowT = setTimeout(function(){ slowT = null; if(pending > 0){ slow = true; paint(); } }, 5000);
+    function settle(){ pending = Math.max(0, pending - 1); if(pending === 0){ clearTimeout(slowT); slowT = null; slow = false; } }
+    return nativeFetch(input, init).then(function(r){
+      settle(); failed = false; offline = false; clearTimeout(failT); paint(); return r;
+    }, function(err){
+      settle();
+      if(err && err.name !== 'AbortError'){
+        failed = true; clearTimeout(failT); failT = setTimeout(function(){ failed = false; paint(); }, 9000);
+      }
+      paint(); throw err;
+    });
+  };
+  window.addEventListener('offline', function(){ offline = true; paint(); });
+  window.addEventListener('online', function(){
+    offline = false; failed = false; paint();
+    try{ window.dispatchEvent(new Event('meetme:back-online')); }catch(e){}
+  });
+  paint();
+})();
+</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 /* ============================================================
@@ -3590,7 +3644,7 @@ document.getElementById('yourreplies-feed').addEventListener('click', (e)=>{
 
 async function loadYourReplies(){
   const feed = document.getElementById('yourreplies-feed');
-  feed.innerHTML = '<div style="text-align:center;padding:20px;font-size:12px;color:var(--muted-dim);">Loading...</div>';
+  feed.innerHTML = '<div style="text-align:center;padding:20px;font-size:12px;color:var(--muted-dim);"><span class="breath" role="status" aria-label="Loading"><i></i><i></i><i></i></span></div>';
   if(!currentUserId) return;
 
   const { data, error } = await sb
@@ -3720,7 +3774,7 @@ async function ywCount(promise, fn){
 
 async function loadYourWeek(){
   const body = document.getElementById('yourweek-body');
-  body.innerHTML = '<div style="text-align:center;padding:26px;font-size:12px;color:var(--muted-dim);">Loading...</div>';
+  body.innerHTML = '<div style="text-align:center;padding:26px;font-size:12px;color:var(--muted-dim);"><span class="breath" role="status" aria-label="Loading"><i></i><i></i><i></i></span></div>';
   if(!currentUserId){ body.innerHTML = ''; return; }
 
   const now = new Date();
@@ -3935,7 +3989,7 @@ async function loadOrgPosts(reset){
     return;
   }
   opLoading = true;
-  if(reset){ opPosts = []; feed.innerHTML = '<div style="text-align:center;padding:26px;font-size:12px;color:var(--muted-dim);">Loading...</div>'; }
+  if(reset){ opPosts = []; feed.innerHTML = '<div style="text-align:center;padding:26px;font-size:12px;color:var(--muted-dim);"><span class="breath" role="status" aria-label="Loading"><i></i><i></i><i></i></span></div>'; }
   let q = sb.from('posts')
     .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, organization_id, header')
     .in('organization_id', ids)
@@ -4350,6 +4404,7 @@ function layoutSpillCards(){
   });
   const dots = document.querySelectorAll('#spill-progress .dot');
   dots.forEach((d,i)=>{ d.classList.remove('current','seen'); if(i < spillIndex) d.classList.add('seen'); if(i === spillIndex) d.classList.add('current'); });
+  try{ vidRefresh(); }catch(e){}   // only the top card's video may play
   const hint = document.getElementById('spill-hint');
   const total = cards.length;
   if(total === 0){ hint.textContent = ''; }
@@ -6374,7 +6429,7 @@ function stickerMediaTag(url, size, withSound){
     // Tap to play: only the small still picture loads in the feed. The video loads when the viewer opens.
     return `<span class="sticker-tap vid-poster" data-sticker-url="${escapeHtml(url)}" data-sticker-video="true"${withSound ? ' data-sticker-sound="true"' : ''} style="width:${size}px; height:${size}px;"><img src="${escapeHtml(videoPosterUrl(url))}" alt="" loading="lazy" onerror="this.style.display='none'"><video class="vid-auto" data-src="${escapeHtml(url)}" muted loop playsinline preload="none" style="position:absolute; inset:0; width:100%; height:100%; object-fit:contain; pointer-events:none;"></video><span class="vid-play${size < 90 ? ' sm' : ''}" style="display:none"></span></span>`;
   }
-  return `<img class="sticker-tap" data-sticker-url="${escapeHtml(url)}" src="${escapeHtml(url)}" style="width:${size}px; height:${size}px; object-fit:contain; display:block;">`;
+  return `<img class="sticker-tap" data-sticker-url="${escapeHtml(url)}" src="${escapeHtml(url)}" loading="lazy" decoding="async" style="width:${size}px; height:${size}px; object-fit:contain; display:block;">`;
 }
 
 function stickerHtml(stickerUrl, size, withSound){
@@ -6445,29 +6500,106 @@ function tutorialCardEl(space){
    ============================================================ */
 /* AUTOPLAY VIDEO STICKERS (feeds): silent loop that plays while on screen and pauses when scrolled away.
    Files now live on Cloudflare R2 (no download fees), so this is free to leave on. Tapping still opens the full viewer. */
+/* Only a couple of videos play at once (the ones nearest the middle of the screen); the rest keep their still picture.
+   A video that scrolls away is unloaded a few seconds later, so the phone is never holding dozens of them. This is what
+   stops the feeds hanging: before, every video that was "visible" loaded and played together, and in Spill that meant
+   every card in the stack, including the ones hidden behind the top card. */
+const VID_MAX_PLAYING = 2;
+const VID_STALL_MS = 9000;
+const vidVisible = new Set();
+let vidApplyT = null;
+function vidLoader(v, on){
+  const box = v.parentElement; if(!box) return;
+  let l = box.querySelector('.vid-loading');
+  if(on && !l){
+    l = document.createElement('span');
+    l.className = 'vid-loading breath';
+    l.setAttribute('role', 'status'); l.setAttribute('aria-label', 'Loading');
+    l.innerHTML = '<i></i><i></i><i></i>';
+    box.appendChild(l);
+  } else if(!on && l){ l.remove(); }
+}
+function vidShown(v){
+  const card = v.closest('.spill-card');
+  if(card){ const o = parseFloat(card.style.opacity); if(!isNaN(o) && o < 0.9) return false; }   // stacked behind the top card
+  return true;
+}
+function vidUnload(v){
+  clearTimeout(v._stallT); clearTimeout(v._unloadT);
+  vidLoader(v, false);
+  if(v.getAttribute('src')){
+    v._unloading = true;
+    v.pause(); v.removeAttribute('src'); v.load();
+    setTimeout(()=>{ v._unloading = false; }, 60);
+  }
+}
+function vidStart(v){
+  clearTimeout(v._unloadT);
+  if(v._retryAt && Date.now() < v._retryAt) return;
+  v.muted = true;
+  if(!v.getAttribute('src')){
+    v.src = v.dataset.src;
+    vidLoader(v, true);
+    clearTimeout(v._stallT);
+    v._stallT = setTimeout(()=>{      // still not playing after a long wait: stop trying, show the picture with its play button
+      if(v.paused || v.readyState < 3){
+        vidUnload(v); v._retryAt = Date.now() + 15000;
+        const pb = v.parentElement && v.parentElement.querySelector('.vid-play'); if(pb) pb.style.display = '';
+        setTimeout(vidRefresh, 15200);
+      }
+    }, VID_STALL_MS);
+  }
+  const p = v.play(); if(p && p.catch) p.catch(()=>{});
+}
+function vidStop(v){
+  if(!v.getAttribute('src')) return;
+  v.pause();
+  vidLoader(v, false);
+  clearTimeout(v._unloadT);
+  v._unloadT = setTimeout(()=>vidUnload(v), 3000);
+}
+function vidApply(){
+  const mid = window.innerHeight / 2;
+  const picks = [...vidVisible]
+    .filter(v => v.isConnected && vidShown(v) && !document.hidden)
+    .map(v => { const r = v.getBoundingClientRect(); return { v, d: Math.abs((r.top + r.bottom) / 2 - mid) }; })
+    .sort((x, y) => x.d - y.d).slice(0, VID_MAX_PLAYING).map(x => x.v);
+  const chosen = new Set(picks);
+  document.querySelectorAll('video.vid-auto').forEach(v => { if(chosen.has(v)) vidStart(v); else vidStop(v); });
+}
+function vidRefresh(){ clearTimeout(vidApplyT); vidApplyT = setTimeout(vidApply, 120); }
 const vidAutoIO = ('IntersectionObserver' in window) ? new IntersectionObserver((entries)=>{
-  entries.forEach(en=>{
-    const v = en.target;
-    if(en.isIntersecting){
-      if(!v.getAttribute('src')) v.src = v.dataset.src;
-      v.muted = true;
-      const p = v.play(); if(p && p.catch) p.catch(()=>{});
-    } else if(v.getAttribute('src')){
-      v.pause();
-    }
-  });
+  entries.forEach(en=>{ if(en.isIntersecting) vidVisible.add(en.target); else vidVisible.delete(en.target); });
+  vidRefresh();
 }, { threshold: 0.35 }) : null;
 function wireVidAuto(v){
   if(v._wired) return; v._wired = true;
-  v.addEventListener('error', ()=>{      // expired / missing video: fall back to the still picture with a play button
+  v.addEventListener('error', ()=>{
+    if(v._unloading) return;
+    clearTimeout(v._stallT); vidLoader(v, false);
+    const code = v.error ? v.error.code : 0;
+    if(code === 2 && ((v._tries = (v._tries || 0) + 1) <= 3)){   // network hiccup: quietly try again in a few seconds
+      vidUnload(v); v._retryAt = Date.now() + 5000; setTimeout(vidRefresh, 5200); return;
+    }
+    // expired / missing video: fall back to the still picture with a play button
     if(vidAutoIO) vidAutoIO.unobserve(v);
+    vidVisible.delete(v);
     const box = v.parentElement; v.remove();
     const pb = box && box.querySelector('.vid-play'); if(pb) pb.style.display = '';
   });
-  v.addEventListener('playing', ()=>{ const pb = v.parentElement && v.parentElement.querySelector('.vid-play'); if(pb) pb.style.display = 'none'; });
+  v.addEventListener('playing', ()=>{
+    clearTimeout(v._stallT); v._tries = 0; vidLoader(v, false);
+    const pb = v.parentElement && v.parentElement.querySelector('.vid-play'); if(pb) pb.style.display = 'none';
+  });
+  v.addEventListener('waiting', ()=>{ if(!v.paused && v.getAttribute('src')) vidLoader(v, true); });
+  v.addEventListener('stalled', ()=>{ if(!v.paused && v.getAttribute('src')) vidLoader(v, true); });
   if(vidAutoIO) vidAutoIO.observe(v);
   else { const pb = v.parentElement.querySelector('.vid-play'); if(pb) pb.style.display = ''; }  // very old browser: keep tap-to-play
 }
+document.addEventListener('visibilitychange', ()=>{
+  if(document.hidden){ document.querySelectorAll('video.vid-auto').forEach(v=>{ if(v.getAttribute('src')) v.pause(); }); }
+  else vidRefresh();
+});
 new MutationObserver((muts)=>{
   muts.forEach(m=>m.addedNodes.forEach(n=>{
     if(n.nodeType !== 1) return;
@@ -6521,7 +6653,22 @@ function openStickerViewer(url, isVideo, withSound){
       : `<img src="${escapeHtml(url)}">`;
   }
   watchViewerVideoExpired();
+  viewerLoading();
   stickerViewerOverlay.classList.add('show');
+}
+// Three breathing lights while the full-size picture or video is still on its way.
+function viewerLoading(){
+  const media = stickerViewerMediaWrap.querySelector('video, img');
+  if(!media) return;
+  const l = document.createElement('span');
+  l.className = 'breath viewer-loading';
+  l.setAttribute('role', 'status'); l.setAttribute('aria-label', 'Loading');
+  l.innerHTML = '<i></i><i></i><i></i>';
+  stickerViewerMediaWrap.appendChild(l);
+  const done = ()=>{ l.remove(); };
+  if(media.tagName === 'VIDEO'){ ['playing', 'loadeddata', 'error'].forEach(ev => media.addEventListener(ev, done, { once: true })); }
+  else if(media.complete){ done(); }
+  else { media.addEventListener('load', done, { once: true }); media.addEventListener('error', done, { once: true }); }
 }
 function closeStickerViewer(){
   stickerViewerOverlay.classList.remove('show');
@@ -11855,7 +12002,7 @@ document.querySelectorAll('#user-profile-filters .yp-filter').forEach(btn=>{
 
 async function loadUserProfilePosts(){
   const feed = document.getElementById('user-profile-feed');
-  feed.innerHTML = '<div style="text-align:center;padding:20px;font-size:12px;color:var(--muted-dim);">Loading...</div>';
+  feed.innerHTML = '<div style="text-align:center;padding:20px;font-size:12px;color:var(--muted-dim);"><span class="breath" role="status" aria-label="Loading"><i></i><i></i><i></i></span></div>';
   const { data, error } = await sb
     .from('posts')
     .select('id, user_id, content, sticker_url, audio_url, duration_seconds, post_type, category, created_at, happening_id, happenings(name)')
@@ -11930,7 +12077,7 @@ document.getElementById('bookmarks-back').addEventListener('click', ()=>{
 
 async function loadBookmarksList(){
   const feed = document.getElementById('bookmarks-feed');
-  feed.innerHTML = '<div style="text-align:center;padding:20px;font-size:12px;color:var(--muted-dim);">Loading...</div>';
+  feed.innerHTML = '<div style="text-align:center;padding:20px;font-size:12px;color:var(--muted-dim);"><span class="breath" role="status" aria-label="Loading"><i></i><i></i><i></i></span></div>';
   if(!currentUserId){ feed.innerHTML = ''; return; }
 
   const { data, error } = await sb
