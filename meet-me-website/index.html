@@ -984,6 +984,42 @@
   }
   #search-overlay.show, #user-profile-overlay.show, #happening-view-overlay.show, #bookmarks-overlay.show, #yourreplies-overlay.show{ opacity:1; pointer-events:auto; }
 
+
+  /* ============ YOUR WEEK ============ */
+  #yourweek-overlay{
+    position:absolute; inset:0; background:var(--bg); z-index:79;
+    opacity:0; pointer-events:none; transition:opacity 0.3s ease;
+    display:flex; flex-direction:column;
+  }
+  #yourweek-overlay.show{ opacity:1; pointer-events:auto; }
+  #yourweek-body{ flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:14px 16px 90px; display:flex; flex-direction:column; gap:14px; }
+  #yourweek-body::-webkit-scrollbar{ display:none; }
+  .yw-card{ background:var(--card); border:1px solid var(--card-border); border-radius:16px; padding:18px 16px; }
+  .yw-label{ font-size:11px; letter-spacing:0.09em; text-transform:uppercase; color:var(--gold-text); margin-bottom:14px; }
+  .yw-bars{ display:flex; justify-content:space-between; align-items:flex-end; height:62px; padding:0 4px; }
+  .yw-bar-col{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; }
+  .yw-bar{ width:28px; border-radius:7px; background:var(--gold); }
+  .yw-bar.empty{ background:transparent; border:1.5px dashed var(--muted-dim); height:14px; }
+  .yw-bar.future{ background:var(--muted-dim); opacity:0.35; height:6px; width:6px; border-radius:50%; }
+  .yw-days{ display:flex; justify-content:space-between; padding:6px 4px 0; }
+  .yw-days span{ flex:1; text-align:center; font-size:11.5px; color:var(--muted-dim); }
+  .yw-days span.today{ color:var(--ivory); }
+  .yw-big{ font-family:'Fraunces',serif; font-size:19px; line-height:1.4; color:var(--ivory); margin-top:16px; }
+  .yw-sub{ font-size:12.5px; color:var(--muted); margin-top:10px; line-height:1.5; }
+  .yw-note{ font-size:11.5px; color:var(--muted-dim); margin-top:12px; line-height:1.5; }
+  .yw-rule{ border:none; border-top:1px solid var(--card-border); margin:18px 0; }
+  .yw-pie-row{ display:flex; align-items:center; gap:16px; }
+  .yw-pie{ width:104px; height:104px; flex-shrink:0; transform:rotate(-90deg); }
+  .yw-chips{ display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+  .yw-chip{ display:inline-flex; align-items:center; gap:7px; padding:7px 12px; border:1px solid var(--card-border); border-radius:12px; font-size:13px; color:var(--ivory); }
+  .yw-dot{ width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+  .yw-link{ display:inline-block; margin-top:10px; font-size:12px; color:var(--gold-text); cursor:pointer; text-decoration:underline; text-underline-offset:3px; }
+  .yw-two{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:16px; }
+  .yw-col{ background:var(--bg-elevated); border-radius:12px; padding:12px 12px 6px; }
+  .yw-col-title{ font-size:12px; color:var(--muted); margin-bottom:6px; line-height:1.35; }
+  .yw-line{ display:flex; justify-content:space-between; align-items:flex-start; gap:8px; padding:7px 0; font-size:13px; line-height:1.3; color:var(--ivory); }
+  .yw-line b{ font-weight:500; color:var(--gold-light); }
+
   #sticker-viewer-overlay{
     position:absolute; inset:0;
     background:rgba(5,5,6,0.94);
@@ -2145,6 +2181,10 @@
         <span class="profile-row-label">Your replies</span>
         <span class="profile-row-value">›</span>
       </div>
+      <div class="profile-row" id="profile-yourweek-row">
+        <span class="profile-row-label">Your week</span>
+        <span class="profile-row-value">›</span>
+      </div>
       <div class="profile-row" id="profile-bookmarks-row">
         <span class="profile-row-label">Saved</span>
         <span class="profile-row-value">›</span>
@@ -2346,6 +2386,17 @@
       </div>
     </div>
     <div id="yourreplies-feed"></div>
+  </div>
+
+  <div id="yourweek-overlay">
+    <div class="overlay-header">
+      <div id="yourweek-back" class="yourposts-style-back">‹</div>
+      <div>
+        <div style="font-family:'Fraunces',serif; font-size:16px; color:var(--ivory);">Your week</div>
+        <div style="font-size:11px; color:var(--muted-dim); margin-top:2px;">Only you can see this.</div>
+      </div>
+    </div>
+    <div id="yourweek-body"></div>
   </div>
 
   <div id="delete-account-overlay" class="account-overlay">
@@ -3523,6 +3574,244 @@ async function loadYourReplies(){
       <div class="yp-post-time">${formatRelativeTime(r.created_at)}</div>`;
     feed.appendChild(wrap);
   });
+}
+
+// ============================================================
+// YOUR WEEK -- a private, read-only look at the last seven days.
+//   1. How you've been: the Door's daily mood check-ins (door_pulses),
+//      Monday to Sunday.
+//   2. What you talked about: a rough read of your own posts, done
+//      entirely on this phone. Nothing is sent anywhere or stored.
+//      It is a guess, so anything it can't read goes to "Mixed", it
+//      needs at least 3 posts before it shows anything, and the person
+//      can hide it. It never triggers anything else in the app.
+//   3. Luck and your move: plain counts of being reached vs reaching
+//      out. No score, no ranking.
+// ============================================================
+const YW_EMOTIONS = {
+  hope:  { label:'Hope',  color:'#d4a857', words:['hope','hopeful','believe','faith','grateful','thankful','thank god','thank you','blessed','blessing','pray','prayer','praying','better','strength','strong','healing','heal','will be fine','will be okay','it is well','peace','joy','happy','proud','grace','tomorrow','God','Jesus','amen','🙏','❤','🙌','✨'] },
+  laugh: { label:'Laugh', color:'#ecd58f', words:['lol','lmao','haha','hahaha','funny','laugh','laughing','jokes','joke','comedy','hilarious','abeg','😂','🤣','😆','😹'] },
+  vex:   { label:'Vex',   color:'#d9704a', words:['vex','vexed','angry','anger','annoyed','annoying','hate','fed up','furious','rage','mad','wahala','frustrated','frustrating','disrespect','unfair','irritated','sick of','tired of','enough is enough','😡','🤬','😤'] },
+  heavy: { label:'Heavy', color:'#7f8fc9', words:['sad','cry','crying','cried','lonely','alone','depressed','depression','hurt','hurting','pain','empty','heavy','lost','afraid','scared','anxious','anxiety','stress','stressed','overwhelmed','tired','exhausted','broken','worthless','hopeless','miss','missing','grief','😢','😭','💔','😞','😔'] },
+  mixed: { label:'Mixed', color:'#6f6f6f', words:[] }
+};
+const YW_ORDER = ['hope','laugh','vex','heavy','mixed'];
+
+function ywEscapeRegex(w){ return w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+const YW_PATTERNS = {};
+Object.keys(YW_EMOTIONS).forEach(k => {
+  const words = YW_EMOTIONS[k].words;
+  if(!words.length){ YW_PATTERNS[k] = null; return; }
+  YW_PATTERNS[k] = words.map(w => {
+    const esc = ywEscapeRegex(w.toLowerCase());
+    return /^[a-z' ]+$/i.test(w) ? new RegExp('\\b' + esc + '\\b', 'g') : new RegExp(esc, 'g');
+  });
+});
+
+// One post -> one of the five buckets. Anything unclear is "mixed".
+function ywClassify(text){
+  const t = String(text || '').toLowerCase();
+  const scores = {};
+  ['hope','laugh','vex','heavy'].forEach(k => {
+    let n = 0;
+    YW_PATTERNS[k].forEach(re => { const m = t.match(re); if(m) n += m.length; });
+    scores[k] = n;
+  });
+  const ranked = Object.entries(scores).sort((a,b) => b[1] - a[1]);
+  if(!ranked[0][1]) return 'mixed';
+  if(ranked[1][1] === ranked[0][1]) return 'mixed';
+  return ranked[0][0];
+}
+
+function ywMondayOf(d){
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
+  return x;
+}
+function ywMix(posts){
+  const counts = { hope:0, laugh:0, vex:0, heavy:0, mixed:0 };
+  posts.forEach(p => { counts[ywClassify(p.content)]++; });
+  const total = posts.length;
+  const share = {};
+  YW_ORDER.forEach(k => { share[k] = total ? counts[k] / total : 0; });
+  return { counts, share, total };
+}
+function ywTimes(n){ return n === 1 ? '1 time' : n + ' times'; }
+function ywNum(v){ return (v === null || v === undefined) ? '–' : v; }
+
+document.getElementById('profile-yourweek-row').addEventListener('click', ()=>{
+  closeProfile();
+  setTimeout(async ()=>{
+    document.getElementById('yourweek-overlay').classList.add('show');
+    await loadYourWeek();
+  }, 250);
+});
+document.getElementById('yourweek-back').addEventListener('click', ()=>{
+  document.getElementById('yourweek-overlay').classList.remove('show');
+});
+
+async function ywCount(promise, fn){
+  try{
+    const { data, error } = await promise;
+    if(error){ console.warn('Your week query skipped:', error.message); return null; }
+    return fn(data || []);
+  }catch(e){ console.warn('Your week query failed:', e); return null; }
+}
+
+async function loadYourWeek(){
+  const body = document.getElementById('yourweek-body');
+  body.innerHTML = '<div style="text-align:center;padding:26px;font-size:12px;color:var(--muted-dim);">Loading...</div>';
+  if(!currentUserId){ body.innerHTML = ''; return; }
+
+  const now = new Date();
+  const monday = ywMondayOf(now);
+  const prevMonday = new Date(monday); prevMonday.setDate(prevMonday.getDate() - 7);
+  const sunday = new Date(monday); sunday.setDate(sunday.getDate() + 6);
+  const weekStartIso = monday.toISOString();
+  const me = currentUserId;
+
+  const [pulses, posts, rcvReplies, sentReplies, frIn, frOut, chatsIn, chatsOut, rooms, joined] = await Promise.all([
+    ywCount(sb.from('door_pulses').select('day, mood').eq('user_id', me).gte('day', localDayStr(monday)).lte('day', localDayStr(sunday)), d => d),
+    ywCount(sb.from('posts').select('content, created_at').eq('user_id', me).gte('created_at', prevMonday.toISOString()).order('created_at', { ascending:false }).limit(500), d => d),
+    // someone reached you: they replied on a post that is yours
+    ywCount(sb.from('replies').select('post_id, sender_id, posts!inner(user_id)').eq('receiver_id', me).neq('sender_id', me).gte('created_at', weekStartIso), d => new Set(d.filter(r => r.posts && r.posts.user_id === me).map(r => r.post_id + ':' + r.sender_id)).size),
+    // you reached out: you replied on a post that is not yours
+    ywCount(sb.from('replies').select('post_id, receiver_id, posts!inner(user_id)').eq('sender_id', me).neq('receiver_id', me).gte('created_at', weekStartIso), d => new Set(d.filter(r => r.posts && r.posts.user_id !== me).map(r => r.post_id)).size),
+    ywCount(sb.from('friend_requests').select('id').eq('receiver_id', me).gte('created_at', weekStartIso), d => d.length),
+    ywCount(sb.from('friend_requests').select('id').eq('sender_id', me).gte('created_at', weekStartIso), d => d.length),
+    ywCount(sb.from('chats').select('id').eq('user2_id', me).gte('created_at', weekStartIso), d => d.length),
+    ywCount(sb.from('chats').select('id').eq('user1_id', me).gte('created_at', weekStartIso), d => d.length),
+    ywCount(sb.from('rooms').select('id, user1_id, user2_id').or('user1_id.eq.' + me + ',user2_id.eq.' + me).not('user2_id', 'is', null).gte('created_at', weekStartIso), d => d.length),
+    ywCount(sb.from('community_members').select('community_id, role').eq('user_id', me).neq('role', 'creator').gte('created_at', weekStartIso), d => d.length)
+  ]);
+
+  body.innerHTML = '';
+
+  // ---- Card 1: how you've been + what you talked about ----
+  const card1 = document.createElement('div');
+  card1.className = 'yw-card';
+
+  const moodByDay = {};
+  (pulses || []).forEach(r => { moodByDay[String(r.day).slice(0,10)] = r.mood; });
+  const todayStr = localDayStr(now);
+  const letters = ['M','T','W','T','F','S','S'];
+  let barsHtml = '', daysHtml = '', moodSum = 0, moodN = 0;
+  for(let i = 0; i < 7; i++){
+    const d = new Date(monday); d.setDate(d.getDate() + i);
+    const key = localDayStr(d);
+    const mood = moodByDay[key];
+    const isFuture = key >= todayStr;   // today isn't over yet, so it never shows as "missed"
+    if(mood){
+      moodSum += mood; moodN++;
+      barsHtml += '<div class="yw-bar-col"><div class="yw-bar" style="height:' + Math.round(14 + DOOR_LVL[mood] * 46) + 'px;"></div></div>';
+    } else if(isFuture){
+      barsHtml += '<div class="yw-bar-col"><div class="yw-bar future"></div></div>';
+    } else {
+      barsHtml += '<div class="yw-bar-col"><div class="yw-bar empty"></div></div>';
+    }
+    daysHtml += '<span class="' + (key === todayStr ? 'today' : '') + '">' + letters[i] + '</span>';
+  }
+  let checkinLine;
+  if(pulses === null) checkinLine = "We couldn't load your check-ins just now.";
+  else if(!moodN) checkinLine = 'No check-ins this week. That\'s fine.';
+  else checkinLine = 'On the days you checked in, your days were mostly ' + DOOR_MOODS[Math.max(1, Math.min(5, Math.round(moodSum / moodN)))] + '.';
+
+  card1.innerHTML = '<div class="yw-label">How you\'ve been</div>' +
+    '<div class="yw-bars">' + barsHtml + '</div><div class="yw-days">' + daysHtml + '</div>' +
+    '<div class="yw-big" style="margin-top:14px;">' + escapeHtml(checkinLine) + '</div>' +
+    '<hr class="yw-rule"><div class="yw-label">What you talked about</div><div id="yw-pie-zone"></div>';
+  body.appendChild(card1);
+
+  const thisWeekPosts = (posts || []).filter(p => new Date(p.created_at) >= monday && String(p.content || '').trim());
+  const lastWeekPosts = (posts || []).filter(p => new Date(p.created_at) < monday && String(p.content || '').trim());
+  renderYwPie(document.getElementById('yw-pie-zone'), thisWeekPosts, lastWeekPosts, posts === null);
+
+  // ---- Card 2: luck and your move ----
+  const luckTotal = [rcvReplies, frIn, chatsIn, rooms].reduce((a, v) => a + (v || 0), 0);
+  const moveTotal = [sentReplies, frOut, chatsOut, joined].reduce((a, v) => a + (v || 0), 0);
+  const card2 = document.createElement('div');
+  card2.className = 'yw-card';
+  card2.innerHTML = '<div class="yw-label">Luck and your move</div>' +
+    '<div class="yw-big" style="margin-top:0;">This week, people reached you ' + ywTimes(luckTotal) + '. You reached out ' + ywTimes(moveTotal) + '.</div>' +
+    '<div class="yw-two">' +
+      '<div class="yw-col"><div class="yw-col-title">Luck: they found you</div>' +
+        '<div class="yw-line"><span>Private replies you received</span><b>' + ywNum(rcvReplies) + '</b></div>' +
+        '<div class="yw-line"><span>Friend requests you received</span><b>' + ywNum(frIn) + '</b></div>' +
+        '<div class="yw-line"><span>Chats they started with you</span><b>' + ywNum(chatsIn) + '</b></div>' +
+        '<div class="yw-line"><span>Rooms matched with you</span><b>' + ywNum(rooms) + '</b></div>' +
+      '</div>' +
+      '<div class="yw-col"><div class="yw-col-title">Your move: you reached out</div>' +
+        '<div class="yw-line"><span>Private replies you sent</span><b>' + ywNum(sentReplies) + '</b></div>' +
+        '<div class="yw-line"><span>Friend requests you sent</span><b>' + ywNum(frOut) + '</b></div>' +
+        '<div class="yw-line"><span>Chats you started</span><b>' + ywNum(chatsOut) + '</b></div>' +
+        '<div class="yw-line"><span>Communities you joined</span><b>' + ywNum(joined) + '</b></div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="yw-note">Just counting. No score, no competition.</div>';
+  body.appendChild(card2);
+}
+
+function renderYwPie(zone, thisPosts, lastPosts, loadFailed){
+  const hidden = localStorage.getItem('mm_week_pie_hidden') === '1';
+  if(loadFailed){
+    zone.innerHTML = '<div class="yw-sub" style="margin-top:0;">We couldn\'t load your posts just now.</div>';
+    return;
+  }
+  if(hidden){
+    zone.innerHTML = '<div class="yw-sub" style="margin-top:0;">Okay, we\'ve left this out.</div><span class="yw-link" id="yw-show-pie">Show it again</span>';
+    document.getElementById('yw-show-pie').addEventListener('click', ()=>{ localStorage.removeItem('mm_week_pie_hidden'); renderYwPie(zone, thisPosts, lastPosts, false); });
+    return;
+  }
+  if(thisPosts.length < 3){
+    zone.innerHTML = '<div class="yw-sub" style="margin-top:0;">Not enough words this week to say anything fair. That\'s fine, nothing is missing.</div>';
+    return;
+  }
+  const mix = ywMix(thisPosts);
+
+  // ring segments
+  const R = 40, C = 2 * Math.PI * R;
+  let offset = 0, segs = '';
+  YW_ORDER.forEach(k => {
+    const len = mix.share[k] * C;
+    if(len <= 0) return;
+    segs += '<circle cx="50" cy="50" r="' + R + '" fill="none" stroke="' + YW_EMOTIONS[k].color + '" stroke-width="14" stroke-dasharray="' + len.toFixed(2) + ' ' + (C - len).toFixed(2) + '" stroke-dashoffset="' + (-offset).toFixed(2) + '"/>';
+    offset += len;
+  });
+
+  // headline: strongest real feeling, gently qualified
+  const real = ['hope','laugh','vex','heavy'].sort((a,b) => mix.share[b] - mix.share[a]);
+  const top = real[0];
+  let headline;
+  if(!mix.counts[top]) headline = 'This week your words were hard to put in one box.';
+  else {
+    const phrase = { hope:'lean towards hope', laugh:'carry a lot of laughter', vex:'carry some vex', heavy:'carry some weight' }[top];
+    headline = 'This week your words ' + phrase;
+    if(top !== 'heavy' && mix.share.heavy >= 0.2) headline += ', with some heaviness underneath';
+    else if(top === 'heavy' && mix.share.hope >= 0.2) headline += ', with hope showing through';
+    headline += '.';
+  }
+
+  // one gentle comparison with last week, only when both weeks have enough words
+  let compare = '';
+  if(lastPosts.length >= 3){
+    const prev = ywMix(lastPosts);
+    const delta = mix.share.heavy - prev.share.heavy;
+    if(delta <= -0.15) compare = 'A little lighter than last week.';
+    else if(delta >= 0.15) compare = 'A little heavier than last week. Heavy weeks happen.';
+    else compare = 'Close to last week.';
+  }
+
+  const chips = YW_ORDER.filter(k => mix.counts[k] > 0).map(k =>
+    '<span class="yw-chip"><span class="yw-dot" style="background:' + YW_EMOTIONS[k].color + ';"></span>' + YW_EMOTIONS[k].label + '</span>').join('');
+
+  zone.innerHTML =
+    '<div class="yw-pie-row"><svg class="yw-pie" viewBox="0 0 100 100">' + segs + '</svg>' +
+    '<div class="yw-big" style="margin-top:0;font-size:17px;">' + escapeHtml(headline) + '</div></div>' +
+    (compare ? '<div class="yw-sub">' + escapeHtml(compare) + '</div>' : '') +
+    '<div class="yw-chips">' + chips + '</div>' +
+    '<div class="yw-note">From ' + mix.total + ' posts. This is a guess, not a verdict. Worked out on your phone. We don\'t save this result.</div>' +
+    '<span class="yw-link" id="yw-hide-pie">This doesn\'t look right</span>';
+  document.getElementById('yw-hide-pie').addEventListener('click', ()=>{ localStorage.setItem('mm_week_pie_hidden', '1'); renderYwPie(zone, thisPosts, lastPosts, false); });
 }
 
 async function loadYourPosts(){
@@ -12379,7 +12668,7 @@ const BACK_LAYERS = [
   ['game-overlay','game-back'], ['room-overlay','room-back'], ['chat-thread-overlay','chat-thread-back'],
   ['community-thread-overlay','community-thread-back'],
   ['happening-view-overlay','happening-view-back'], ['user-profile-overlay','user-profile-back'],
-  ['bookmarks-overlay','bookmarks-back'], ['yourreplies-overlay','yourreplies-back'],
+  ['bookmarks-overlay','bookmarks-back'], ['yourreplies-overlay','yourreplies-back'], ['yourweek-overlay','yourweek-back'],
   ['yourposts-overlay','yourposts-back'], ['search-overlay','search-back']
 ];
 
