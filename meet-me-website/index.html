@@ -1020,6 +1020,43 @@
   .yw-line{ display:flex; justify-content:space-between; align-items:flex-start; gap:8px; padding:7px 0; font-size:13px; line-height:1.3; color:var(--ivory); }
   .yw-line b{ font-weight:500; color:var(--gold-light); }
 
+  /* ============ ORGANISATION POSTS (manage all) ============ */
+  #orgposts-overlay{
+    position:absolute; inset:0; background:var(--bg); z-index:79;
+    opacity:0; pointer-events:none; transition:opacity 0.3s ease;
+    display:flex; flex-direction:column;
+  }
+  #orgposts-overlay.show{ opacity:1; pointer-events:auto; }
+  #orgposts-select-toggle{ margin-left:auto; padding:7px 14px; border-radius:14px; background:var(--bg-elevated); border:1px solid var(--card-border); font-size:12.5px; color:var(--ivory); cursor:pointer; flex-shrink:0; }
+  #orgposts-select-toggle.on{ background:var(--gold-dim); }
+  #orgposts-filters{ display:flex; gap:8px; padding:12px 16px 4px; overflow-x:auto; flex-shrink:0; }
+  #orgposts-filters:empty{ display:none; }
+  #orgposts-count{ padding:10px 18px 2px; font-size:11.5px; color:var(--muted-dim); flex-shrink:0; }
+  #orgposts-feed{ flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:8px 16px 120px; display:flex; flex-direction:column; gap:10px; }
+  #orgposts-feed::-webkit-scrollbar{ display:none; }
+  .op-card{ position:relative; background:var(--card); border:1px solid var(--card-border); border-radius:14px; padding:14px 15px; }
+  .op-card.picked{ border-color:var(--gold); }
+  .op-head{ display:flex; align-items:center; gap:8px; margin-bottom:8px; font-size:12px; color:var(--muted); }
+  .op-check{ width:20px; height:20px; border-radius:50%; border:1.5px solid var(--muted-dim); flex-shrink:0; display:none; align-items:center; justify-content:center; font-size:12px; color:var(--bg); }
+  #orgposts-overlay.selecting .op-check{ display:flex; }
+  .op-card.picked .op-check{ background:var(--gold); border-color:var(--gold); }
+  .op-title{ font-family:'Fraunces',serif; font-size:15px; color:var(--ivory); margin-bottom:6px; line-height:1.35; }
+  .op-body{ font-size:13.5px; line-height:1.5; color:var(--ivory); white-space:pre-wrap; word-break:break-word; }
+  .op-meta{ font-size:11px; color:var(--muted-dim); margin-top:10px; line-height:1.5; }
+  .op-actions{ display:flex; gap:18px; margin-top:10px; padding-top:10px; border-top:1px solid var(--card-border); }
+  #orgposts-overlay.selecting .op-actions{ display:none; }
+  .op-act{ font-size:12.5px; color:var(--gold-text); cursor:pointer; }
+  .op-act.danger{ color:#d6403b; }
+  #orgposts-more{ text-align:center; padding:14px; font-size:12.5px; color:var(--gold-text); cursor:pointer; }
+  #orgposts-bar{
+    position:absolute; left:0; right:0; bottom:0; display:none; align-items:center; gap:10px;
+    padding:12px 16px calc(12px + env(safe-area-inset-bottom)); background:var(--bg-elevated); border-top:1px solid var(--card-border);
+  }
+  #orgposts-overlay.selecting #orgposts-bar{ display:flex; }
+  #orgposts-bar .op-bar-btn{ padding:10px 16px; border-radius:12px; border:1px solid var(--card-border); font-size:13px; color:var(--ivory); cursor:pointer; }
+  #orgposts-bar #orgposts-delete{ margin-left:auto; background:#d6403b; border-color:transparent; color:#fff; font-weight:600; }
+  #orgposts-bar #orgposts-delete.disabled{ opacity:0.4; pointer-events:none; }
+
   #sticker-viewer-overlay{
     position:absolute; inset:0;
     background:rgba(5,5,6,0.94);
@@ -2221,6 +2258,10 @@
         <span class="profile-row-label">Organisations</span>
         <span class="profile-row-value">›</span>
       </div>
+      <div class="profile-row" id="profile-orgposts-row" style="display:none;">
+        <span class="profile-row-label">Organisation posts</span>
+        <span class="profile-row-value">manage ›</span>
+      </div>
       <div class="profile-row" id="profile-desk-row" style="display:none;">
         <span class="profile-row-label">Content desk</span>
         <span class="profile-row-value">›</span>
@@ -2386,6 +2427,24 @@
       </div>
     </div>
     <div id="yourreplies-feed"></div>
+  </div>
+
+  <div id="orgposts-overlay">
+    <div class="overlay-header">
+      <div id="orgposts-back" class="yourposts-style-back">‹</div>
+      <div>
+        <div style="font-family:'Fraunces',serif; font-size:16px; color:var(--ivory);">Organisation posts</div>
+        <div style="font-size:11px; color:var(--muted-dim); margin-top:2px;">All your organisation posts, in one place.</div>
+      </div>
+      <div id="orgposts-select-toggle">Select</div>
+    </div>
+    <div id="orgposts-filters"></div>
+    <div id="orgposts-count"></div>
+    <div id="orgposts-feed"></div>
+    <div id="orgposts-bar">
+      <div class="op-bar-btn" id="orgposts-all">Select all</div>
+      <div class="op-bar-btn" id="orgposts-delete" role="button">Delete</div>
+    </div>
   </div>
 
   <div id="yourweek-overlay">
@@ -3814,6 +3873,226 @@ function renderYwPie(zone, thisPosts, lastPosts, loadFailed){
   document.getElementById('yw-hide-pie').addEventListener('click', ()=>{ localStorage.setItem('mm_week_pie_hidden', '1'); renderYwPie(zone, thisPosts, lastPosts, false); });
 }
 
+// ============================================================
+// ORGANISATION POSTS -- every post made as one of your organisations,
+// newest first, in one place. Tap a post to open it, copy its text,
+// or delete it. "Select" lets you pick several and delete them in one go.
+// Deleting goes through the same deletePostRow() and confirm sheet as
+// everywhere else, so the database still decides who is allowed to
+// delete what; anything it refuses is reported, not hidden.
+// ============================================================
+const OP_PAGE = 40;
+let opPosts = [];
+let opPicked = new Set();
+let opSelecting = false;
+let opFilter = 'all';
+let opHasMore = false;
+let opLoading = false;
+
+function updateOrgPostsRow(){
+  const row = document.getElementById('profile-orgposts-row');
+  if(row) row.style.display = (myOrgIds && myOrgIds.size) ? 'flex' : 'none';
+}
+
+document.getElementById('profile-orgposts-row').addEventListener('click', ()=>{
+  closeProfile();
+  setTimeout(async ()=>{
+    opSelecting = false; opPicked.clear(); opFilter = 'all';
+    syncOrgPostsSelectUi();
+    document.getElementById('orgposts-overlay').classList.add('show');
+    await ensureOrgs();
+    renderOrgPostsFilters();
+    await loadOrgPosts(true);
+  }, 250);
+});
+document.getElementById('orgposts-back').addEventListener('click', ()=>{
+  document.getElementById('orgposts-overlay').classList.remove('show');
+});
+
+function renderOrgPostsFilters(){
+  const box = document.getElementById('orgposts-filters');
+  const list = (myOrgs || []);
+  if(list.length < 2){ box.innerHTML = ''; return; }
+  box.innerHTML = '<div class="yp-filter ' + (opFilter === 'all' ? 'active' : '') + '" data-orgf="all">All</div>' +
+    list.map(o => '<div class="yp-filter ' + (String(opFilter) === String(o.id) ? 'active' : '') + '" data-orgf="' + o.id + '">' + escapeHtml(o.name) + '</div>').join('');
+}
+document.getElementById('orgposts-filters').addEventListener('click', (e)=>{
+  const f = e.target.closest('[data-orgf]');
+  if(!f) return;
+  opFilter = f.dataset.orgf === 'all' ? 'all' : Number(f.dataset.orgf);
+  opPicked.clear();
+  renderOrgPostsFilters();
+  loadOrgPosts(true);
+});
+
+async function loadOrgPosts(reset){
+  if(opLoading || !currentUserId) return;
+  const feed = document.getElementById('orgposts-feed');
+  const ids = opFilter === 'all' ? [...myOrgIds] : [opFilter];
+  if(!ids.length){
+    opPosts = []; renderOrgPosts();
+    return;
+  }
+  opLoading = true;
+  if(reset){ opPosts = []; feed.innerHTML = '<div style="text-align:center;padding:26px;font-size:12px;color:var(--muted-dim);">Loading...</div>'; }
+  let q = sb.from('posts')
+    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, organization_id, header')
+    .in('organization_id', ids)
+    .is('community_id', null)
+    .order('created_at', { ascending:false })
+    .limit(OP_PAGE + 1);
+  if(!reset && opPosts.length) q = q.lt('created_at', opPosts[opPosts.length - 1].created_at);
+  const { data, error } = await q;
+  opLoading = false;
+  if(error){
+    console.error('Loading organisation posts failed:', error);
+    if(reset) feed.innerHTML = '<div style="text-align:center;padding:26px;font-size:12px;color:var(--muted-dim);">Couldn\'t load your organisation posts. Close this and try again.</div>';
+    return;
+  }
+  const rows = data || [];
+  opHasMore = rows.length > OP_PAGE;
+  const fresh = rows.slice(0, OP_PAGE);
+  opPosts = reset ? fresh : opPosts.concat(fresh);
+  renderOrgPosts();
+  fillOrgPostStats(fresh.map(r => Number(r.id)));
+}
+
+function renderOrgPosts(){
+  const feed = document.getElementById('orgposts-feed');
+  const countEl = document.getElementById('orgposts-count');
+  feed.innerHTML = '';
+  if(!opPosts.length){
+    countEl.textContent = '';
+    feed.innerHTML = '<div style="text-align:center;padding:26px;font-size:12px;color:var(--muted-dim);">No organisation posts yet. Posts you make as an organisation will show up here.</div>';
+    return;
+  }
+  countEl.textContent = opPosts.length + ' post' + (opPosts.length === 1 ? '' : 's') + (opHasMore ? ' so far' : '');
+  const multiOrg = (myOrgs || []).length > 1;
+  opPosts.forEach(post => {
+    const org = orgInfo(post.organization_id);
+    const card = document.createElement('div');
+    card.className = 'op-card' + (opPicked.has(String(post.id)) ? ' picked' : '');
+    card.dataset.postId = post.id;
+    const media = (post.sticker_url ? '<div class="op-meta" style="margin-top:0;">sticker</div>' : '') + (post.audio_url ? '<div class="op-meta" style="margin-top:0;">voice note</div>' : '');
+    card.innerHTML =
+      '<div class="op-head"><span class="op-check">✓</span>' +
+        (multiOrg ? '<span class="org-dot" style="--oc:' + org.color + ';"></span><span>' + escapeHtml(org.name) + '</span>' : '') +
+        '<span style="margin-left:' + (multiOrg ? 'auto' : '0') + ';">' + formatRelativeTime(post.created_at) + '</span></div>' +
+      (post.header ? '<div class="op-title">' + escapeHtml(post.header) + '</div>' : '') +
+      (post.content ? '<div class="op-body">' + escapeHtml(post.content.length > 280 ? post.content.slice(0, 277) + '…' : post.content) + '</div>' : '') +
+      media +
+      '<div class="op-meta" data-stats-for="' + post.id + '"></div>' +
+      '<div class="op-actions"><span class="op-act" data-act="open">Open</span><span class="op-act" data-act="copy">Copy text</span><span class="op-act danger" data-act="delete">Delete</span></div>';
+    feed.appendChild(card);
+  });
+  if(opHasMore){
+    const more = document.createElement('div');
+    more.id = 'orgposts-more';
+    more.textContent = 'Show older posts';
+    feed.appendChild(more);
+  }
+  updateOrgPostsBar();
+}
+
+async function fillOrgPostStats(ids){
+  if(!ids.length) return;
+  const { data, error } = await sb.rpc('org_post_stats', { p_post_ids: ids });
+  if(error){ console.warn('org_post_stats', error.message); return; }
+  const pl = (n, w) => n + ' ' + w + (Number(n) === 1 ? '' : 's');
+  (data || []).forEach(r => {
+    const el = document.querySelector('#orgposts-feed [data-stats-for="' + r.post_id + '"]');
+    if(el) el.textContent = pl(Number(r.likes), 'like') + ' · ' + pl(Number(r.stands), 'stand') + ' · ' + pl(Number(r.views), 'view');
+  });
+}
+
+function syncOrgPostsSelectUi(){
+  const ov = document.getElementById('orgposts-overlay');
+  ov.classList.toggle('selecting', opSelecting);
+  const t = document.getElementById('orgposts-select-toggle');
+  t.classList.toggle('on', opSelecting);
+  t.textContent = opSelecting ? 'Done' : 'Select';
+  updateOrgPostsBar();
+}
+function updateOrgPostsBar(){
+  const btn = document.getElementById('orgposts-delete');
+  const n = opPicked.size;
+  btn.textContent = n ? 'Delete ' + n : 'Delete';
+  btn.classList.toggle('disabled', !n);
+  document.getElementById('orgposts-all').textContent = (opPosts.length && opPicked.size === opPosts.length) ? 'Clear' : 'Select all';
+}
+document.getElementById('orgposts-select-toggle').addEventListener('click', ()=>{
+  opSelecting = !opSelecting;
+  if(!opSelecting){ opPicked.clear(); document.querySelectorAll('#orgposts-feed .op-card.picked').forEach(c => c.classList.remove('picked')); }
+  syncOrgPostsSelectUi();
+});
+document.getElementById('orgposts-all').addEventListener('click', ()=>{
+  const all = opPicked.size === opPosts.length;
+  opPicked.clear();
+  if(!all) opPosts.forEach(p => opPicked.add(String(p.id)));
+  document.querySelectorAll('#orgposts-feed .op-card').forEach(c => c.classList.toggle('picked', opPicked.has(c.dataset.postId)));
+  updateOrgPostsBar();
+});
+
+function opRemoveEverywhere(id){
+  opPicked.delete(String(id));
+  opPosts = opPosts.filter(p => String(p.id) !== String(id));
+  document.querySelectorAll('.post[data-post-id="' + id + '"], #orgposts-feed .op-card[data-post-id="' + id + '"]').forEach(el => el.remove());
+}
+
+async function opDeleteMany(ids, previewText){
+  const many = ids.length > 1;
+  const ok = await askConfirm({
+    title: many ? 'Delete ' + ids.length + ' posts?' : 'Delete this post?',
+    message: 'This can\'t be undone.',
+    okText: many ? 'Delete ' + ids.length + ' posts' : 'Delete post',
+    cancelText: 'Keep ' + (many ? 'them' : 'it'),
+    danger: true, icon: 'trash',
+    preview: many ? '' : (previewText || '')
+  });
+  if(!ok) return;
+  let done = 0, failed = 0;
+  for(const id of ids){
+    const res = await deletePostRow(id);
+    if(res.ok){ done++; opRemoveEverywhere(id); }
+    else { failed++; console.error('Delete organisation post failed:', res.error); }
+  }
+  saveSnapshotSoon();
+  if(!opPosts.length) renderOrgPosts();
+  else document.getElementById('orgposts-count').textContent = opPosts.length + ' post' + (opPosts.length === 1 ? '' : 's') + (opHasMore ? ' so far' : '');
+  updateOrgPostsBar();
+  if(failed) showNavToast(done ? 'Deleted ' + done + '. Couldn\'t delete ' + failed + '.' : 'Couldn\'t delete ' + (many ? 'those posts.' : 'that post.'));
+  else showNavToast(done === 1 ? 'Post deleted.' : done + ' posts deleted.');
+}
+document.getElementById('orgposts-delete').addEventListener('click', ()=>{
+  if(opPicked.size) opDeleteMany([...opPicked]);
+});
+
+document.getElementById('orgposts-feed').addEventListener('click', async (e)=>{
+  if(e.target.id === 'orgposts-more'){ loadOrgPosts(false); return; }
+  const card = e.target.closest('.op-card');
+  if(!card) return;
+  const id = card.dataset.postId;
+  if(opSelecting){
+    if(opPicked.has(id)) opPicked.delete(id); else opPicked.add(id);
+    card.classList.toggle('picked', opPicked.has(id));
+    updateOrgPostsBar();
+    return;
+  }
+  const act = e.target.closest('[data-act]');
+  const post = opPosts.find(p => String(p.id) === String(id));
+  if(!act){ return; }
+  if(act.dataset.act === 'open'){
+    document.getElementById('orgposts-overlay').classList.remove('show');
+    navigateToPost(Number(id));
+  } else if(act.dataset.act === 'copy'){
+    const text = [post && post.header, post && post.content].filter(Boolean).join('\n\n');
+    try{ await navigator.clipboard.writeText(text); showNavToast('Copied.'); }
+    catch(err){ showNavToast('Couldn\'t copy that.'); }
+  } else if(act.dataset.act === 'delete'){
+    opDeleteMany([id], postPreviewText(card));
+  }
+});
+
 async function loadYourPosts(){
   if(!currentUserId) return;
   const { data: posts, error } = await sb
@@ -3953,7 +4232,7 @@ async function goToScreen(key){
   setTimeout(updateComposeVisibility, 50);
   if(key === 'chat'){ await loadChatList(); }
   if(key === 'orgs'){ loadOrgsFeed(); }
-  if(key === 'profile'){ refreshOnlineCountRowLabel(); }
+  if(key === 'profile'){ refreshOnlineCountRowLabel(); if(currentUserId) ensureOrgs().then(()=>{ if(typeof updateOrgPostsRow === 'function') updateOrgPostsRow(); }); }
   saveAppState();
   if(key === 'twin' && currentTwinMode === 'rant'){ startFeedRealtime(); }
   else { stopFeedRealtime(); }
@@ -7045,6 +7324,7 @@ function ensureOrgs(force){
       myOrgs.forEach(r => { orgMap[r.id] = Object.assign({}, orgMap[r.id] || {}, { id:r.id, name:r.name, type:r.type, crest_color:r.crest_color }); });
       myOrgIds = new Set(myOrgs.map(r => r.id));
       if(typeof updateDeskRow === 'function') updateDeskRow();
+      if(typeof updateOrgPostsRow === 'function') updateOrgPostsRow();
       myFollows = {};
       (f.data || []).forEach(r => { myFollows[r.organization_id] = { notify: !!r.notify }; });
       myMutedOrgIds = new Set((m.data || []).map(r => r.organization_id));
@@ -12668,7 +12948,7 @@ const BACK_LAYERS = [
   ['game-overlay','game-back'], ['room-overlay','room-back'], ['chat-thread-overlay','chat-thread-back'],
   ['community-thread-overlay','community-thread-back'],
   ['happening-view-overlay','happening-view-back'], ['user-profile-overlay','user-profile-back'],
-  ['bookmarks-overlay','bookmarks-back'], ['yourreplies-overlay','yourreplies-back'], ['yourweek-overlay','yourweek-back'],
+  ['bookmarks-overlay','bookmarks-back'], ['yourreplies-overlay','yourreplies-back'], ['yourweek-overlay','yourweek-back'], ['orgposts-overlay','orgposts-back'],
   ['yourposts-overlay','yourposts-back'], ['search-overlay','search-back']
 ];
 
