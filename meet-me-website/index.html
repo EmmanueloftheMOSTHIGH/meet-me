@@ -6077,8 +6077,16 @@ async function getOrCreateSession(){
     return session;
   };
   try{
-    if(navigator.locks && navigator.locks.request) return await navigator.locks.request('mm-anon-signin', run);
-  }catch(e){ console.error('Sign-in lock failed, continuing without it:', e); }
+    if(navigator.locks && navigator.locks.request){
+      // If another tab is sitting on the lock, wait for it a few seconds at
+      // most, then carry on without it rather than hanging the whole app.
+      const ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+      const timer = ctl ? setTimeout(()=>ctl.abort(), 6000) : null;
+      try{
+        return await navigator.locks.request('mm-anon-signin', ctl ? { signal: ctl.signal } : {}, run);
+      }finally{ if(timer) clearTimeout(timer); }
+    }
+  }catch(e){ console.error('Sign-in lock unavailable, continuing without it:', e); }
   return run();
 }
 
@@ -6105,36 +6113,34 @@ function stampActivity(){
     .then(({error})=>{ if(error){ console.error('Updating last_active_at failed:', error); activityStamped = false; } });
 }
 
-async function initUser(){
+async function initUserAttempt(){
   // Restores an existing session automatically if one exists (supabase-js
   // stores its OWN session token in localStorage — that's fine, it's a
   // real signed session, not a spoofable plain number like before).
   // The check-then-sign-in runs inside a browser lock so two tabs/loads that
   // start at the same moment can't both see "no session" and each create an
   // account (that's how duplicate Meet numbers got burned).
-  const session = await getOrCreateSession();
-  if(!session) return;
+  let session = await getOrCreateSession();
+  if(!session) return false;
 
   currentUserId = session.user.id;
-  loadAutomatchToggle();
-  checkForActiveRoomMatch();
-  startRoomMatchWatch();
 
   // Make sure a matching row exists in our own `users` profile table.
-  let { data: profile, error: profileErr } = await sb
-    .from('users')
-    .select('meet_number, display_number, account_secured, created_at, is_admin')
-    .eq('id', currentUserId)
-    .maybeSingle();
-
-  if(!profile){
-    const { data: inserted, error: insertErr } = await sb
-      .from('users')
-      .insert({ id: currentUserId })
-      .select('meet_number, display_number, account_secured, created_at, is_admin')
-      .single();
-    if(insertErr){ console.error('Error creating profile:', insertErr); return; }
-    profile = inserted;
+  let found = await ensureProfile();
+  if(!found){
+    // No profile and we couldn't make one. If the server says this login
+    // belongs to an account that no longer exists (e.g. an empty account
+    // that was cleaned up), the phone is holding a dead login -- that's
+    // what used to leave Profile stuck on a dash until the app was
+    // reinstalled. Drop the dead login and start fresh instead.
+    const fresh = await healDeadSession();
+    if(!fresh) return false;
+    currentUserId = fresh.user.id;
+    found = await ensureProfile();
+    if(!found) return false;
+  }
+  const profile = found.profile;
+  if(found.created){
     // Brand-new account -- ask for push permission right away instead of
     // waiting for them to find the toggle in Profile. Fire-and-forget so
     // it doesn't hold up the rest of init; registerServiceWorker() runs
@@ -6142,6 +6148,10 @@ async function initUser(){
     // registration already exists.
     maybeAutoRequestPush();
   }
+
+  loadAutomatchToggle();
+  checkForActiveRoomMatch();
+  startRoomMatchWatch();
 
   currentMeetNumber = profile.meet_number;
   isMeet8 = Number(profile.display_number) === 8;
@@ -6153,6 +6163,7 @@ async function initUser(){
   // (see stampActivity). If they already have, it goes out now.
   stampActivity();
   document.getElementById('profile-number').textContent = currentMeetNumber;
+  try{ localStorage.setItem('mm_my_number', currentMeetNumber); }catch(e){}
   updateAccountUI();
   recordDailyOpen();
   await Promise.all([
@@ -6164,6 +6175,85 @@ async function initUser(){
     ensureOrgs(true)
   ]);
   await maybeSendSecureNudgeNotification();
+  return true;
+}
+
+const PROFILE_COLS = 'meet_number, display_number, account_secured, created_at, is_admin';
+
+// Finds this login's profile row, creating it for a brand-new account.
+// Retries a couple of times so a slow or dropped connection at launch
+// doesn't look like "no profile". Returns { profile, created } or null.
+async function ensureProfile(){
+  for(let i = 0; i < 3; i++){
+    const { data, error } = await sb.from('users').select(PROFILE_COLS).eq('id', currentUserId).maybeSingle();
+    if(data) return { profile: data, created: false };
+    if(!error) break;                                   // answered, and there's simply no row yet
+    console.error('Reading profile failed (attempt ' + (i + 1) + '):', error);
+    await new Promise(r => setTimeout(r, 700 * (i + 1)));
+  }
+  const { data: inserted, error: insertErr } = await sb.from('users').insert({ id: currentUserId }).select(PROFILE_COLS).single();
+  if(inserted) return { profile: inserted, created: true };
+  console.error('Error creating profile:', insertErr);
+  return null;
+}
+
+// Asks the server whether this login is still alive. Only when the server
+// clearly says the account is gone does it drop the local login and create
+// a fresh one -- a network hiccup never wipes anything, and an account that
+// still exists is never touched.
+async function healDeadSession(){
+  try{
+    const { data, error } = await sb.auth.getUser();
+    if(!error && data && data.user) return null;        // account is fine; the problem was something else
+    const code = (error && error.code) || '';
+    const dead = !!error && (error.status === 401 || error.status === 403 || error.status === 404 ||
+                             /user_not_found|session_not_found|bad_jwt|refresh_token_not_found/.test(code));
+    if(!dead) return null;                              // network or server trouble: leave the login alone
+    console.warn('This login points to an account that no longer exists -- starting fresh.');
+    await sb.auth.signOut({ scope: 'local' });
+    try{ localStorage.removeItem('mm_my_number'); }catch(e){}
+    const el = document.getElementById('profile-number'); if(el) el.textContent = '—';
+    return await getOrCreateSession();
+  }catch(e){
+    console.error('Checking the login failed:', e);
+    return null;
+  }
+}
+
+// Startup with a safety net: try again a couple of times, and if it still
+// can't finish, retry the moment the phone is back online / the app is
+// brought forward -- so nobody is left on an empty Profile until reinstall.
+let initUserDone = false;
+async function initUser(){
+  // Show the last known Meet number straight away so Profile never opens on
+  // a dash while a slow connection finishes loading; the real value
+  // replaces it as soon as the profile arrives.
+  try{
+    const cached = localStorage.getItem('mm_my_number');
+    const el = document.getElementById('profile-number');
+    if(cached && el && el.textContent.trim() === '—') el.textContent = cached;
+  }catch(e){}
+  const waits = [0, 1200, 3000];
+  for(let i = 0; i < waits.length; i++){
+    if(waits[i]) await new Promise(r => setTimeout(r, waits[i]));
+    try{ if(await initUserAttempt()){ initUserDone = true; return; } }
+    catch(e){ console.error('Startup attempt ' + (i + 1) + ' failed:', e); }
+  }
+  const retryWhenBack = async ()=>{
+    if(initUserDone) return;
+    if(document.visibilityState === 'hidden') return;
+    try{
+      if(await initUserAttempt()){
+        initUserDone = true;
+        window.removeEventListener('online', retryWhenBack);
+        document.removeEventListener('visibilitychange', retryWhenBack);
+        try{ await loadFeed(); }catch(e){}
+        try{ await loadOrgsFeed(true); }catch(e){}
+      }
+    }catch(e){ console.error('Late startup retry failed:', e); }
+  };
+  window.addEventListener('online', retryWhenBack);
+  document.addEventListener('visibilitychange', retryWhenBack);
 }
 
 /* ============================================================
