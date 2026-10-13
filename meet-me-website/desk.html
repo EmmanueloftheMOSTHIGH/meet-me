@@ -89,7 +89,7 @@ dialog::backdrop{background:rgba(0,0,0,.78)}
 .vplay::before{content:"";position:absolute;left:11px;top:8px;border-style:solid;border-width:7px 0 7px 11px;border-color:transparent transparent transparent #000}
 .bad{color:var(--red)}
 .modes{display:flex;gap:6px;margin-bottom:20px;padding:4px;border:1px solid var(--line);border-radius:999px}
-.mode{flex:1;min-height:42px;border-radius:999px;color:var(--mute)}
+.mode{flex:1;min-height:42px;border-radius:999px;color:var(--mute);padding:0 6px;font-size:14px;white-space:nowrap}
 .mode[aria-pressed=true]{background:rgba(212,175,55,.14);color:var(--ink)}
 .nums{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 6px}
 .num{display:inline-flex;align-items:baseline;gap:6px;padding:4px 12px;border:1px solid var(--line);border-radius:999px;font-size:14px}
@@ -115,7 +115,7 @@ select{width:100%;background:#000;border:1px solid var(--line);border-radius:10p
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-/* Meet Me content desk, version 3 (adds Spill stories under reserved numbers; no scheduler; pictures, stickers and voice notes; source link optional).
+/* Meet Me content desk, version 4 (adds Rant posts under the same reserved numbers; Spill stories under reserved numbers; no scheduler; pictures, stickers and voice notes; source link optional).
    Signs in as a normal Meet Me account and posts as an organisation that account owns.
    The database enforces ownership, headers and the daily limit; this page only helps you fill the queue. */
 
@@ -136,7 +136,8 @@ const state = {
   items: [], tab: "queue", today: 0, busy: false,
   orgQuery: "", notice: null, draft: "", firstLineHeader: true, batch: 3, loginError: "",
   single: blankSingle(),
-  mode: "orgs", storyTab: "drafts", stories: [], published: [], reserved: [], storyForm: blankStory(), storyPaste: "", pubSel: new Set(), pubFilter: ""
+  mode: "orgs", storyTab: "drafts", stories: [], published: [], reserved: [], storyForm: blankStory(), storyPaste: "", pubSel: new Set(), pubFilter: "",
+  rantPublished: [], rantForm: { text: "", number: "" }, rantSel: new Set(), rantFilter: ""
 };
 
 const $app = document.getElementById("app");
@@ -210,7 +211,7 @@ function friendly(msg) {
   if (/org_header_required/.test(msg)) return "News posts need a header";
   if (/org_not_owner/.test(msg)) return "This account does not own that organisation";
   if (/violates check constraint.*header/i.test(msg)) return "Header is longer than " + HEADER_MAX + " characters";
-  if (/story_number_full/.test(msg)) return "That number has already been used twice";
+  if (/story_number_full/.test(msg)) return "That number has already been used three times in Spill";
   if (/story_number_none/.test(msg)) return "Every reserved number is full or was used very recently. Reserve more numbers, or wait a little.";
   if (/story_number_unknown/.test(msg)) return "That number is not reserved";
   if (/story_source_required/.test(msg)) return "Say where the story came from";
@@ -323,7 +324,7 @@ async function signIn(email, pin) {
   if (error || !data.session) { state.loginError = "That email and PIN did not work."; render(); return; }
   await afterSignIn(data.session);
 }
-async function signOut() { stopActiveRec(); await sb.auth.signOut(); state.uid = null; state.orgs = []; state.items = []; state.stories = []; state.published = []; state.reserved = []; state.mode = "orgs"; render(); }
+async function signOut() { stopActiveRec(); await sb.auth.signOut(); state.uid = null; state.orgs = []; state.items = []; state.stories = []; state.published = []; state.reserved = []; state.rantPublished = []; state.rantSel = new Set(); state.mode = "orgs"; render(); }
 
 async function postItem(it) {
   const org = state.orgs.find((o) => o.id === it.orgId);
@@ -364,8 +365,8 @@ async function postMany(list) {
 /* ---------- Spill stories ---------- */
 /* Real-life stories go into Spill under a reserved number (see the reserved_numbers table).
    Drafts live on this device. Publishing goes through the publish_story function, which picks or checks the number,
-   keeps each number to two uses, and records the source privately. The app shows "shared with us" on these posts. */
-const STORY_MAX_USES = 2;
+   keeps each number to three Spill uses, and records the source privately. The app shows "shared with us" on these posts. */
+const STORY_MAX_USES = 3;
 const storiesKey = () => "desk:stories:" + state.uid;
 function saveStories() { try { localStorage.setItem(storiesKey(), JSON.stringify(state.stories)); } catch (e) {} }
 function loadStories() {
@@ -374,7 +375,7 @@ function loadStories() {
 async function loadStoryData() {
   const [r, p] = await Promise.all([
     sb.from("reserved_numbers").select("display_number").order("display_number"),
-    sb.from("posts").select("id, content, created_at, story_number, story_sources(source)")
+    sb.from("posts").select("id, content, created_at, story_number, post_type, story_sources(source)")
       .not("story_number", "is", null).order("created_at", { ascending: false })
   ]);
   const posts = p.error ? [] : (p.data || []);
@@ -389,14 +390,18 @@ async function loadStoryData() {
     for (const v of (vw.error ? [] : (vw.data || []))) views[v.post_id] = Number(v.views);
     for (const x of posts) { x.likes = likes[x.id] || 0; x.views = views[x.id] || 0; }
   }
-  state.published = posts;
-  state.pubSel = new Set([...state.pubSel].filter((id) => posts.some((x) => x.id === id)));
-  const uses = {};
-  for (const x of posts) uses[x.story_number] = (uses[x.story_number] || 0) + 1;
-  const recent = new Set(posts.slice(0, 4).map((x) => Number(x.story_number)));
+  state.published = posts.filter((x) => x.post_type !== "rant");
+  state.rantPublished = posts.filter((x) => x.post_type === "rant");
+  state.pubSel = new Set([...state.pubSel].filter((id) => state.published.some((x) => x.id === id)));
+  state.rantSel = new Set([...state.rantSel].filter((id) => state.rantPublished.some((x) => x.id === id)));
+  const uses = {}, rantUses = {};
+  for (const x of state.published) uses[x.story_number] = (uses[x.story_number] || 0) + 1;
+  for (const x of state.rantPublished) rantUses[x.story_number] = (rantUses[x.story_number] || 0) + 1;
+  const recent = new Set(state.published.slice(0, 4).map((x) => Number(x.story_number)));
+  const rantRecent = new Set(state.rantPublished.slice(0, 4).map((x) => Number(x.story_number)));
   state.reserved = (r.error ? [] : (r.data || [])).map((x) => {
     const n = Number(x.display_number);
-    return { n, uses: uses[n] || 0, recent: recent.has(n) };
+    return { n, uses: uses[n] || 0, recent: recent.has(n), rantUses: rantUses[n] || 0, rantRecent: rantRecent.has(n) };
   });
 }
 const slotsLeft = () => state.reserved.reduce((a, x) => a + Math.max(0, STORY_MAX_USES - x.uses), 0);
@@ -1004,7 +1009,14 @@ function viewPosted(org) {
 
 
 /* ---------- Spill stories views ---------- */
-function numberSelect(current, onChange) {
+function numberSelect(current, onChange, kind) {
+  if (kind === "rant") {
+    return h("select", { "aria-label": "Number for this rant", onchange: (e) => onChange(e.target.value) },
+      h("option", { value: "" }, "Pick for me"),
+      state.reserved.map((x) =>
+        h("option", { value: String(x.n), selected: String(x.n) === String(current) },
+          "Meet " + x.n + " (" + x.rantUses + (x.rantUses === 1 ? " rant" : " rants") + (x.rantRecent ? ", recent" : "") + ")")));
+  }
   const sel = h("select", { "aria-label": "Number for this story", onchange: (e) => onChange(e.target.value) },
     h("option", { value: "" }, "Pick for me"),
     state.reserved.filter((x) => x.uses < STORY_MAX_USES).map((x) =>
@@ -1012,8 +1024,17 @@ function numberSelect(current, onChange) {
         "Meet " + x.n + " (used " + x.uses + " of " + STORY_MAX_USES + (x.recent ? ", recent" : "") + ")")));
   return sel;
 }
-function viewNumbers() {
+function viewNumbers(kind) {
   const left = slotsLeft();
+  if (kind === "rant") {
+    return h("div", { class: "meter" },
+      h("div", { class: "small" }, state.reserved.length
+        ? state.reserved.length + " reserved numbers, no limit on Rant"
+        : "No reserved numbers found."),
+      h("div", { class: "nums", "aria-label": "Reserved numbers" },
+        state.reserved.map((x) => h("span", { class: "num" + (x.rantUses ? " half" : "") },
+          "Meet " + x.n, h("small", {}, String(x.rantUses))))));
+  }
   return h("div", { class: "meter" },
     h("div", { class: "small" }, state.reserved.length
       ? left + (left === 1 ? " story slot" : " story slots") + " left across " + state.reserved.length + " reserved numbers"
@@ -1202,6 +1223,105 @@ function viewStories() {
   return root;
 }
 
+/* ---------- Rant numbers ---------- */
+/* Rants posted under a reserved number. Same numbers as Spill stories, but no limit on Rant (Spill allows three per number, counted separately).
+   Goes through publish_rant_number, which picks or checks the number. Editing and removing reuse the story tools. */
+async function removeRants(ids) {
+  const { data, error } = await sb.from("posts").delete().in("id", ids).select("id");
+  const n = data ? data.length : 0;
+  state.rantSel = new Set();
+  await loadStoryData();
+  if (error) note("Removed " + n + ", then hit a problem: " + error.message, true);
+  else if (n < ids.length) note("Removed " + n + " of " + ids.length + ". The rest could not be removed.", true);
+  else note(n === 1 ? "Rant removed." : n + " rants removed.");
+  render();
+}
+function openRantEdit(p) {
+  const ta = h("textarea", { rows: 8 }, p.content || "");
+  const err = h("div", { class: "err", style: "display:none" });
+  $dlg.replaceChildren(
+    h("h2", {}, "Edit Meet " + p.story_number),
+    h("p", { class: "mute small" }, "The change goes live in the app straight away."),
+    h("label", { class: "field" }, h("span", {}, "Rant"), ta),
+    err,
+    h("div", { class: "dlg-acts" },
+      h("button", { class: "btn", onclick: async (e) => {
+        e.target.disabled = true;
+        const { error } = await sb.rpc("edit_story", { p_post_id: p.id, p_content: ta.value });
+        if (error) { err.textContent = friendly(error.message); err.style.display = "block"; e.target.disabled = false; return; }
+        $dlg.close(); await loadStoryData(); note("Rant updated."); render();
+      } }, "Save changes"),
+      h("button", { class: "btn ghost", onclick: () => $dlg.close() }, "Cancel"))
+  );
+  $dlg.showModal();
+}
+function viewRantAdd() {
+  const rf = state.rantForm;
+  const ta = h("textarea", { rows: 8, placeholder: "Say it the way a person would in Rant.", oninput: (e) => { rf.text = e.target.value; } }, rf.text);
+  return h("div", {},
+    h("h2", {}, "New rant"),
+    h("p", { class: "mute small" }, "The rant goes into Rant under a reserved number, like a normal post from that person."),
+    h("label", { class: "field" }, h("span", {}, "Rant"), ta),
+    h("label", { class: "field" }, h("span", {}, "Number"), numberSelect(rf.number, (v) => { rf.number = v; }, "rant")),
+    h("div", { class: "dlg-acts", style: "margin-top:0" },
+      h("button", { class: "btn", disabled: state.busy, onclick: async () => {
+        if (!rf.text.trim()) { note("Write the rant first.", true); render(); return; }
+        state.busy = true; note(""); render();
+        const { data, error } = await sb.rpc("publish_rant_number", { p_content: rf.text.trim(), p_number: rf.number ? Number(rf.number) : null });
+        state.busy = false;
+        if (error) { note(friendly(error.message), true); render(); return; }
+        const row = Array.isArray(data) ? data[0] : data;
+        state.rantForm = { text: "", number: "" };
+        await loadStoryData();
+        note("Posted to Rant as Meet " + (row ? row.out_number : "") + ".");
+        render();
+      } }, "Post now")));
+}
+function viewRantPublished() {
+  if (!state.rantPublished.length) return h("div", { class: "empty" }, "No rants posted under reserved numbers yet.");
+  const nums = [...new Set(state.rantPublished.map((x) => Number(x.story_number)))].sort((a, b) => a - b);
+  const list = state.rantFilter ? state.rantPublished.filter((x) => String(x.story_number) === state.rantFilter) : state.rantPublished;
+  const ids = list.map((x) => x.id);
+  const allOn = ids.length > 0 && ids.every((id) => state.rantSel.has(id));
+  const chosen = ids.filter((id) => state.rantSel.has(id));
+  const root = h("div", {});
+  root.append(h("div", { class: "pubbar" },
+    h("select", { "aria-label": "Show one number", onchange: (e) => { state.rantFilter = e.target.value; render(); } },
+      h("option", { value: "" }, "All numbers"),
+      nums.map((n) => h("option", { value: String(n), selected: String(n) === state.rantFilter }, "Meet " + n))),
+    h("button", { class: "link", onclick: () => { if (allOn) ids.forEach((id) => state.rantSel.delete(id)); else ids.forEach((id) => state.rantSel.add(id)); render(); } },
+      allOn ? "Clear selection" : "Select all"),
+    h("button", { class: "btn danger", style: "min-height:40px;padding:0 16px", disabled: !chosen.length, onclick: () =>
+      openConfirm("Remove " + chosen.length + (chosen.length === 1 ? " rant?" : " rants?"), "This deletes the live rants and frees their slots. It cannot be undone.", "", "Remove " + chosen.length, "Keep them", () => removeRants(chosen)) },
+      chosen.length ? "Remove " + chosen.length + " selected" : "Remove selected")));
+  if (!list.length) { root.append(h("div", { class: "empty" }, "No rants under that number.")); return root; }
+  for (const p of list) {
+    root.append(h("div", { class: "item" },
+      h("div", { class: "pubrow" },
+        h("input", { type: "checkbox", checked: state.rantSel.has(p.id), "aria-label": "Select the rant under Meet " + p.story_number, onchange: (e) => { if (e.target.checked) state.rantSel.add(p.id); else state.rantSel.delete(p.id); render(); } }),
+        h("div", {},
+          h("div", { class: "who-num" }, "Meet " + p.story_number),
+          h("div", { class: "stats" }, (p.likes || 0) + (p.likes === 1 ? " like" : " likes") + ", " + (p.views || 0) + (p.views === 1 ? " view" : " views")),
+          h("div", { class: "body" }, p.content || ""),
+          h("div", { class: "src" }, "Posted " + new Date(p.created_at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })),
+          h("div", { class: "acts" },
+            h("button", { class: "link", onclick: () => openRantEdit(p) }, "Edit"),
+            h("button", { class: "link", onclick: () => copyText(p.content || "") }, "Copy text"),
+            h("button", { class: "link", style: "color:var(--red)", onclick: () =>
+              openConfirm("Remove from the app?", "This deletes the live rant and frees its slot. It cannot be undone.", (p.content || "").slice(0, 160), "Remove rant", "Keep it", () => removeRants([p.id])) }, "Remove"))))));
+  }
+  return root;
+}
+function viewRants() {
+  const root = h("div", {}, viewNumbers("rant"));
+  const tabs = [["add", "Add"], ["published", "Posted (" + state.rantPublished.length + ")"]];
+  root.append(h("div", { class: "tabs", role: "tablist" },
+    tabs.map(([k, label]) => h("button", { class: "tab", role: "tab", "aria-selected": String((state.rantTab || "add") === k), onclick: () => { state.rantTab = k; note(""); render(); } }, label))));
+  if (state.notice) root.append(h("div", { class: "notice" + (state.notice.bad ? " bad" : ""), role: "status" }, state.notice.text));
+  root.append((state.rantTab || "add") === "published" ? viewRantPublished() : viewRantAdd());
+  return root;
+}
+
 /* ---------- organisation search ---------- */
 function orgChipButton(o) {
   return h("button", { class: "chip", "aria-pressed": String(o.id === state.orgId), onclick: async () => {
@@ -1244,10 +1364,11 @@ function viewDesk() {
         h("a", { class: "link", href: "/", style: "display:inline-flex;align-items:center" }, "Back to Meet Me"),
         h("button", { class: "link", onclick: signOut }, "Sign out"))),
     h("div", { class: "modes", role: "group", "aria-label": "Desk section" },
-      [["orgs", "Organisations"], ["stories", "Spill stories"]].map(([k, label]) =>
+      [["orgs", "Organisations"], ["stories", "Spill stories"], ["rants", "Rant numbers"]].map(([k, label]) =>
         h("button", { class: "mode", "aria-pressed": String(state.mode === k), onclick: () => { stopActiveRec(); state.mode = k; note(""); render(); } }, label)))
   );
   if (state.mode === "stories") { root.append(viewStories()); return root; }
+  if (state.mode === "rants") { root.append(viewRants()); return root; }
   if (!org) {
     root.append(h("p", {}, "This account does not own an organisation yet."),
       h("p", { class: "mute small" }, "Create one and claim it with its invite code in the app, then reopen this page."));
