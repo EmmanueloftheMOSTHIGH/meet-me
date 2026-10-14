@@ -4975,7 +4975,7 @@ document.addEventListener('click', (e)=>{
 
 /* ============================================================
    DOUBLE-TAP TO LIKE -- any post, anywhere (Rant, Spill, orgs, profiles,
-   Your Posts, Happening). Double-tapping a post's picture, sticker or video hearts it,
+   Your Posts, Happening). Double-tapping a post hearts it,
    like Instagram: it only ever LIKES (a second double-tap never
    un-likes -- use the heart button for that) and a heart pops where you tapped.
    Taps on buttons, names, stickers, voice notes etc. are ignored.
@@ -5003,9 +5003,10 @@ function showLikeBurst(x, y){
 }
 
 document.addEventListener('click', (e)=>{
-  // Only pictures/stickers and videos count -- text and empty parts of a post do nothing.
+  // Any post, anywhere: double-tap the picture, text or empty space of the post. Buttons, names, links, the lock etc. are ignored.
   const media = e.target.closest('.sticker-tap, .vid-poster, video');
-  const postEl = media ? media.closest(OWN_POST_SELECTOR) : null;
+  if(!media && e.target.closest(POST_INTERACTIVE_SELECTOR)){ dtLast = null; return; }
+  const postEl = e.target.closest(OWN_POST_SELECTOR);
   if(!postEl){ dtLast = null; return; }
   const now = Date.now();
   const isDouble = dtLast && dtLast.el === postEl && (now - dtLast.t) < DOUBLE_TAP_MS + 40
