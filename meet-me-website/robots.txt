@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://meet-me-beta-six.vercel.app/sitemap.xml
+Sitemap: https://meet-me-three-beta.vercel.app/sitemap.xml

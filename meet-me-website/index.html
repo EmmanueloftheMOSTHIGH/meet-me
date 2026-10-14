@@ -5,13 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Meet Me — a place to be met</title>
 <meta name="description" content="Meet Me is a social app for unfiltered, no-performance connection. Rant, join Game Night, and meet people as they are. Not for everyone. But you.">
-<link rel="canonical" href="https://meet-me-beta-six.vercel.app/">
+<link rel="canonical" href="https://meet-me-three-beta.vercel.app/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Meet Me">
 <meta property="og:title" content="Meet Me — a place to be met">
 <meta property="og:description" content="Unfiltered, no-performance connection. Not for everyone. But you.">
-<meta property="og:url" content="https://meet-me-beta-six.vercel.app/">
-<meta property="og:image" content="https://meet-me-beta-six.vercel.app/icon-192.png">
+<meta property="og:url" content="https://meet-me-three-beta.vercel.app/">
+<meta property="og:image" content="https://meet-me-three-beta.vercel.app/icon-512.png">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="Meet Me — a place to be met">
 <meta name="twitter:description" content="Unfiltered, no-performance connection. Not for everyone. But you.">
@@ -20,7 +20,7 @@
   "@context": "https://schema.org",
   "@type": "WebApplication",
   "name": "Meet Me",
-  "url": "https://meet-me-beta-six.vercel.app/",
+  "url": "https://meet-me-three-beta.vercel.app/",
   "description": "A social app for unfiltered, no-performance connection.",
   "applicationCategory": "SocialNetworkingApplication",
   "operatingSystem": "Any"
@@ -11999,7 +11999,7 @@ function roundRect(ctx, x, y, w, h, r){
 // Link that opens one post inside the app (Rant, Spill or Organisations).
 function postShareUrl(id){
   if(!id) return null;
-  const base = /^https?:$/.test(location.protocol) ? location.origin : 'https://meet-me-beta-six.vercel.app';
+  const base = /^https?:$/.test(location.protocol) ? location.origin : 'https://meet-me-three-beta.vercel.app';
   return base + '/?post=' + encodeURIComponent(id);
 }
 let currentShareUrl = null;
