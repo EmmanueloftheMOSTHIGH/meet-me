@@ -129,7 +129,7 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { storageKey: "meetme-desk-auth", persistSession: true, autoRefreshToken: true }
 });
 
-function blankStory() { return { text: "", source: "", permission: false, removed: false, number: "" }; }
+function blankStory() { return { text: "", source: "", permission: false, removed: false, number: "", own: false }; }
 function blankSingle() { return { header: "", body: "", link: "", stickerUrl: "", audioUrl: "", audioDur: 0 }; }
 const state = {
   uid: null, meetNumber: "", orgs: [], orgId: null,
@@ -405,10 +405,11 @@ async function loadStoryData() {
   });
 }
 const slotsLeft = () => state.reserved.reduce((a, x) => a + Math.max(0, STORY_MAX_USES - x.uses), 0);
+const OWN_SOURCE = "My own story";
 function storyProblem(it) {
   if (!(it.text || "").trim()) return "The story has no text";
-  if (!(it.source || "").trim()) return "Say where the story came from";
-  if (!it.permission) return "Tick that the person agreed to share it";
+  if (!it.own && !(it.source || "").trim()) return "Say where the story came from";
+  if (!it.own && !it.permission) return "Tick that the person agreed to share it";
   if (!it.removed) return "Tick that names and identifying details are removed";
   return "";
 }
@@ -420,7 +421,7 @@ function addStories(list) {
     if (!text) continue;
     if (seen.has(text.toLowerCase())) { skipped++; continue; }
     seen.add(text.toLowerCase());
-    state.stories.push({ id: crypto.randomUUID(), text, source: (raw.source || "").trim(), permission: !!raw.permission, removed: !!raw.removed, number: raw.number || "", error: "" });
+    state.stories.push({ id: crypto.randomUUID(), text, source: (raw.source || "").trim(), permission: !!raw.permission, removed: !!raw.removed, number: raw.number || "", own: !!raw.own, error: "" });
     added++;
   }
   saveStories();
@@ -447,7 +448,7 @@ async function publishStory(it) {
   const bad = storyProblem(it);
   if (bad) { it.error = bad; return false; }
   const { data, error } = await sb.rpc("publish_story", {
-    p_content: it.text.trim(), p_source: it.source.trim(), p_number: it.number ? Number(it.number) : null
+    p_content: it.text.trim(), p_source: it.own ? OWN_SOURCE : it.source.trim(), p_number: it.number ? Number(it.number) : null
   });
   if (error) { it.error = friendly(error.message); return false; }
   const row = Array.isArray(data) ? data[0] : data;
@@ -1071,12 +1072,12 @@ function viewStoryDrafts() {
   }
   return root;
 }
-function storyFields(f, onNumber) {
+function storyFields(f, onNumber, own) {
   return [
     h("label", { class: "field" }, h("span", {}, "Story"), f.text),
-    h("label", { class: "field" }, h("span", {}, "Where it came from (kept private)"), f.source),
+    own ? null : h("label", { class: "field" }, h("span", {}, "Where it came from (kept private)"), f.source),
     h("label", { class: "field" }, h("span", {}, "Number"), numberSelect(f.numberValue, onNumber)),
-    h("label", { class: "check" }, f.permission, "The person agreed to have this shared"),
+    own ? null : h("label", { class: "check" }, f.permission, "The person agreed to have this shared"),
     h("label", { class: "check" }, f.removed, "Names and identifying details are removed")
   ];
 }
@@ -1089,6 +1090,7 @@ function viewStoryAdd() {
     removed: h("input", { type: "checkbox", checked: sf.removed, onchange: (e) => { sf.removed = e.target.checked; } }),
     numberValue: sf.number
   };
+  const own = h("input", { type: "checkbox", checked: sf.own, onchange: (e) => { sf.own = e.target.checked; render(); } });
   const finish = (r, wasForm) => {
     note(r.added ? "Added " + r.added + (r.added === 1 ? " draft" : " drafts") + (r.skipped ? ", skipped " + r.skipped + " duplicates" : "") + "." : "Nothing new to add" + (r.skipped ? ", that story is already a draft." : "."), !r.added);
     if (r.added) { if (wasForm) state.storyForm = blankStory(); else state.storyPaste = ""; state.storyTab = "drafts"; }
@@ -1098,9 +1100,21 @@ function viewStoryAdd() {
   return h("div", {},
     h("h2", {}, "One story"),
     h("p", { class: "mute small" }, "Stories appear in Spill under a reserved number, with a quiet \"shared with us\" label. The source is never shown in the app."),
-    storyFields(f, (v) => { sf.number = v; }),
+    h("label", { class: "check" }, own, "This is my own story (no source or permission needed)"),
+    storyFields(f, (v) => { sf.number = v; }, sf.own),
     h("div", { class: "dlg-acts", style: "margin-top:0" },
-      h("button", { class: "btn", disabled: state.busy, onclick: () => {
+      h("button", { class: "btn", disabled: state.busy, onclick: async () => {
+        const it = { text: sf.text, source: sf.source, permission: sf.permission, removed: sf.removed, number: sf.number, own: sf.own, error: "" };
+        const bad = storyProblem(it);
+        if (bad) { note(bad, true); render(); return; }
+        state.busy = true; note(""); render();
+        const ok = await publishStory(it);
+        state.busy = false;
+        if (ok) { state.storyForm = blankStory(); state.storyTab = "published"; }
+        else note(it.error, true);
+        render();
+      } }, "Publish now"),
+      h("button", { class: "btn ghost", disabled: state.busy, onclick: () => {
         if (!sf.text.trim()) { note("Write the story first.", true); render(); return; }
         finish(addStories([sf]), true);
       } }, "Save as draft")),
