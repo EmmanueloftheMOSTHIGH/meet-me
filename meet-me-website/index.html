@@ -2131,6 +2131,178 @@
   html.mm-resume #splash{ display:none !important; }
   html.mm-resume #main{ opacity:1; transition:none; }
 </style>
+<style id="mm-desktop-css">
+/* =====================================================================
+   MEET ME -- PC LAYOUT
+   Only applies on a real desktop: wide window + mouse. Phones, tablets
+   and narrow windows keep the exact layout they have today.
+
+   Shape:  [ sidebar ] [ main column (feed / orgs / chat list) ] [ right rail ]
+   - Sidebar: logo, search, notifications, theme, navigation, Write button
+   - Rant / Spill: feed in the middle, Rant/Spill switch + prompt on the right
+   - Chat: conversation list on the left, open conversation on the right
+   - Bottom sheets become centred windows
+   ===================================================================== */
+@media (min-width:1000px) and (hover:hover) and (pointer:fine){
+
+  :root{ --mm-sb:272px; --mm-rail:340px; --mm-col:660px; --mm-list:380px; --mm-read:760px; }
+
+  /* ---- 1. drop the phone mock-up, use the whole window ---- */
+  html,body{ display:block; background:#050506; overflow:hidden; }
+  #phone{ width:100vw; height:100dvh; border-radius:0; padding:0; box-shadow:none; background:transparent; }
+  #phone-screen{ border-radius:0; }
+  #phone-notch{ display:none; }
+  #root{ max-width:none; width:100%; margin:0; }
+
+  /* ---- 2. app shell: sidebar + stage ---- */
+  #main{ display:grid; grid-template-columns:var(--mm-sb) minmax(0,1fr); grid-template-rows:auto auto auto 1fr; }
+  #main::before{ content:''; grid-column:1; grid-row:1 / -1; background:var(--bg-elevated); border-right:1px solid var(--card-border); }
+  #main > .screen{ grid-column:2; grid-row:1 / -1; min-width:0; min-height:0; }
+
+  /* sidebar: top (logo, icons, search) */
+  #main > header{ grid-column:1; grid-row:1; flex-wrap:wrap; align-content:flex-start; gap:10px; padding:28px 22px 6px; position:relative; }
+  #logo{ width:26px; height:26px; }
+  #wordmark{ font-size:21px; flex:1; order:1; }
+  #logo-btn{ order:0; }
+  #notif-btn{ order:2; margin-left:0; width:34px; height:34px; cursor:pointer; transition:background .15s ease; }
+  #theme-toggle{ order:3; margin-left:0; width:34px; height:34px; }
+  #notif-btn:hover, #theme-toggle:hover{ background:rgba(212,168,87,0.14); }
+  #search-btn{ order:4; flex:1 1 100%; width:auto; height:40px; margin:12px 0 0; border-radius:12px; justify-content:flex-start; gap:10px; padding:0 14px; transition:background .15s ease, border-color .15s ease; }
+  #search-btn::after{ content:'Search'; font-size:13px; color:var(--muted); letter-spacing:0.01em; }
+  #search-btn:hover{ background:rgba(212,168,87,0.10); border-color:var(--gold-dim); }
+
+  /* sidebar: navigation */
+  #main > #bottom-nav{ grid-column:1; grid-row:2; position:static; background:none; padding:18px 14px 4px;
+    flex-direction:column; justify-content:flex-start; align-items:stretch; gap:4px; }
+  .nav-item{ flex-direction:row; align-items:center; gap:14px; padding:12px 14px; border-radius:12px; transition:background .15s ease; }
+  .nav-item:hover{ background:rgba(240,230,210,0.05); }
+  .nav-item.active{ background:rgba(212,168,87,0.11); }
+  .nav-icon{ font-size:19px; width:24px; text-align:center; }
+  .nav-item-label{ font-size:14.5px; letter-spacing:0.01em; text-transform:none; color:var(--muted); }
+  .nav-item.active .nav-item-label{ color:var(--gold-light); }
+  .nav-item::after{ margin-left:auto; font-size:10.5px; color:var(--muted-dim); border:1px solid var(--card-border); border-radius:5px; padding:1px 6px; line-height:1.5; }
+  .nav-item[data-screen="orgs"]::after{ content:'1'; }
+  .nav-item[data-screen="twin"]::after{ content:'2'; }
+  .nav-item[data-screen="chat"]::after{ content:'3'; }
+  .nav-item[data-screen="profile"]::after{ content:'4'; }
+  .nav-badge{ top:50%; left:auto; right:46px; transform:translateY(-50%); }
+
+  /* sidebar: Write button (was the round + button) */
+  #main > #compose-btn{ position:static; grid-column:1; grid-row:3; justify-self:stretch; align-self:start;
+    margin:14px 22px 0; width:auto; height:46px; border-radius:14px; font-size:0; box-shadow:none; z-index:1;
+    transition:filter .15s ease, transform .15s ease; }
+  #compose-btn::after{ content:'Write'; font-size:14px; font-weight:600; letter-spacing:0.02em; }
+  #screen-orgs.active ~ #compose-btn::after{ content:'New post'; }
+  #main:has(#spill-screen.active) #compose-btn::after{ content:'Spill something'; }
+  #compose-btn:hover{ filter:brightness(1.1); }
+  #compose-btn:active{ transform:scale(0.98); }
+
+  /* ---- 3. scrollbars: mouse users need to see them ---- */
+  #feed, #orgs-feed, #chat-list, #communities-list, #screen-profile, #chat-thread-messages, #community-thread-messages,
+  #yourposts-feed, #bookmarks-feed, #yourreplies-feed, #orgposts-feed, #search-results, #user-profile-feed, #happening-view-feed, #room-thread, #notif-list{
+    scrollbar-width:thin; scrollbar-color:rgba(240,230,210,0.16) transparent; }
+  #feed::-webkit-scrollbar, #orgs-feed::-webkit-scrollbar, #chat-list::-webkit-scrollbar, #communities-list::-webkit-scrollbar,
+  #screen-profile::-webkit-scrollbar, #chat-thread-messages::-webkit-scrollbar, #community-thread-messages::-webkit-scrollbar{ display:block; width:9px; }
+  #feed::-webkit-scrollbar-thumb, #orgs-feed::-webkit-scrollbar-thumb, #chat-list::-webkit-scrollbar-thumb, #communities-list::-webkit-scrollbar-thumb,
+  #screen-profile::-webkit-scrollbar-thumb, #chat-thread-messages::-webkit-scrollbar-thumb, #community-thread-messages::-webkit-scrollbar-thumb{
+    background:rgba(240,230,210,0.14); border-radius:6px; border:2px solid transparent; background-clip:padding-box; }
+
+  /* ---- 4. no touch gestures on PC ---- */
+  #feed-pull-indicator, #orgs-pull-indicator, #spill-pull-indicator{ display:none !important; }
+
+  /* ---- 5. hover feel ---- */
+  .post, .org-card{ transition:border-color .15s ease; }
+  .post:hover, .org-card:hover{ border-color:rgba(212,168,87,0.22); }
+  .chat-row{ border-radius:10px; transition:background .12s ease; }
+  .chat-row:hover{ background:rgba(240,230,210,0.045); }
+  .profile-row:hover{ background:var(--bg-elevated); }
+  .sheet-btn:hover, .account-choice:hover, .yp-filter:hover, .twin-btn:hover{ filter:brightness(1.12); }
+
+  /* ================= RANT / SPILL =================
+     feed in the middle, switch + prompt in a right rail */
+  #screen-twin.active{ display:grid; grid-template-columns:minmax(0,1fr) var(--mm-rail); grid-template-rows:auto auto 1fr; }
+  #screen-twin.active::before{ content:''; grid-column:2; grid-row:1 / -1; border-left:1px solid var(--card-border); }
+  #feed{ grid-column:1; grid-row:1 / -1; padding:30px 32px 70px; min-width:0; }
+  #feed > *{ width:100%; max-width:var(--mm-col); margin-left:auto; margin-right:auto; flex-shrink:0; }
+  #spill-screen{ grid-column:1; grid-row:1 / -1; min-width:0; }
+  #screen-twin #twin-toggle, #screen-twin.chrome-hidden #twin-toggle{
+    grid-column:2; grid-row:1; margin:30px 28px 14px 28px; padding:4px; max-height:80px; opacity:1; pointer-events:auto; }
+  #screen-twin #depth-bar-wrap, #screen-twin.chrome-hidden #depth-bar-wrap{
+    grid-column:2; grid-row:2; padding:0 28px 14px 28px; max-height:none; opacity:1; pointer-events:auto; }
+  #screen-twin.active::after{
+    grid-column:2; grid-row:3; align-self:end; margin:0 28px 30px; white-space:pre; font-size:12px; line-height:2; color:var(--muted-dim);
+    tab-size:64px;
+    content:'KEYBOARD\A N\9 write something\A /\9 search\A 1 – 4\9 switch page\A ← →\9 Spill cards\A Esc\9 close\A 2× click\9 like a post'; }
+  /* Spill has its own night-blue tone: let the whole screen (rail included) wear it so there's no seam */
+  #screen-twin:has(#spill-screen.active){ background:var(--moon-surface); }
+  #screen-twin:has(#spill-screen.active)::before{ border-left-color:var(--moon-surface-border); }
+
+  /* Spill: bigger card, arrow-key hint instead of "swipe" */
+  #spill-stack{ max-width:560px; }
+  .spill-card{ padding:34px 32px; }
+  .spill-card-body{ font-size:20px; }
+  #spill-hint{ font-size:0; }
+  #spill-hint::after{ content:'click a card, or use ← →'; font-size:11px; letter-spacing:0.12em; text-transform:uppercase; }
+
+  /* ================= ORGANISATIONS ================= */
+  #orgs-feed{ padding:30px 32px 70px; }
+  #orgs-feed > *{ width:100%; max-width:var(--mm-col); margin-left:auto; margin-right:auto; flex-shrink:0; }
+
+  /* ================= PROFILE ================= */
+  #screen-profile{ align-items:center; padding:20px 32px 0; }
+  #profile-panel{ width:100%; max-width:600px; padding:24px 0 80px; }
+  #profile-header{ text-align:left; }
+  #profile-number{ font-size:26px; }
+
+  /* ================= CHAT: list left, conversation right ================= */
+  #screen-chat.active{ width:var(--mm-list); justify-self:start; border-right:1px solid var(--card-border); padding-top:22px; }
+  #main:has(#screen-chat.active)::after{
+    content:'Choose a conversation'; grid-column:2; grid-row:1 / -1; margin-left:var(--mm-list);
+    display:flex; align-items:center; justify-content:center; padding-bottom:8vh;
+    font-family:'Fraunces',serif; font-style:italic; font-size:18px; color:var(--muted-dim); }
+
+  /* ================= FULL-PAGE OVERLAYS: stay to the right of the sidebar ================= */
+  #root > #yourposts-overlay, #root > #search-overlay, #root > #user-profile-overlay, #root > #bookmarks-overlay,
+  #root > #yourreplies-overlay, #root > #orgposts-overlay, #root > #yourweek-overlay, #root > #happening-view-overlay,
+  #root > #anon-overlay, #root > #game-overlay, #root > #room-overlay,
+  #root > #chat-thread-overlay, #root > #community-thread-overlay{ left:var(--mm-sb); }
+  /* chat conversation opens as the right-hand pane while you're on Chat */
+  #main:has(#screen-chat.active) ~ #chat-thread-overlay,
+  #main:has(#screen-chat.active) ~ #community-thread-overlay{ left:calc(var(--mm-sb) + var(--mm-list)); }
+
+  /* keep reading width comfortable inside those pages (borders still run edge to edge) */
+  #yourposts-overlay > *, #search-overlay > *, #user-profile-overlay > *, #bookmarks-overlay > *, #yourreplies-overlay > *,
+  #orgposts-overlay > *, #yourweek-overlay > *, #happening-view-overlay > *, #anon-overlay > *, #game-overlay > *,
+  #chat-thread-overlay > *, #community-thread-overlay > *{
+    padding-left:max(18px, calc((100% - var(--mm-read)) / 2)); padding-right:max(18px, calc((100% - var(--mm-read)) / 2)); }
+  #main:has(#screen-chat.active) ~ #chat-thread-overlay > *,
+  #main:has(#screen-chat.active) ~ #community-thread-overlay > *{
+    padding-left:max(22px, calc((100% - 680px) / 2)); padding-right:max(22px, calc((100% - 680px) / 2)); }
+  #chat-thread-header, #community-thread-header{ padding-top:20px; padding-bottom:16px; }
+
+  /* ================= BOTTOM SHEETS -> CENTRED WINDOWS ================= */
+  #notif-overlay, #org-list-overlay, #org-insights-overlay, #org-sheet-overlay, #confirm-overlay,
+  #action-sheet, #post-replies-sheet{ align-items:center; justify-content:center; }
+  #notif-panel, #org-list-panel, #org-insights-panel, #org-sheet-panel, #confirm-panel{
+    width:100%; max-width:480px; border-radius:20px; transform:translateY(10px); }
+  #notif-overlay.show #notif-panel, #org-list-overlay.show #org-list-panel, #org-insights-overlay.show #org-insights-panel,
+  #org-sheet-overlay.show #org-sheet-panel, #confirm-overlay.show #confirm-panel{ transform:none; }
+  #notif-panel{ max-height:78vh; }
+  #action-sheet-panel{ max-width:520px; margin-bottom:0; }
+  #post-replies-panel{ max-width:640px; max-height:80vh; border-radius:20px; }
+  #post-replies-sheet.fullscreen{ align-items:stretch; }
+  #post-replies-sheet.fullscreen #post-replies-panel{ max-width:760px; max-height:none; height:100%; border-radius:0; }
+
+  /* small dialogs a little roomier */
+  .account-panel{ max-width:420px; }
+  .compose-panel{ max-width:560px; }
+  #compose-textarea{ min-height:150px; font-size:15.5px; }
+  #admin-dashboard-overlay .account-panel{ max-width:760px; }
+
+  /* toast sits in the middle of the stage, not the window */
+  #toast{ left:calc(50% + var(--mm-sb) / 2); bottom:36px; }
+}
+</style>
 <script>
 (function(){
   try{
@@ -13510,6 +13682,58 @@ document.addEventListener('DOMContentLoaded', async function(){
 
   await Promise.allSettled([spillPromise, momentQuestionPromise, doorPromise]);
 });
+</script>
+<script id="mm-desktop-js">
+/* PC extras: keyboard shortcuts. Only active on a desktop-sized window with a mouse.
+   N = write · / = search · 1-4 = pages · ← → = Spill cards · Esc = close the top window */
+(function(){
+  var mq = window.matchMedia('(min-width:1000px) and (hover:hover) and (pointer:fine)');
+  function sync(){ document.documentElement.classList.toggle('mm-desktop', mq.matches); }
+  sync();
+  if(mq.addEventListener) mq.addEventListener('change', sync); else if(mq.addListener) mq.addListener(sync);
+
+  function isTyping(el){
+    if(!el) return false;
+    var t = (el.tagName || '').toLowerCase();
+    return t === 'input' || t === 'textarea' || t === 'select' || el.isContentEditable;
+  }
+  function layerOpen(){ try{ return typeof topOpenLayer === 'function' && !!topOpenLayer(); }catch(e){ return false; } }
+  function appReady(){
+    var m = document.getElementById('main');
+    return !!m && parseFloat(getComputedStyle(m).opacity) > 0.5;   // splash finished
+  }
+
+  document.addEventListener('keydown', function(e){
+    if(!mq.matches) return;
+    if(e.metaKey || e.ctrlKey || e.altKey) return;
+
+    // Esc closes the top-most window / page (same logic as the phone Back button, but never leaves the screen you're on)
+    if(e.key === 'Escape'){
+      if(layerOpen()){ e.preventDefault(); try{ handleBackPress(); }catch(_){} }
+      return;
+    }
+    if(isTyping(e.target) || layerOpen() || !appReady()) return;
+
+    var key = e.key;
+    if(key === '1' || key === '2' || key === '3' || key === '4'){
+      var map = { '1':'orgs', '2':'twin', '3':'chat', '4':'profile' };
+      e.preventDefault(); if(typeof goToScreen === 'function') goToScreen(map[key]);
+    } else if(key === 'n' || key === 'N'){
+      var c = document.getElementById('compose-btn');
+      if(c && c.style.display !== 'none' && getComputedStyle(c).display !== 'none'){ e.preventDefault(); c.click(); }
+    } else if(key === '/'){
+      var s = document.getElementById('search-btn');
+      if(s){ e.preventDefault(); s.click(); }
+    } else if(key === 'ArrowRight' || key === 'ArrowLeft'){
+      var onSpill = typeof currentScreenKey !== 'undefined' && currentScreenKey === 'twin' && currentTwinMode === 'spill';
+      if(onSpill){
+        e.preventDefault();
+        if(key === 'ArrowRight' && typeof spillNext === 'function') spillNext();
+        if(key === 'ArrowLeft' && typeof spillPrev === 'function') spillPrev();
+      }
+    }
+  });
+})();
 </script>
 </body>
 </html>
