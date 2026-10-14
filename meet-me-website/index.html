@@ -689,17 +689,17 @@
     background:var(--moon-surface); transition:background 0.3s ease; }
   #spill-screen.active{ display:flex; }
   #spill-stack{ position:relative; width:100%; max-width:380px; height:320px; }
-  /* Spill lock: top left. On = the cards stay exactly where they are (no tap-to-page, no swipe, no pull-to-refresh). */
-  #spill-lock{
-    position:absolute; top:10px; left:14px; width:36px; height:36px; border-radius:50%; z-index:6;
+  /* Spill lock: top right corner of the post. On = the cards stay exactly where they are (no tap-to-page, no swipe, no pull-to-refresh). */
+  .spill-lock{
+    position:absolute; top:12px; right:12px; width:32px; height:32px; border-radius:50%; z-index:2;
     display:flex; align-items:center; justify-content:center; cursor:pointer;
     color:var(--muted-dim); border:1px solid var(--moon-surface-border); background:transparent;
     transition:color .2s ease, border-color .2s ease, background .2s ease; -webkit-tap-highlight-color:transparent;
   }
-  #spill-lock .lock-closed{ display:none; }
-  #spill-lock.on{ color:var(--gold-light); border-color:var(--gold-dim); background:rgba(212,168,87,0.10); }
-  #spill-lock.on .lock-closed{ display:inline; }
-  #spill-lock.on .lock-open{ display:none; }
+  .spill-lock .lock-closed{ display:none; }
+  .spill-lock.on{ color:var(--gold-light); border-color:var(--gold-dim); background:rgba(212,168,87,0.10); }
+  .spill-lock.on .lock-closed{ display:inline; }
+  .spill-lock.on .lock-open{ display:none; }
   /* Pull-to-refresh on Spill: no words. A thin gold ring appears as you pull, turns bright when you can let go, then turns while it loads. */
   #spill-pull-indicator{
     position:absolute; top:14px; left:50%; width:28px; height:28px; margin-left:-14px; pointer-events:none;
@@ -717,7 +717,7 @@
     display:flex; flex-direction:column; justify-content:flex-start; overflow-y:auto; transition:transform 0.5s cubic-bezier(.25,.9,.35,1), opacity 0.5s ease; touch-action:pan-y; }
   .spill-card::-webkit-scrollbar{ width:0; }
   .spill-card{ scrollbar-width:none; }
-  .spill-card-id{ font-size:11.5px; letter-spacing:0.08em; color:var(--moon); opacity:0.85; margin-bottom:14px; }
+  .spill-card-id{ font-size:11.5px; letter-spacing:0.08em; color:var(--moon); opacity:0.85; margin-bottom:14px; padding-right:42px; }
   .story-tag{ margin-left:10px; font-style:italic; letter-spacing:0.02em; opacity:0.7; }
   .spill-card-body{ font-family:'Fraunces',serif; font-weight:400; font-size:17px; line-height:1.55; color:var(--ivory); }
   .spill-card-time{ margin-top:18px; font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted-dim); }
@@ -2185,13 +2185,6 @@
       </div>
 
       <div id="spill-screen">
-        <div id="spill-lock" role="button" tabindex="0" data-noswipe aria-pressed="false" aria-label="Lock Spill so it doesn't move">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <rect x="5" y="11" width="14" height="9" rx="2"/>
-            <path class="lock-open" d="M8 11V8a4 4 0 0 1 7.6-1.7"/>
-            <path class="lock-closed" d="M8 11V8a4 4 0 0 1 8 0v3"/>
-          </svg>
-        </div>
         <div id="spill-pull-indicator"></div>
         <div id="spill-stack"></div>
         <div id="spill-progress"></div>
@@ -4434,6 +4427,7 @@ function layoutSpillCards(){
   else if(spillIndex > 0){ hint.textContent = 'swipe left or right'; }
   else{ hint.textContent = 'swipe left'; }
   if(spillLocked && total > 0) hint.textContent = 'locked · tap the lock to move';
+  syncSpillLockButtons();
 }
 
 function spillNext(){
@@ -4454,7 +4448,7 @@ function setupSpillSwipes(){
   stack.addEventListener('touchstart', (e)=>{ touchStartX = e.touches[0].clientX; }, {passive:true});
   stack.addEventListener('touchend', (e)=>{
     if(spillLocked){ touchStartX = null; return; }   // locked: a swipe doesn't move the cards
-    if(e.target.closest('.post-action, .like-btn, .user-link, .sticker-tap')) return; // don't page the stack when tapping an action, a name, or a sticker
+    if(e.target.closest('.post-action, .like-btn, .user-link, .sticker-tap, .spill-lock')) return; // don't page the stack when tapping an action, a name, a sticker or the lock
     if(touchStartX===null) return;
     const dx = e.changedTouches[0].clientX - touchStartX;
     if(dx < -40){ spillNext(); }
@@ -4462,6 +4456,7 @@ function setupSpillSwipes(){
     touchStartX = null;
   }, {passive:true});
   stack.addEventListener('click', (e)=>{
+    if(e.target.closest('.spill-lock')){ e.stopPropagation(); toggleSpillLock(); return; }
     const likeBtn = e.target.closest('.like-btn');
     if(likeBtn){ e.stopPropagation(); toggleLike(likeBtn.dataset.postId, likeBtn); return; }
     if(e.target.closest('.post-action, .user-link, .sticker-tap')) return; // reply/friend/message/share/name/sticker handle themselves
@@ -4471,28 +4466,38 @@ function setupSpillSwipes(){
     const x = e.clientX - rect.left;
     if (x < rect.width / 2) spillPrev(); else spillNext();
   });
+  stack.addEventListener('keydown', (e)=>{
+    if((e.key === 'Enter' || e.key === ' ') && e.target.closest && e.target.closest('.spill-lock')){ e.preventDefault(); toggleSpillLock(); }
+  });
 }
 
-function renderSpillLock(){
-  const b = document.getElementById('spill-lock');
-  if(!b) return;
-  b.classList.toggle('on', spillLocked);
-  b.setAttribute('aria-pressed', String(spillLocked));
-  b.setAttribute('aria-label', spillLocked ? 'Spill is locked. Tap to unlock' : "Lock Spill so it doesn't move");
-  try{ layoutSpillCards(); }catch(e){}   // refreshes the hint line under the cards
+function spillLockHtml(){
+  return `<div class="spill-lock${spillLocked ? ' on' : ''}" role="button" tabindex="0" aria-pressed="${spillLocked}" aria-label="${spillLocked ? 'Spill is locked. Tap to unlock' : "Lock Spill so it doesn't move"}">`
+    + `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">`
+    + `<rect x="5" y="11" width="14" height="9" rx="2"/>`
+    + `<path class="lock-open" d="M8 11V8a4 4 0 0 1 7.6-1.7"/>`
+    + `<path class="lock-closed" d="M8 11V8a4 4 0 0 1 8 0v3"/>`
+    + `</svg></div>`;
+}
+function syncSpillLockButtons(){
+  document.querySelectorAll('.spill-lock').forEach(b => {
+    b.classList.toggle('on', spillLocked);
+    b.setAttribute('aria-pressed', String(spillLocked));
+    b.setAttribute('aria-label', spillLocked ? 'Spill is locked. Tap to unlock' : "Lock Spill so it doesn't move");
+  });
 }
 function toggleSpillLock(){
   spillLocked = !spillLocked;
   try{ localStorage.setItem('spillLocked', spillLocked ? 'true' : 'false'); }catch(e){}
-  renderSpillLock();
+  layoutSpillCards();   // refreshes the lock buttons and the hint line under the cards
+  // small notice, same toast the reply confirmation uses
+  try{
+    toast.textContent = spillLocked ? "Spill locked. The cards won't move." : 'Spill unlocked.';
+    toast.classList.add('show');
+    clearTimeout(window.__spillLockToastTimer);
+    window.__spillLockToastTimer = setTimeout(()=>{ toast.classList.remove('show'); }, 1800);
+  }catch(e){}
 }
-(function bindSpillLock(){
-  const b = document.getElementById('spill-lock');
-  if(!b) return;
-  b.addEventListener('click', (e)=>{ e.stopPropagation(); toggleSpillLock(); });
-  b.addEventListener('keydown', (e)=>{ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); toggleSpillLock(); } });
-  renderSpillLock();
-})();
 
 /* ============================================================
    SWIPE BETWEEN RANT AND SPILL
@@ -4911,7 +4916,7 @@ document.getElementById('action-sheet-block').addEventListener('click', async ()
    ============================================================ */
 const postRepliesSheet = document.getElementById('post-replies-sheet');
 const OWN_POST_SELECTOR = '.post[data-post-id], .spill-card[data-post-id], .yp-post[data-post-id]';
-const POST_INTERACTIVE_SELECTOR = '.post-action, .like-btn, .user-link, .sticker-tap, .text-tap, .voice-play-btn, .reply-trigger, .follow-trigger, .stand-trigger, .stand-panel, .org-name-link, .bookmark-trigger, .delete-post-trigger, .community-interest-trigger, .inspired-trigger, .inspired-source-link, .message-trigger, .friend-trigger, .share-trigger, .happening-pill, a, button, input, textarea';
+const POST_INTERACTIVE_SELECTOR = '.spill-lock, .post-action, .like-btn, .user-link, .sticker-tap, .text-tap, .voice-play-btn, .reply-trigger, .follow-trigger, .stand-trigger, .stand-panel, .org-name-link, .bookmark-trigger, .delete-post-trigger, .community-interest-trigger, .inspired-trigger, .inspired-source-link, .message-trigger, .friend-trigger, .share-trigger, .happening-pill, a, button, input, textarea';
 
 document.addEventListener('click', (e)=>{
   const trigger = e.target.closest('.own-replies-trigger');
@@ -6609,7 +6614,7 @@ function tutorialCardEl(space){
     el.innerHTML = `<div class="post-head"><span class="post-id">${badge}</span></div><div class="post-body">${escapeHtml(text)}</div>`;
   } else if(space === 'spill'){
     el.className = 'spill-card tutorial-card';
-    el.innerHTML = `<div class="spill-card-id">${badge}</div><div class="spill-card-body">${escapeHtml(text)}</div>`;
+    el.innerHTML = `${spillLockHtml()}<div class="spill-card-id">${badge}</div><div class="spill-card-body">${escapeHtml(text)}</div>`;
   }
   return el;
 }
@@ -8763,7 +8768,7 @@ resetShiftAndPullHints();
   let startX = 0, startY = 0, pulling = false, pullDistance = 0, refreshing = false;
 
   screenEl.addEventListener('touchstart', (e)=>{
-    if(refreshing || spillLocked) return;   // locked: no pull-to-refresh either, so the cards stay put
+    if(refreshing || spillLocked || (e.target.closest && e.target.closest('.spill-lock'))) return;   // locked: no pull-to-refresh either, so the cards stay put
     startX = e.touches[0].clientX;
     startY = e.touches[0].clientY;
     pulling = true;
@@ -8887,6 +8892,7 @@ async function renderSpills(spills){
     card.dataset.postId = spill.id;
     card.dataset.isOwn = (isOwn || isOwnStory) ? 'true' : 'false';
     card.innerHTML = `
+      ${spillLockHtml()}
       <div class="spill-card-id">${isStory ? `<span>${escapeHtml(displayName)}</span><span class="story-tag">shared with us</span>` : isFounder ? `<span class="org-crest-dot crest-founder" style="margin-right:7px;"></span><span>${escapeHtml(displayName)}</span>` : `<span class="user-link" data-user-id="${spill.user_id}">${escapeHtml(displayName)}</span>`}</div>
       ${doorTagHtml(spill)}
       ${inspiredLine}
