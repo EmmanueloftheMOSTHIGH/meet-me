@@ -3651,7 +3651,7 @@ async function loadYourReplies(){
 
   const { data, error } = await sb
     .from('replies')
-    .select('id, content, sticker_url, created_at, sender_id, receiver_id, post_id, posts(id, user_id, content, sticker_url, audio_url, duration_seconds, post_type, category, users!posts_user_id_fkey(meet_number))')
+    .select('id, content, sticker_url, created_at, sender_id, receiver_id, post_id, posts(id, user_id, content, sticker_url, audio_url, duration_seconds, post_type, category, story_number, users!posts_user_id_fkey(meet_number))')
     .or(`sender_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`)
     .order('created_at', { ascending: false });
   if(error){ console.error('Error loading your replies:', error); feed.innerHTML = ''; return; }
@@ -3662,7 +3662,7 @@ async function loadYourReplies(){
   // already live in Your Posts.
   const byPost = {};
   (data || []).forEach(r => {
-    if(!r.posts || r.posts.user_id === currentUserId) return;
+    if(!r.posts || r.posts.user_id === currentUserId || (isMeet8 && r.posts.story_number)) return;
     if(!byPost[r.post_id]) byPost[r.post_id] = r;
   });
   const threads = Object.values(byPost);
@@ -3674,7 +3674,7 @@ async function loadYourReplies(){
   }
   threads.forEach(r => {
     const post = r.posts;
-    const authorName = post.users?.meet_number || ('Meet ' + post.user_id.slice(0,6));
+    const authorName = post.story_number ? ('Meet ' + post.story_number) : (post.users?.meet_number || ('Meet ' + post.user_id.slice(0,6)));
     const spaceLabel = post.post_type;
     const lastFromMe = r.sender_id === currentUserId;
     const preview = r.sticker_url ? '🏷 sent a sticker' : (r.content || '');
@@ -3682,7 +3682,7 @@ async function loadYourReplies(){
     wrap.className = 'yp-post';
     wrap.dataset.postId = post.id;
     wrap.innerHTML = `
-      <div class="yp-post-space"><span class="user-link" data-user-id="${post.user_id}">${escapeHtml(authorName)}</span> · ${escapeHtml(spaceLabel)}</div>
+      <div class="yp-post-space">${post.story_number ? `<span>${escapeHtml(authorName)}</span>` : `<span class="user-link" data-user-id="${post.user_id}">${escapeHtml(authorName)}</span>`} · ${escapeHtml(spaceLabel)}</div>
       ${postBodyHtml(post, 'yp-post-body', 100)}
       <div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--card-border); font-size:12.5px; color:var(--muted-dim);">
         <span style="color:var(--gold-text);">${lastFromMe ? 'You' : escapeHtml(authorName)}:</span> ${escapeHtml(preview.length > 70 ? preview.slice(0, 67) + '...' : preview)}
@@ -4513,7 +4513,7 @@ document.getElementById('feed').addEventListener('click', async (e)=>{
   const likeBtn = e.target.closest('.like-btn');
   if(likeBtn){ e.stopPropagation(); const postId = likeBtn.dataset.postId; if(postId) await toggleLike(postId, likeBtn); return; }
   const replyBtn = e.target.closest('.reply-trigger');
-  if(replyBtn){ e.stopPropagation(); openActionSheet(replyBtn.dataset.receiverId, replyBtn.dataset.postId, replyBtn.dataset.name); return; }
+  if(replyBtn){ e.stopPropagation(); openActionSheet(replyBtn.dataset.receiverId, replyBtn.dataset.postId, replyBtn.dataset.name, replyBtn.dataset.story === '1'); return; }
   const followBtn = e.target.closest('.follow-trigger');
   if(followBtn){ e.stopPropagation(); const nowFollowing = followBtn.classList.toggle('following'); followBtn.textContent = nowFollowing ? 'following' : 'follow'; return; }
 });
@@ -4766,7 +4766,7 @@ function autoGrowActionInput(){
 }
 actionInput.addEventListener('input', autoGrowActionInput);
 
-function openActionSheet(receiverId, postId, displayName){
+function openActionSheet(receiverId, postId, displayName, isStory){
   activeReceiverId = receiverId;
   activePostId = postId;
   // displayName comes from whichever trigger opened this (reply/friend) --
@@ -4777,8 +4777,12 @@ function openActionSheet(receiverId, postId, displayName){
   actionTo.textContent = 'to ' + activeReceiverName;
   friendAsFounder = false;
   document.getElementById('sheet-founder-toggle').classList.remove('on');
-  document.getElementById('sheet-founder-row').style.display = isMeet8 ? 'block' : 'none';
-  document.getElementById('sheet-send-founder-msg').style.display = (isMeet8 && receiverId !== currentUserId) ? 'block' : 'none';
+  const storySheet = !!isStory;   // replying to a curated story: reply only, no friend request / block / message
+  document.getElementById('sheet-send-friend').style.display = storySheet ? 'none' : '';
+  document.getElementById('action-sheet-note').style.display = storySheet ? 'none' : '';
+  document.getElementById('action-sheet-block').style.display = storySheet ? 'none' : '';
+  document.getElementById('sheet-founder-row').style.display = (isMeet8 && !storySheet) ? 'block' : 'none';
+  document.getElementById('sheet-send-founder-msg').style.display = (isMeet8 && !storySheet && receiverId !== currentUserId) ? 'block' : 'none';
   actionInput.value='';
   discardReplySticker();
   actionSheet.classList.add('show');
@@ -4899,6 +4903,8 @@ let currentRepliesPostId = null;
 let currentRepliesThreads = {};
 let currentThreadOtherId = null;
 let cameFromNotificationThread = false;
+let threadMeId = null;                 // whose side "me" is in the open thread (the hidden story account, for Meet 8 on a story)
+let currentThreadStoryOwnerId = null;  // set only while Meet 8 has a story post's replies open
 
 async function openPostRepliesSheet(postId, fullScreen){
   if(!postId || !currentUserId) return;
@@ -4916,6 +4922,14 @@ async function openPostRepliesSheet(postId, fullScreen){
   postRepliesSheet.classList.add('show');
   updateComposeVisibility();
 
+  // Meet 8 reading replies on a curated story: those are addressed to / sent from the hidden story account.
+  currentThreadStoryOwnerId = null; threadMeId = currentUserId;
+  if(isMeet8){
+    const { data: storyRow } = await sb.from('posts').select('user_id, story_number').eq('id', postId).maybeSingle();
+    if(storyRow && storyRow.story_number){ currentThreadStoryOwnerId = storyRow.user_id; threadMeId = storyRow.user_id; }
+  }
+  const meId = threadMeId;
+
   const [likesResult, repliesResult] = await Promise.all([
     sb.from('likes').select('user_id, users(meet_number)').eq('post_id', postId),
     // Pull both directions -- replies sent to us AND any replies we've
@@ -4924,7 +4938,7 @@ async function openPostRepliesSheet(postId, fullScreen){
     sb.from('replies')
       .select('id, content, sticker_url, created_at, sender_id, receiver_id, users:sender_id(meet_number)')
       .eq('post_id', postId)
-      .or(`sender_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`)
+      .or(currentThreadStoryOwnerId ? `post_id.eq.${postId}` : `sender_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`)
       .order('created_at', { ascending: true })
   ]);
 
@@ -4942,11 +4956,11 @@ async function openPostRepliesSheet(postId, fullScreen){
   // isn't us is "the other person" for that row.
   const threads = {};
   rows.forEach(r => {
-    const otherId = r.sender_id === currentUserId ? r.receiver_id : r.sender_id;
-    if(!otherId || otherId === currentUserId) return;
+    const otherId = r.sender_id === meId ? r.receiver_id : r.sender_id;
+    if(!otherId || otherId === meId) return;
     if(!threads[otherId]) threads[otherId] = { otherId, name: null, rows: [] };
     threads[otherId].rows.push(r);
-    if(r.sender_id !== currentUserId && r.users?.meet_number) threads[otherId].name = r.users.meet_number;
+    if(r.sender_id !== meId && r.users?.meet_number) threads[otherId].name = r.users.meet_number;
   });
   currentRepliesThreads = threads;
 
@@ -4996,7 +5010,7 @@ function openPrivateThreadDetail(otherId, otherName, rows){
 function renderThreadMessages(rows){
   const container = document.getElementById('post-replies-thread-messages');
   container.innerHTML = (rows || []).map(r => {
-    const isMe = r.sender_id === currentUserId;
+    const isMe = r.sender_id === (threadMeId || currentUserId);
     const body = r.sticker_url ? stickerHtml(r.sticker_url, 110) : `<span class="msg-body-text">${escapeHtml(r.content || '')}</span>`;
     return `
       <div class="priv-thread-msg-wrap ${isMe ? 'me' : 'them'}">
@@ -5026,6 +5040,13 @@ document.getElementById('post-replies-thread-back').addEventListener('click', ()
 // reads correctly either way.
 async function sendPrivateReply(postId, receiverId, content){
   if(!currentUserId || !content) return null;
+  if(isMeet8 && currentThreadStoryOwnerId){
+    // Answering a person who replied to a curated story: saved under the hidden story account, never as Meet 8.
+    const { data: storyReplyId, error: storyErr } = await sb.rpc('story_reply_back', { p_post_id: postId, p_receiver_id: receiverId, p_content: content });
+    if(storyErr){ console.error('Error answering story reply:', storyErr); return null; }
+    sendPushTo(receiverId, 'Meet Me', content.length > 80 ? content.slice(0, 77) + '...' : content, '/');
+    return { id: storyReplyId };
+  }
   const { data: postRows } = await sb.from('posts').select('user_id').eq('id', postId);
   const ownerId = postRows && postRows[0]?.user_id;
   const row = { sender_id: currentUserId, receiver_id: receiverId, post_id: postId, content };
@@ -5046,7 +5067,7 @@ async function sendPrivateThreadReply(){
   if(!text || !currentThreadOtherId || !currentRepliesPostId) return;
   input.value = '';
   const thread = currentRepliesThreads[currentThreadOtherId] || (currentRepliesThreads[currentThreadOtherId] = { otherId: currentThreadOtherId, name: null, rows: [] });
-  const optimistic = { sender_id: currentUserId, receiver_id: currentThreadOtherId, content: text, created_at: new Date().toISOString() };
+  const optimistic = { sender_id: (threadMeId || currentUserId), receiver_id: currentThreadOtherId, content: text, created_at: new Date().toISOString() };
   thread.rows.push(optimistic);
   renderThreadMessages(thread.rows);
   const saved = await sendPrivateReply(currentRepliesPostId, currentThreadOtherId, text);
@@ -5062,10 +5083,11 @@ document.getElementById('post-replies-thread-input').addEventListener('keydown',
 // owner. Opens straight into the thread detail view.
 async function openPrivateThreadFromNotification(postId){
   if(!postId || !currentUserId) return;
-  const { data: postRow, error: postErr } = await sb.from('posts').select('user_id, users:user_id(meet_number)').eq('id', postId).single();
+  threadMeId = null; currentThreadStoryOwnerId = null;
+  const { data: postRow, error: postErr } = await sb.from('posts').select('user_id, story_number, users:user_id(meet_number)').eq('id', postId).single();
   if(postErr || !postRow) return;
   const ownerId = postRow.user_id;
-  if(ownerId === currentUserId){ await openPostRepliesSheet(postId, true); return; }
+  if(ownerId === currentUserId || (isMeet8 && postRow.story_number)){ await openPostRepliesSheet(postId, true); return; }
 
   const { data: rows, error } = await sb.from('replies')
     .select('id, content, sticker_url, created_at, sender_id, receiver_id')
@@ -5076,7 +5098,7 @@ async function openPrivateThreadFromNotification(postId){
 
   currentRepliesPostId = postId;
   cameFromNotificationThread = true;
-  const ownerName = postRow.users?.meet_number || 'Someone';
+  const ownerName = postRow.story_number ? ('Meet ' + postRow.story_number) : (postRow.users?.meet_number || 'Someone');
   currentRepliesThreads = { [ownerId]: { otherId: ownerId, name: ownerName, rows: rows || [] } };
 
   postRepliesSheet.classList.add('fullscreen');
@@ -6077,16 +6099,8 @@ async function getOrCreateSession(){
     return session;
   };
   try{
-    if(navigator.locks && navigator.locks.request){
-      // If another tab is sitting on the lock, wait for it a few seconds at
-      // most, then carry on without it rather than hanging the whole app.
-      const ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-      const timer = ctl ? setTimeout(()=>ctl.abort(), 6000) : null;
-      try{
-        return await navigator.locks.request('mm-anon-signin', ctl ? { signal: ctl.signal } : {}, run);
-      }finally{ if(timer) clearTimeout(timer); }
-    }
-  }catch(e){ console.error('Sign-in lock unavailable, continuing without it:', e); }
+    if(navigator.locks && navigator.locks.request) return await navigator.locks.request('mm-anon-signin', run);
+  }catch(e){ console.error('Sign-in lock failed, continuing without it:', e); }
   return run();
 }
 
@@ -6113,34 +6127,36 @@ function stampActivity(){
     .then(({error})=>{ if(error){ console.error('Updating last_active_at failed:', error); activityStamped = false; } });
 }
 
-async function initUserAttempt(){
+async function initUser(){
   // Restores an existing session automatically if one exists (supabase-js
   // stores its OWN session token in localStorage — that's fine, it's a
   // real signed session, not a spoofable plain number like before).
   // The check-then-sign-in runs inside a browser lock so two tabs/loads that
   // start at the same moment can't both see "no session" and each create an
   // account (that's how duplicate Meet numbers got burned).
-  let session = await getOrCreateSession();
-  if(!session) return false;
+  const session = await getOrCreateSession();
+  if(!session) return;
 
   currentUserId = session.user.id;
+  loadAutomatchToggle();
+  checkForActiveRoomMatch();
+  startRoomMatchWatch();
 
   // Make sure a matching row exists in our own `users` profile table.
-  let found = await ensureProfile();
-  if(!found){
-    // No profile and we couldn't make one. If the server says this login
-    // belongs to an account that no longer exists (e.g. an empty account
-    // that was cleaned up), the phone is holding a dead login -- that's
-    // what used to leave Profile stuck on a dash until the app was
-    // reinstalled. Drop the dead login and start fresh instead.
-    const fresh = await healDeadSession();
-    if(!fresh) return false;
-    currentUserId = fresh.user.id;
-    found = await ensureProfile();
-    if(!found) return false;
-  }
-  const profile = found.profile;
-  if(found.created){
+  let { data: profile, error: profileErr } = await sb
+    .from('users')
+    .select('meet_number, display_number, account_secured, created_at, is_admin')
+    .eq('id', currentUserId)
+    .maybeSingle();
+
+  if(!profile){
+    const { data: inserted, error: insertErr } = await sb
+      .from('users')
+      .insert({ id: currentUserId })
+      .select('meet_number, display_number, account_secured, created_at, is_admin')
+      .single();
+    if(insertErr){ console.error('Error creating profile:', insertErr); return; }
+    profile = inserted;
     // Brand-new account -- ask for push permission right away instead of
     // waiting for them to find the toggle in Profile. Fire-and-forget so
     // it doesn't hold up the rest of init; registerServiceWorker() runs
@@ -6148,10 +6164,6 @@ async function initUserAttempt(){
     // registration already exists.
     maybeAutoRequestPush();
   }
-
-  loadAutomatchToggle();
-  checkForActiveRoomMatch();
-  startRoomMatchWatch();
 
   currentMeetNumber = profile.meet_number;
   isMeet8 = Number(profile.display_number) === 8;
@@ -6163,7 +6175,6 @@ async function initUserAttempt(){
   // (see stampActivity). If they already have, it goes out now.
   stampActivity();
   document.getElementById('profile-number').textContent = currentMeetNumber;
-  try{ localStorage.setItem('mm_my_number', currentMeetNumber); }catch(e){}
   updateAccountUI();
   recordDailyOpen();
   await Promise.all([
@@ -6175,85 +6186,6 @@ async function initUserAttempt(){
     ensureOrgs(true)
   ]);
   await maybeSendSecureNudgeNotification();
-  return true;
-}
-
-const PROFILE_COLS = 'meet_number, display_number, account_secured, created_at, is_admin';
-
-// Finds this login's profile row, creating it for a brand-new account.
-// Retries a couple of times so a slow or dropped connection at launch
-// doesn't look like "no profile". Returns { profile, created } or null.
-async function ensureProfile(){
-  for(let i = 0; i < 3; i++){
-    const { data, error } = await sb.from('users').select(PROFILE_COLS).eq('id', currentUserId).maybeSingle();
-    if(data) return { profile: data, created: false };
-    if(!error) break;                                   // answered, and there's simply no row yet
-    console.error('Reading profile failed (attempt ' + (i + 1) + '):', error);
-    await new Promise(r => setTimeout(r, 700 * (i + 1)));
-  }
-  const { data: inserted, error: insertErr } = await sb.from('users').insert({ id: currentUserId }).select(PROFILE_COLS).single();
-  if(inserted) return { profile: inserted, created: true };
-  console.error('Error creating profile:', insertErr);
-  return null;
-}
-
-// Asks the server whether this login is still alive. Only when the server
-// clearly says the account is gone does it drop the local login and create
-// a fresh one -- a network hiccup never wipes anything, and an account that
-// still exists is never touched.
-async function healDeadSession(){
-  try{
-    const { data, error } = await sb.auth.getUser();
-    if(!error && data && data.user) return null;        // account is fine; the problem was something else
-    const code = (error && error.code) || '';
-    const dead = !!error && (error.status === 401 || error.status === 403 || error.status === 404 ||
-                             /user_not_found|session_not_found|bad_jwt|refresh_token_not_found/.test(code));
-    if(!dead) return null;                              // network or server trouble: leave the login alone
-    console.warn('This login points to an account that no longer exists -- starting fresh.');
-    await sb.auth.signOut({ scope: 'local' });
-    try{ localStorage.removeItem('mm_my_number'); }catch(e){}
-    const el = document.getElementById('profile-number'); if(el) el.textContent = '—';
-    return await getOrCreateSession();
-  }catch(e){
-    console.error('Checking the login failed:', e);
-    return null;
-  }
-}
-
-// Startup with a safety net: try again a couple of times, and if it still
-// can't finish, retry the moment the phone is back online / the app is
-// brought forward -- so nobody is left on an empty Profile until reinstall.
-let initUserDone = false;
-async function initUser(){
-  // Show the last known Meet number straight away so Profile never opens on
-  // a dash while a slow connection finishes loading; the real value
-  // replaces it as soon as the profile arrives.
-  try{
-    const cached = localStorage.getItem('mm_my_number');
-    const el = document.getElementById('profile-number');
-    if(cached && el && el.textContent.trim() === '—') el.textContent = cached;
-  }catch(e){}
-  const waits = [0, 1200, 3000];
-  for(let i = 0; i < waits.length; i++){
-    if(waits[i]) await new Promise(r => setTimeout(r, waits[i]));
-    try{ if(await initUserAttempt()){ initUserDone = true; return; } }
-    catch(e){ console.error('Startup attempt ' + (i + 1) + ' failed:', e); }
-  }
-  const retryWhenBack = async ()=>{
-    if(initUserDone) return;
-    if(document.visibilityState === 'hidden') return;
-    try{
-      if(await initUserAttempt()){
-        initUserDone = true;
-        window.removeEventListener('online', retryWhenBack);
-        document.removeEventListener('visibilitychange', retryWhenBack);
-        try{ await loadFeed(); }catch(e){}
-        try{ await loadOrgsFeed(true); }catch(e){}
-      }
-    }catch(e){ console.error('Late startup retry failed:', e); }
-  };
-  window.addEventListener('online', retryWhenBack);
-  document.addEventListener('visibilitychange', retryWhenBack);
 }
 
 /* ============================================================
@@ -7002,7 +6934,7 @@ function repliesBlockHtml(replies){
     </div>`).join('') + '</div>';
 }
 
-function postActionsHtml(postId, authorId, content, stickerUrl, audioUrl, durationSeconds, displayName, spaceLabel, userLiked, likeCount, includeShare, communityId, isOrgPost){
+function postActionsHtml(postId, authorId, content, stickerUrl, audioUrl, durationSeconds, displayName, spaceLabel, userLiked, likeCount, includeShare, communityId, isOrgPost, storyReplyTo){
   if(includeShare === undefined) includeShare = true;
   // Like counts are shown publicly only in Rant -- Spill
   // keeps likes as a private signal to the poster, with no visible
@@ -7033,6 +6965,12 @@ function postActionsHtml(postId, authorId, content, stickerUrl, audioUrl, durati
     return likeHtml + bookmarkHtml + deleteHtml + standHtml + inspiredHtml + interestHtml + shareHtml;
   }
 
+  if(storyReplyTo && !isOwn){
+    // Curated story: people can reply privately, addressed to the reserved number only.
+    return likeHtml + bookmarkHtml
+      + `<span class="post-action reply-trigger" data-post-id="${postId}" data-receiver-id="${storyReplyTo.ownerId}" data-name="Meet ${storyReplyTo.number}" data-story="1">reply</span>`
+      + inspiredHtml + shareHtml;
+  }
   if(!authorId || isOwn){
     // Community/organization-authored post, or your own -- no one to reply/friend/block.
     return likeHtml + bookmarkHtml + deleteHtml + inspiredHtml + interestHtml + ownRepliesHtml + shareHtml;
@@ -7355,13 +7293,14 @@ async function fetchInspirationLabels(posts){
   await fetchDoorQuestionTexts(posts);
   const ids = [...new Set(posts.filter(p => p.inspired_by_post_id).map(p => p.inspired_by_post_id))];
   if(!ids.length) return {};
-  const { data } = await sb.from('posts').select('id, user_id, community_id, organization_id, as_founder, users!posts_user_id_fkey(meet_number), communities(name)').in('id', ids);
+  const { data } = await sb.from('posts').select('id, user_id, community_id, organization_id, as_founder, story_number, users!posts_user_id_fkey(meet_number), communities(name)').in('id', ids);
   // A post made as an organisation is credited to that organisation, not to the person running it.
   if((data || []).some(p => p.organization_id)){ try{ await ensureOrgs(); }catch(e){} }
   const map = {};
   (data || []).forEach(p => {
     map[p.id] = p.community_id ? (p.communities?.name || 'a community')
       : p.organization_id ? orgInfo(p.organization_id).name
+      : p.story_number ? ('Meet ' + p.story_number)
       : p.as_founder ? 'Meet Founder'
       : (p.users?.meet_number || 'someone');
   });
@@ -7387,7 +7326,7 @@ document.addEventListener('click', (e)=>{
   const replyBtn = e.target.closest('.reply-trigger');
   if(replyBtn){
     e.stopPropagation();
-    openActionSheet(replyBtn.dataset.receiverId, replyBtn.dataset.postId, replyBtn.dataset.name);
+    openActionSheet(replyBtn.dataset.receiverId, replyBtn.dataset.postId, replyBtn.dataset.name, replyBtn.dataset.story === '1');
   }
 });
 
@@ -8320,10 +8259,14 @@ document.addEventListener('click', async (e)=>{
 function renderRantPost(post, userLiked, likeCount, inspirationLabels){
   const isCommunity = !!post.community_id;
   const isOrg = !isCommunity && !!post.organization_id;
-  const isFounder = !isCommunity && !isOrg && !!post.as_founder;
-  const isOwn = !isCommunity && post.user_id === currentUserId;
+  const isStory = !isCommunity && !isOrg && !!post.story_number;   // a curated rant under a reserved number
+  const isFounder = !isCommunity && !isOrg && !isStory && !!post.as_founder;
+  const isOwnStory = isStory && isMeet8;   // Meet 8 manages every curated story (owned by the hidden story account)
+  const isOwn = !isCommunity && !isStory && post.user_id === currentUserId;
   const org = isOrg ? orgInfo(post.organization_id) : null;
-  const displayName = isCommunity
+  const displayName = isStory
+    ? ('Meet ' + post.story_number)
+    : isCommunity
     ? (post.communities?.icon || '🌀') + ' ' + (post.communities?.name || 'Community')
     : isFounder
       ? 'Meet Founder'
@@ -8337,6 +8280,8 @@ function renderRantPost(post, userLiked, likeCount, inspirationLabels){
   const fresh = isOrg && (Date.now() - new Date(post.created_at).getTime() < ORG_FRESH_MS) && !orgSeenSet().has(String(post.id));
   const headHtml = isCommunity
     ? escapeHtml(displayName) + ' <span class="org-badge">community</span>'
+    : isStory
+      ? `<span>${escapeHtml(displayName)}</span><span class="story-tag">shared with us</span>`
     : isFounder
       ? '<span class="org-crest-dot crest-founder" style="margin-right:7px;"></span>Meet Founder'
     : isOrg
@@ -8346,7 +8291,7 @@ function renderRantPost(post, userLiked, likeCount, inspirationLabels){
   div.className = 'post' + (isCommunity ? ' org-post' : '') + (isOrg ? ' org-post org-card' : '');
   div.dataset.postId = post.id;
   if(isOrg){ div.dataset.orgId = org.id; div.style.setProperty('--oc', org.color); }
-  div.dataset.isOwn = (isOwn && !isOrg) ? 'true' : 'false';
+  div.dataset.isOwn = ((isOwn || isOwnStory) && !isOrg) ? 'true' : 'false';
   div.innerHTML = `
     <div class="post-head">
       <span class="post-id">${headHtml}</span>
@@ -8358,7 +8303,7 @@ function renderRantPost(post, userLiked, likeCount, inspirationLabels){
     ${happeningPillHtml(post)}
     ${bodyHtml}
     <div class="post-foot">
-      ${postActionsHtml(post.id, isCommunity ? null : ((isOrg || isFounder) ? (isOwn ? post.user_id : null) : post.user_id), post.content, post.sticker_url, post.audio_url, post.duration_seconds, displayName, 'Rant', userLiked, likeCount, false, isCommunity ? post.community_id : null, (isCommunity || isOrg))}
+      ${postActionsHtml(post.id, isCommunity ? null : (isStory ? (isOwnStory ? currentUserId : null) : ((isOrg || isFounder) ? (isOwn ? post.user_id : null) : post.user_id)), post.content, post.sticker_url, post.audio_url, post.duration_seconds, displayName, 'Rant', userLiked, likeCount, false, isCommunity ? post.community_id : null, (isCommunity || isOrg), (isStory && !isOwnStory) ? { ownerId: post.user_id, number: post.story_number } : null)}
     </div>`;
   if(fresh) watchFreshOrgPost(div);
   watchPostView(div, post);
@@ -8377,7 +8322,7 @@ async function loadFeed(){
   feedHasMore = true;
   const { data: rawPosts, error } = await sb
     .from('posts')
-    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, inspired_by_post_id, door_question_id, happening_id, happenings(name), users!posts_user_id_fkey(meet_number), communities(name, icon)')
+    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), users!posts_user_id_fkey(meet_number), communities(name, icon)')
     .eq('post_type', 'rant')
     .or('organization_id.is.null,community_id.not.is.null')   // organisation posts live in the Organisations pillar
     .order('created_at', { ascending: false })
@@ -8432,7 +8377,7 @@ async function loadMoreFeed(){
 
   const { data: rawPosts, error } = await sb
     .from('posts')
-    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, inspired_by_post_id, door_question_id, happening_id, happenings(name), users!posts_user_id_fkey(meet_number), communities(name, icon)')
+    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), users!posts_user_id_fkey(meet_number), communities(name, icon)')
     .eq('post_type', 'rant')
     .or('organization_id.is.null,community_id.not.is.null')
     .order('created_at', { ascending: false })
@@ -8504,7 +8449,7 @@ async function renderOrgsFeed(){
   const list = document.getElementById('orgs-list');
   const { data: rawPosts, error } = await sb
     .from('posts')
-    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, inspired_by_post_id, door_question_id, happening_id, happenings(name), users!posts_user_id_fkey(meet_number), communities(name, icon)')
+    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), users!posts_user_id_fkey(meet_number), communities(name, icon)')
     .eq('post_type', 'rant')
     .not('organization_id', 'is', null)
     .is('community_id', null)
@@ -8641,7 +8586,7 @@ document.getElementById('orgs-feed').addEventListener('click', async (e)=>{
   const likeBtn = e.target.closest('.like-btn');
   if(likeBtn){ e.stopPropagation(); const postId = likeBtn.dataset.postId; if(postId) await toggleLike(postId, likeBtn); return; }
   const replyBtn = e.target.closest('.reply-trigger');
-  if(replyBtn){ e.stopPropagation(); openActionSheet(replyBtn.dataset.receiverId, replyBtn.dataset.postId, replyBtn.dataset.name); return; }
+  if(replyBtn){ e.stopPropagation(); openActionSheet(replyBtn.dataset.receiverId, replyBtn.dataset.postId, replyBtn.dataset.name, replyBtn.dataset.story === '1'); return; }
 });
 // Following, unfollowing or muting changes what this page should show.
 ['org-sheet-overlay', 'org-list-overlay'].forEach(id => {
@@ -8834,27 +8779,16 @@ async function saveSpill(content, audio, inspiredByPostId, stickerUrl, doorQuest
 }
 
 async function loadSpills(){
-  // Your own Spills come first (most recent first) so you always see what
-  // you posted before swiping into strangers' -- then everyone else's.
-  const { data: own, error: ownErr } = await sb
+  // Newest first, for everyone: your own Spills sit in time order with the
+  // rest instead of being pushed to the front. Curated stories are included.
+  const { data, error } = await sb
     .from('posts')
     .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, inspired_by_post_id, door_question_id, as_founder, story_number, users!posts_user_id_fkey(meet_number)')
     .eq('post_type', 'spill')
-    .eq('user_id', currentUserId)
-    .is('story_number', null)   // curated stories are never "yours", even for Meet 8
-    .order('created_at', { ascending: false });
-  if(ownErr) console.error('Error loading own spills:', ownErr);
-
-  const { data: others, error } = await sb
-    .from('posts')
-    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, inspired_by_post_id, door_question_id, as_founder, story_number, users!posts_user_id_fkey(meet_number)')
-    .eq('post_type', 'spill')
-    .or(`user_id.neq.${currentUserId},story_number.not.is.null`)   // everyone else's, plus the curated stories
     .order('created_at', { ascending: false })
     .limit(30);
-  if(error){ console.error('Error loading spills:', error); return own || []; }
-
-  return [...(own || []), ...(others || [])];
+  if(error){ console.error('Error loading spills:', error); return []; }
+  return data || [];
 }
 
 async function renderSpills(spills){
@@ -8894,6 +8828,8 @@ async function renderSpills(spills){
   spills.forEach(spill => {
     const isStory = !!spill.story_number;   // a curated story under a reserved number
     const isOwn = spill.user_id === currentUserId && !isStory;
+    // Meet 8 can manage the stories they published (delete, replies & likes); everyone else still sees them as no one's.
+    const isOwnStory = isStory && isMeet8;
     const userLiked = likedIds.has(spill.id);
     const isFounder = !!spill.as_founder && !isStory;
     const displayName = isStory ? ('Meet ' + spill.story_number) : isFounder ? ('Meet Founder' + (isOwn ? ' (you)' : '')) : ((spill.users?.meet_number || ('Meet ' + spill.user_id.slice(0,6))) + (isOwn ? ' (you)' : ''));
@@ -8903,7 +8839,7 @@ async function renderSpills(spills){
     const card = document.createElement('div');
     card.className = 'spill-card';
     card.dataset.postId = spill.id;
-    card.dataset.isOwn = isOwn ? 'true' : 'false';
+    card.dataset.isOwn = (isOwn || isOwnStory) ? 'true' : 'false';
     card.innerHTML = `
       <div class="spill-card-id">${isStory ? `<span>${escapeHtml(displayName)}</span><span class="story-tag">shared with us</span>` : isFounder ? `<span class="org-crest-dot crest-founder" style="margin-right:7px;"></span><span>${escapeHtml(displayName)}</span>` : `<span class="user-link" data-user-id="${spill.user_id}">${escapeHtml(displayName)}</span>`}</div>
       ${doorTagHtml(spill)}
@@ -8911,7 +8847,7 @@ async function renderSpills(spills){
       ${bodyHtml}
       <div class="spill-card-time">${formatRelativeTime(spill.created_at)}</div>
       <div class="spill-card-actions" style="display:flex; gap:14px; margin-top:14px; flex-wrap:wrap;">
-        ${postActionsHtml(spill.id, (isStory || (isFounder && !isOwn)) ? null : spill.user_id, spill.content, spill.sticker_url, spill.audio_url, spill.duration_seconds, displayName, 'Spill', userLiked)}
+        ${postActionsHtml(spill.id, ((isStory && !isOwnStory) || (isFounder && !isOwn)) ? null : (isOwnStory ? currentUserId : spill.user_id), spill.content, spill.sticker_url, spill.audio_url, spill.duration_seconds, displayName, 'Spill', userLiked, undefined, undefined, null, false, (isStory && !isOwnStory) ? { ownerId: spill.user_id, number: spill.story_number } : null)}
       </div>`;
     stack.appendChild(card);
   });
@@ -9495,7 +9431,7 @@ function actorName(n){
 const NOTIF_TEXT = {
   like: (n)=> `${actorName(n)} liked your post.`,
   reply: (n)=> `${actorName(n)} replied to your post.`,
-  reply_back: (n)=> `${actorName(n)} wrote back.`,
+  reply_back: (n)=> `${n._story ? ('Meet ' + n._story) : actorName(n)} wrote back.`,
   friend_request: (n)=> `${n._founder ? 'Meet Founder' : actorName(n)} sent you a friend request.`,
   friend_accept: (n)=> `${actorName(n)} accepted your friend request. Chat is open.`,
   room_ready: ()=> 'The Room is ready — someone relatable is waiting.',
@@ -9677,7 +9613,15 @@ function highlightPost(postId){
 
 const NOTIF_NAV = {
   like: (n)=>{ notifOverlay.classList.remove('show'); return navigateToPost(n.reference_id); },
-  reply: (n)=>{ notifOverlay.classList.remove('show'); return navigateToPost(n.reference_id); },
+  reply: async (n)=>{
+    notifOverlay.classList.remove('show');
+    if(isMeet8){
+      // A reply to one of the curated stories: open its replies directly.
+      const { data: sp } = await sb.from('posts').select('story_number').eq('id', n.reference_id).maybeSingle();
+      if(sp && sp.story_number) return openPostRepliesSheet(n.reference_id, true);
+    }
+    return navigateToPost(n.reference_id);
+  },
   reply_back: (n)=>{ notifOverlay.classList.remove('show'); return openPrivateThreadFromNotification(n.reference_id); },
   friend_request: async ()=>{ notifOverlay.classList.remove('show'); await goToScreen('chat'); },
   friend_accept: async ()=>{ notifOverlay.classList.remove('show'); await goToScreen('chat'); },
@@ -9705,6 +9649,14 @@ async function loadNotifications(){
     const { data: frRows } = await sb.from('friend_requests').select('id, as_founder').in('id', frIds);
     const founderIds = new Set((frRows || []).filter(r => r.as_founder).map(r => r.id));
     notifs.forEach(n => { if(n.type === 'friend_request' && founderIds.has(n.reference_id)) n._founder = true; });
+  }
+  // Answers to a curated story's replies read as coming from the reserved number.
+  const rbIds = [...new Set(notifs.filter(n => n.type === 'reply_back' && n.reference_id).map(n => n.reference_id))];
+  if(rbIds.length){
+    const { data: rbPosts } = await sb.from('posts').select('id, story_number').in('id', rbIds).not('story_number', 'is', null);
+    const storyById = {};
+    (rbPosts || []).forEach(p => { storyById[p.id] = p.story_number; });
+    notifs.forEach(n => { if(n.type === 'reply_back' && storyById[n.reference_id]) n._story = storyById[n.reference_id]; });
   }
 
   const list = document.getElementById('notif-list');
@@ -11972,7 +11924,7 @@ async function runSearch(){
     const spaces = ['rant'];
     const { data } = await sb
       .from('posts')
-      .select('id, user_id, content, sticker_url, audio_url, duration_seconds, post_type, category, created_at, happening_id, happenings(name), users!posts_user_id_fkey(meet_number)')
+      .select('id, user_id, content, sticker_url, audio_url, duration_seconds, post_type, category, created_at, happening_id, story_number, happenings(name), users!posts_user_id_fkey(meet_number)')
       .in('post_type', spaces)
       .eq('as_founder', false)
       .ilike('content', `%${query}%`)
@@ -12024,13 +11976,13 @@ async function runSearch(){
   });
 
   postRows.forEach(post => {
-    const displayName = post.users?.meet_number || ('Meet ' + post.user_id.slice(0,6));
+    const displayName = post.story_number ? ('Meet ' + post.story_number) : (post.users?.meet_number || ('Meet ' + post.user_id.slice(0,6)));
     const bodyHtml = postBodyHtml(post, 'yp-post-body', 150);
     const wrap = document.createElement('div');
     wrap.className = 'yp-post';
     wrap.dataset.postId = post.id;
     wrap.innerHTML = `
-      <div class="yp-post-space"><span class="user-link" data-user-id="${post.user_id}">${escapeHtml(displayName)}</span> · ${escapeHtml(post.post_type)}</div>
+      <div class="yp-post-space">${post.story_number ? `<span>${escapeHtml(displayName)}</span>` : `<span class="user-link" data-user-id="${post.user_id}">${escapeHtml(displayName)}</span>`} · ${escapeHtml(post.post_type)}</div>
       ${bodyHtml}
       <div class="yp-post-time">${formatRelativeTime(post.created_at)}</div>`;
     results.appendChild(wrap);
