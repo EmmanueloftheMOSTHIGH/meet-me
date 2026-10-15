@@ -13142,7 +13142,7 @@ function saveSnapshot(){
     let snap = {};
     try{ snap = JSON.parse(localStorage.getItem('mm_snap') || '{}') || {}; }catch(e){}
     const feedEl = document.getElementById('feed');
-    const snapHtml = (el)=>{ const c = el.cloneNode(true); c.querySelectorAll('.post-insight, .rm-toggle').forEach(x => x.remove()); c.querySelectorAll('[data-rm]').forEach(x => { x.removeAttribute('data-rm'); x.classList.remove('rm-clamp', 'rm-cut'); x.style.removeProperty('--rm-lines'); }); return c.outerHTML; };
+    const snapHtml = (el)=>{ const c = el.cloneNode(true); c.querySelectorAll('.post-insight, .rm-toggle').forEach(x => x.remove()); c.querySelectorAll('[data-rm]').forEach(x => { x.removeAttribute('data-rm'); x.removeAttribute('data-rm-open'); x.classList.remove('rm-clamp', 'rm-cut'); x.style.removeProperty('--rm-lines'); }); return c.outerHTML; };
     const posts = Array.from(feedEl.querySelectorAll('.post')).slice(0, 15).map(snapHtml).join('');
     if(posts){ snap.feed = posts; snap.feedScroll = feedEl.scrollTop; }
     const chatEl = document.getElementById('chat-list');
@@ -14041,23 +14041,36 @@ document.addEventListener('DOMContentLoaded', async function(){
    ============================================================ */
 (function(){
   const LINES_TEXT = 5, LINES_MEDIA = 3;
+  // Always watched (never "measure once and forget"): if a post was judged short while its screen was hidden or
+  // still settling, or if something wipes its button, the next size change / return to the app puts it right.
   const ro = new ResizeObserver(entries => {
     entries.forEach(en => {
       const b = en.target;
+      if(!b.isConnected){ ro.unobserve(b); return; }
       if(!b.clientWidth) return;          // card is on a hidden screen: measure when it shows up
-      ro.unobserve(b);
       measure(b);
     });
   });
+  function isLong(b){
+    const cs = getComputedStyle(b);
+    let lh = parseFloat(cs.lineHeight);
+    if(!lh || isNaN(lh)) lh = (parseFloat(cs.fontSize) || 15) * 1.5;
+    const lim = parseFloat(b.style.getPropertyValue('--rm-lines')) || LINES_TEXT;
+    return b.scrollHeight > lh * lim + 2;      // full text height, whether the post is folded or open
+  }
   function measure(b){
-    if(b.scrollHeight > b.clientHeight + 2){
-      b.classList.add('rm-cut');
-      if(!b.nextElementSibling || !b.nextElementSibling.classList.contains('rm-toggle')){
-        const t = document.createElement('div');
-        t.className = 'rm-toggle post-action'; t.setAttribute('role','button'); t.tabIndex = 0; t.textContent = 'read more';
+    const next = b.nextElementSibling;
+    let t = next && next.classList.contains('rm-toggle') ? next : null;
+    if(isLong(b)){
+      if(!b.dataset.rmOpen) b.classList.add('rm-clamp', 'rm-cut');   // folded unless you opened it
+      if(!t){
+        t = document.createElement('div');
+        t.className = 'rm-toggle post-action'; t.setAttribute('role','button'); t.tabIndex = 0;
         b.insertAdjacentElement('afterend', t);
       }
+      t.textContent = b.classList.contains('rm-clamp') ? 'read more' : 'show less';
     } else {
+      if(t) t.remove();
       b.classList.remove('rm-clamp', 'rm-cut');
     }
   }
@@ -14076,21 +14089,40 @@ document.addEventListener('DOMContentLoaded', async function(){
     if(root.matches && root.matches('.post-body, .yp-post-body')) setup(root);
     root.querySelectorAll && root.querySelectorAll('.post .post-body, .yp-post .yp-post-body').forEach(setup);
   }
-  const mo = new MutationObserver(muts => muts.forEach(m => m.addedNodes.forEach(scan)));
+  // Re-check every post that is on a visible screen
+  let sweepTimer = null;
+  function sweep(){
+    clearTimeout(sweepTimer);
+    sweepTimer = setTimeout(()=>{ document.querySelectorAll('[data-rm]').forEach(b => { if(b.isConnected && b.clientWidth) measure(b); }); }, 50);
+  }
+  const mo = new MutationObserver(muts => {
+    let lostToggle = false;
+    muts.forEach(m => {
+      m.addedNodes.forEach(scan);
+      m.removedNodes.forEach(n => { if(n.nodeType === 1 && (n.matches('.rm-toggle') || n.querySelector('.rm-toggle'))) lostToggle = true; });
+    });
+    if(lostToggle) sweep();
+  });
   ['feed', 'orgs-list', 'yourposts-feed', 'bookmarks-feed', 'user-profile-feed', 'happening-view-feed', 'search-results'].forEach(id => {
     const el = document.getElementById(id);
     if(!el) return;
     scan(el);
     mo.observe(el, { childList:true, subtree:true });
   });
+  // coming back to the app after a while
+  document.addEventListener('visibilitychange', () => { if(!document.hidden) sweep(); });
+  window.addEventListener('pageshow', sweep);
+  window.addEventListener('focus', sweep);
+  if(document.fonts && document.fonts.ready) document.fonts.ready.then(sweep);
   function toggle(t){
     const b = t.previousElementSibling;
     if(!b || !(b.classList.contains('post-body') || b.classList.contains('yp-post-body'))) return;
-    const open = b.classList.contains('rm-clamp');      // true = currently folded, so this tap expands it
-    b.classList.toggle('rm-clamp', !open);              // always expands in place, however long the post is
-    b.classList.toggle('rm-cut', !open);
-    t.textContent = open ? 'show less' : 'read more';
-    if(!open){ const card = b.closest('.post, .yp-post'); if(card && card.getBoundingClientRect().top < 0) card.scrollIntoView({ block:'nearest' }); }   // folding back: keep the card in view
+    const folded = b.classList.contains('rm-clamp');      // true = currently folded, so this tap opens it
+    b.classList.toggle('rm-clamp', !folded);              // always opens in place, however long the post is
+    b.classList.toggle('rm-cut', !folded);
+    if(folded) b.dataset.rmOpen = '1'; else delete b.dataset.rmOpen;
+    t.textContent = folded ? 'show less' : 'read more';
+    if(!folded){ const card = b.closest('.post, .yp-post'); if(card && card.getBoundingClientRect().top < 0) card.scrollIntoView({ block:'nearest' }); }   // folding back: keep the card in view
   }
   document.addEventListener('click', e => {
     const t = e.target.closest && e.target.closest('.rm-toggle');
