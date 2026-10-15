@@ -12352,7 +12352,9 @@ async function openShareCard(content, name, spaceLabel, stickerUrl, audioUrl, du
 // from and never touched by the canvas card logic above, so a failure
 // here (bad network, blocked fetch) can't affect the card image at all.
 async function fetchAsFile(url, filenameBase){
-  const res = await fetch(url);
+  // A changed URL + cache:'reload' forces a real CORS request: the feed already cached a copy of this file WITHOUT CORS headers,
+  // and fetch() would reuse that copy and then fail.
+  const res = await fetch(corsFreshUrl(url), { mode: 'cors', cache: 'reload' });
   if(!res.ok) throw new Error('Fetch failed: ' + res.status);
   const blob = await res.blob();
   const ext = (url.split('?')[0].split('.').pop() || '').toLowerCase();
@@ -12394,35 +12396,36 @@ function setupOriginalMediaRow(){
   row.style.display = 'flex';
   note.textContent = noteText;
   btn.textContent = label;
-  btn.onclick = async ()=>{
-    const originalLabel = btn.textContent;
-    btn.textContent = 'Preparing…';
+  // The phone only allows the share sheet to open within a few seconds of the tap, and downloading a video can take longer
+  // than that. So the file is fetched as soon as this card opens, and the tap just hands over a file that is already ready.
+  let readyFile = null, failed = false;
+  const prep = fetchAsFile(url, filenameBase).then(f => { readyFile = f; }).catch(err => { failed = true; console.error('Preparing media to share failed:', err); });
+  btn.textContent = label;
+  const shareText = () => (currentShareContent ? currentShareContent + ' \u2014 Meet Me' : 'Meet Me') + (currentShareUrl ? '\n' + currentShareUrl : '');
+  const fail = () => { toast.textContent = "Couldn't load that file to share."; toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 2600); };
+  const doShare = async (file) => {
     try{
-      const file = await fetchAsFile(url, filenameBase);
       if(navigator.canShare && navigator.canShare({ files: [file] })){
-        // Carries the post's caption along as the share text, same as a
-        // caption riding along with a photo/video share in any other app --
-        // without this, a captioned voice note or sticker would arrive
-        // with the file but silently drop what was typed alongside it.
-        const shareText = (currentShareContent ? currentShareContent + ' \u2014 Meet Me' : 'Meet Me') + (currentShareUrl ? '\n' + currentShareUrl : '');
-        await navigator.share({ files: [file], title: 'Meet Me', text: shareText });
+        await navigator.share({ files: [file], title: 'Meet Me', text: shareText() });
+      } else if(navigator.share){
+        await navigator.share({ title: 'Meet Me', text: shareText() });   // this phone won't pass the file on: send the post link instead
       } else {
         const blobUrl = URL.createObjectURL(file);
         const link = document.createElement('a');
-        link.href = blobUrl;
-        link.download = file.name;
-        link.click();
+        link.href = blobUrl; link.download = file.name; link.click();
         setTimeout(()=>URL.revokeObjectURL(blobUrl), 4000);
       }
     } catch(err){
-      if(err.name !== 'AbortError'){
-        console.error('Sharing original media failed:', err);
-        toast.textContent = "Couldn't load that file to share.";
-        toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 2600);
-      }
-    } finally {
-      btn.textContent = originalLabel;
+      if(err.name !== 'AbortError'){ console.error('Sharing original media failed:', err); fail(); }
     }
+  };
+  btn.onclick = async ()=>{
+    if(readyFile){ doShare(readyFile); return; }      // straight into the share sheet
+    if(failed){ fail(); return; }
+    btn.textContent = 'Preparing…';
+    await prep;
+    if(readyFile){ btn.textContent = 'Tap again to share'; }   // a second tap is needed: the first one has expired by now
+    else { btn.textContent = label; fail(); }
   };
 }
 
