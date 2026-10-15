@@ -186,14 +186,16 @@ function lagosDayStartISO() {
   return new Date(day + "T00:00:00+01:00").toISOString();
 }
 
+/* Newscast posts need a header; Meet Story works the same way. */
+const needsHeader = (org) => !!org && (org.type === "newscast" || /^meet story$/i.test(String(org.name || "").trim()));
 function validate(it, org) {
   if (!org) return "No organisation selected";
   const header = (it.header || "").trim();
   const link = (it.link || "").trim();
   if (header.length > HEADER_MAX) return "Header is " + header.length + " characters, the limit is " + HEADER_MAX;
   if (link && !/^https?:\/\/\S+$/i.test(link)) return "The link must start with http:// or https://";
-  if (org.type === "newscast") {
-    if (!header) return "News posts need a header";
+  if (needsHeader(org)) {
+    if (!header) return org.type === "newscast" ? "News posts need a header" : "Every story needs a header";
   } else if (!header && !(it.body || "").trim() && !it.stickerUrl && !it.audioUrl) {
     return "Add a header, some text, a picture or a voice note";
   }
@@ -924,7 +926,7 @@ function viewQueue(org) {
 function viewAdd(org) {
   const sg = state.single;
   const count = h("span", { class: "count mute" });
-  const hdr = h("input", { type: "text", value: sg.header, maxlength: 200, placeholder: org.type === "newscast" ? "Header (required for news)" : "Header (optional)",
+  const hdr = h("input", { type: "text", value: sg.header, maxlength: 200, placeholder: org.type === "newscast" ? "Header (required for news)" : needsHeader(org) ? "Header (required for stories)" : "Header (optional)",
     oninput: (e) => { sg.header = e.target.value; upd(); } });
   const upd = () => { const n = hdr.value.trim().length; count.textContent = n + "/" + HEADER_MAX; count.className = "count " + (n > HEADER_MAX ? "over" : "mute"); };
   upd();

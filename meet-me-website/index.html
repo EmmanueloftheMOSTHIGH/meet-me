@@ -3,29 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Meet Me — a place to be met</title>
-<meta name="description" content="Meet Me is a social app for unfiltered, no-performance connection. Rant, join Game Night, and meet people as they are. Not for everyone. But you.">
-<link rel="canonical" href="https://meet-me-three-beta.vercel.app/">
-<meta property="og:type" content="website">
-<meta property="og:site_name" content="Meet Me">
-<meta property="og:title" content="Meet Me — a place to be met">
-<meta property="og:description" content="Unfiltered, no-performance connection. Not for everyone. But you.">
-<meta property="og:url" content="https://meet-me-three-beta.vercel.app/">
-<meta property="og:image" content="https://meet-me-three-beta.vercel.app/icon-512.png">
-<meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="Meet Me — a place to be met">
-<meta name="twitter:description" content="Unfiltered, no-performance connection. Not for everyone. But you.">
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "WebApplication",
-  "name": "Meet Me",
-  "url": "https://meet-me-three-beta.vercel.app/",
-  "description": "A social app for unfiltered, no-performance connection.",
-  "applicationCategory": "SocialNetworkingApplication",
-  "operatingSystem": "Any"
-}
-</script>
+<title>Meet Me</title>
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#0c0c0e">
 <link rel="icon" href="/icon-192.png">
@@ -101,7 +79,6 @@
     --moon-card:#1e1a38;
   }
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-  .seo-text{ position:absolute; width:1px; height:1px; margin:-1px; padding:0; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0; }
   html,body{ background:#050506; color:var(--ivory); font-family:'Karla',sans-serif; height:100%; overscroll-behavior:none; display:flex; align-items:center; justify-content:center; }
 
   #phone{ position:relative; width:390px; height:844px; background:#000; border-radius:52px; padding:14px;
@@ -430,6 +407,43 @@
   .post-action{ font-size:12px; color:var(--muted-dim); cursor:pointer; }
   .post-action.friend-trigger{ color:var(--gold-text); }
   .post-action.bookmark-trigger.bookmarked{ color:var(--gold-light); }
+
+
+  /* ---------- feed cards: read more, tighter footer, roomy tap targets ---------- */
+  .post{ padding:14px 16px 8px; }
+  .post-foot{ margin-top:8px; gap:2px 16px; }
+  .post-foot > .post-action, .post-foot > .like-btn{ position:relative; }
+  .post-foot > .post-action::after, .post-foot > .like-btn::after{
+    content:''; position:absolute; top:-14px; bottom:-14px; left:-6px; right:-6px;   /* ~44px tall tap area, no extra height */
+  }
+  .post-insight{ margin-top:2px; padding-bottom:4px; }
+  .post .post-body.rm-clamp{
+    display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:var(--rm-lines,5); line-clamp:var(--rm-lines,5);
+    overflow:hidden; word-break:break-word;
+  }
+  .post .post-body.rm-clamp.rm-cut{
+    -webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 1.8em),transparent 100%);
+            mask-image:linear-gradient(to bottom,#000 calc(100% - 1.8em),transparent 100%);
+  }
+  .rm-toggle{ display:inline-block; margin-top:4px; font-size:12px; color:var(--gold-text); cursor:pointer; position:relative; }
+  .rm-toggle::after{ content:''; position:absolute; top:-12px; bottom:-12px; left:-8px; right:-8px; }
+
+  /* ---------- "inspired" -> pick a space ---------- */
+  #inspire-overlay{
+    position:absolute; inset:0; background:rgba(6,6,7,0.75); z-index:78;
+    display:flex; align-items:flex-end; justify-content:center; opacity:0; pointer-events:none; transition:opacity 0.3s ease;
+  }
+  #inspire-overlay.show{ opacity:1; pointer-events:auto; }
+  #inspire-panel{
+    width:100%; max-width:480px; background:var(--bg-elevated); border-radius:20px 20px 0 0;
+    padding:22px 20px 22px; transform:translateY(16px); transition:transform 0.35s cubic-bezier(.2,.9,.3,1);
+  }
+  #inspire-overlay.show #inspire-panel{ transform:translateY(0); }
+  #inspire-title{ font-family:'Fraunces',serif; font-size:19px; color:var(--ivory); margin-bottom:2px; }
+  #inspire-sub{ font-size:11.5px; color:var(--muted-dim); margin-bottom:12px; }
+  .inspire-row{ min-height:52px; }
+  .inspire-row .org-state{ font-size:12px; color:var(--muted); }
+  #inspire-close{ text-align:center; margin-top:10px; font-size:12px; letter-spacing:0.1em; text-transform:uppercase; color:var(--muted-dim); padding:12px; cursor:pointer; }
 
   .org-badge{
     display:inline-block;
@@ -2342,13 +2356,6 @@
 </head>
 <body>
 
-<div class="seo-text">
-  <h1>Meet Me</h1>
-  <p>Not for everyone. But you.</p>
-  <p>Meet Me is a place to be met. No filters and no performing, just people being people. Rant about your day, read real stories in Spill, follow organisations, and join weekly Game Night at 8pm and Anonymous Night on Sundays.</p>
-  <noscript><p>Meet Me needs JavaScript to run. Please enable it to continue.</p></noscript>
-</div>
-
 <div id="net-glow" role="status" aria-live="polite"><span class="breath"><i></i><i></i><i></i></span><span id="net-glow-text"></span></div>
 
 <div id="phone">
@@ -2607,6 +2614,15 @@
       <div class="org-sheet-row" id="org-sheet-notify"><span>Notifications<small>Tell me when they post</small></span><span class="org-switch"></span></div>
       <div class="org-sheet-row" id="org-sheet-mute"><span>Mute<small>Hide their posts from your Organisations page</small></span><span class="org-state"></span></div>
       <div id="org-sheet-close">close</div>
+    </div>
+  </div>
+
+  <div id="inspire-overlay">
+    <div id="inspire-panel">
+      <div id="inspire-title">Inspired by this</div>
+      <div id="inspire-sub">Where do you want to respond?</div>
+      <div id="inspire-rows"></div>
+      <div id="inspire-close">close</div>
     </div>
   </div>
 
@@ -5158,7 +5174,7 @@ document.getElementById('action-sheet-block').addEventListener('click', async ()
    ============================================================ */
 const postRepliesSheet = document.getElementById('post-replies-sheet');
 const OWN_POST_SELECTOR = '.post[data-post-id], .spill-card[data-post-id], .yp-post[data-post-id]';
-const POST_INTERACTIVE_SELECTOR = '.spill-lock, .post-action, .like-btn, .user-link, .sticker-tap, .text-tap, .voice-play-btn, .reply-trigger, .follow-trigger, .stand-trigger, .stand-panel, .org-name-link, .bookmark-trigger, .delete-post-trigger, .community-interest-trigger, .inspired-trigger, .inspired-source-link, .message-trigger, .friend-trigger, .share-trigger, .happening-pill, a, button, input, textarea';
+const POST_INTERACTIVE_SELECTOR = '.spill-lock, .post-action, .like-btn, .user-link, .sticker-tap, .text-tap, .voice-play-btn, .reply-trigger, .follow-trigger, .stand-trigger, .stand-panel, .org-name-link, .bookmark-trigger, .delete-post-trigger, .community-interest-trigger, .inspired-trigger, .rm-toggle, .inspired-source-link, .message-trigger, .friend-trigger, .share-trigger, .happening-pill, a, button, input, textarea';
 
 document.addEventListener('click', (e)=>{
   const trigger = e.target.closest('.own-replies-trigger');
@@ -7297,7 +7313,7 @@ function postActionsHtml(postId, authorId, content, stickerUrl, audioUrl, durati
   const bookmarkHtml = `<span class="post-action bookmark-trigger ${isBookmarked ? 'bookmarked' : ''}" data-post-id="${postId}">${isBookmarked ? '★ saved' : '☆ save'}</span>`;
   const shareHtml = includeShare ? `<span class="post-action share-trigger" data-content="${escapeHtml(content || '')}" data-sticker-url="${escapeHtml(stickerUrl || '')}" data-audio-url="${escapeHtml(audioUrl || '')}" data-duration="${durationSeconds || ''}" data-name="${escapeHtml(displayName)}" data-space="${spaceLabel}" data-share-id="${postId}">share</span>` : '';
   const canInspire = ['Rant','Spill'].includes(spaceLabel);
-  const inspiredHtml = canInspire ? `<span class="post-action inspired-trigger" data-post-id="${postId}" data-space="${spaceLabel}" data-name="${escapeHtml(displayName)}">inspired by this</span>` : '';
+  const inspiredHtml = canInspire ? `<span class="post-action inspired-trigger" data-post-id="${postId}" data-space="${spaceLabel}" data-name="${escapeHtml(displayName)}">↻ inspired</span>` : '';
   const isOwn = authorId && currentUserId && authorId === currentUserId;
   const deleteHtml = isOwn ? `<span class="post-action delete-post-trigger" data-post-id="${postId}">delete</span>` : '';
   const ownRepliesHtml = isOwn ? `<span class="post-action own-replies-trigger" data-post-id="${postId}">replies &amp; likes</span>` : '';
@@ -7590,24 +7606,57 @@ document.addEventListener('click', async (e)=>{
 let currentInspiredByPostId = null;
 let currentInspiredBySpace = null;
 
-function openInspiredCompose(postId, space, originalDisplayName){
+function openInspiredCompose(postId, targetSpace, originalDisplayName, sourceSpace){
   currentInspiredByPostId = postId;
-  currentInspiredBySpace = space;
+  currentInspiredBySpace = targetSpace;          // where the new post goes: Rant, Spill or Orgs
   const textarea = document.getElementById('compose-textarea');
   textarea.value = '';
   discardRecording();
   discardSticker();
-  document.getElementById('compose-title').textContent = `Inspired by ${originalDisplayName}'s ${space}`;
+  composeOrgSetup(false);                        // clears any leftover "post as" state
+  document.getElementById('compose-title').textContent = `Inspired by ${originalDisplayName}'s ${sourceSpace || targetSpace}`;
   textarea.placeholder = 'What did it stir up, in your own words?';
+  if(targetSpace === 'Orgs'){
+    document.getElementById('compose-org-row').style.display = 'block';
+    ensureOrgs().then(()=>{ if(myOrgs.length && !postAsOrgId){ postAsOrgId = myOrgs[0].id; composeOrgRender(); } });
+  }
   document.getElementById('compose-overlay').classList.add('show');
   setTimeout(()=>textarea.focus(), 100);
 }
+
+// Tapping "inspired" asks where the response should go, then opens the composer there.
+// Only the author label travels with the post -- never its text -- so a Spill or an
+// organisation post can inspire a public Rant without exposing what it said.
+let pendingInspire = null;
+async function openInspireSheet(postId, sourceSpace, name){
+  pendingInspire = { postId, sourceSpace, name };
+  await ensureOrgs();
+  const rows = [
+    { key:'Rant',  label:'Rant',  hint:'Public. Say it plainly.' },
+    { key:'Spill', label:'Spill', hint:'Something you would only say once.' }
+  ];
+  if(myOrgs.length) rows.push({ key:'Orgs', label:'Orgs', hint: myOrgs.length === 1 ? 'Post as ' + myOrgs[0].name : 'Post as one of your organisations' });
+  document.getElementById('inspire-title').textContent = `Inspired by ${name}`;
+  document.getElementById('inspire-rows').innerHTML = rows.map(r =>
+    `<div class="org-sheet-row inspire-row" data-space="${r.key}"><span>${r.label}<small>${escapeHtml(r.hint)}</small></span><span class="org-state">›</span></div>`).join('');
+  document.getElementById('inspire-overlay').classList.add('show');
+}
+function closeInspireSheet(){ document.getElementById('inspire-overlay').classList.remove('show'); }
+document.getElementById('inspire-close').addEventListener('click', closeInspireSheet);
+document.getElementById('inspire-overlay').addEventListener('click', (e)=>{ if(e.target.id === 'inspire-overlay') closeInspireSheet(); });
+document.getElementById('inspire-rows').addEventListener('click', (e)=>{
+  const row = e.target.closest('.inspire-row');
+  if(!row || !pendingInspire) return;
+  const p = pendingInspire; pendingInspire = null;
+  closeInspireSheet();
+  openInspiredCompose(p.postId, row.dataset.space, p.name, p.sourceSpace);
+});
 
 document.addEventListener('click', (e)=>{
   const inspiredBtn = e.target.closest('.inspired-trigger');
   if(inspiredBtn){
     e.stopPropagation();
-    openInspiredCompose(inspiredBtn.dataset.postId, inspiredBtn.dataset.space, inspiredBtn.dataset.name);
+    openInspireSheet(inspiredBtn.dataset.postId, inspiredBtn.dataset.space, inspiredBtn.dataset.name);
   }
 });
 
@@ -7912,6 +7961,8 @@ function orgInfo(id){
   const o = orgMap[id];
   return o ? { id:o.id, name:o.name, type:o.type, color:safeOrgColor(o.crest_color) } : { id, name:'Organisation', type:null, color:'#D4AF37' };
 }
+// Newscast posts must carry a header; Meet Story works the same way.
+function orgNeedsHeader(o){ return !!o && (o.type === 'newscast' || /^meet story$/i.test(String(o.name || '').trim())); }
 function orgTypeLabel(t){ return t === 'newscast' ? 'Newscast' : t === 'creator' ? 'Creator' : t === 'official' ? 'Official' : ''; }
 function fmtOrgDate(ms){ return new Date(ms).toLocaleDateString(undefined, { day:'numeric', month:'long', year:'numeric' }); }
 
@@ -8076,7 +8127,7 @@ function composeOrgRender(){
     pill.classList.add('on'); pill.style.setProperty('--oc', o.color);
     label.textContent = 'Post as ' + o.name;
     wrap.style.display = 'flex';
-    input.placeholder = o.type === 'newscast' ? 'Header (required)' : 'Header (optional)';
+    input.placeholder = orgNeedsHeader(o) ? 'Header (required)' : 'Header (optional)';
   } else {
     pill.classList.remove('on'); pill.style.removeProperty('--oc');
     label.textContent = 'Post as you';
@@ -8087,7 +8138,7 @@ function composeOrgRender(){
 function composeOrgRefresh(){
   const input = document.getElementById('compose-org-header');
   document.getElementById('compose-org-header-count').textContent = input.value.length + '/60';
-  const need = !!postAsOrgId && orgInfo(postAsOrgId).type === 'newscast' && !input.value.trim();
+  const need = !!postAsOrgId && orgNeedsHeader(orgInfo(postAsOrgId)) && !input.value.trim();
   document.getElementById('compose-submit-btn').classList.toggle('blocked', need);
   document.getElementById('compose-org-msg').style.display = need ? 'block' : 'none';
 }
@@ -8102,6 +8153,7 @@ function openOrgSheet(id){
       `<span class="org-dot" style="--oc:${o.color}"></span>${escapeHtml(o.name)}<span class="org-tag" style="--oc:${o.color}">${orgTypeLabel(o.type)}</span>`;
     document.getElementById('org-sheet-sub').textContent =
       myOrgIds.has(id) ? 'This is your organisation.' :
+      /^meet story$/i.test(o.name) ? 'Real stories from real people.' :
       o.type === 'newscast' ? 'Shares news and reports.' :
       o.type === 'creator' ? 'Shares their own work.' : 'Posts from the Meet Me team.';
     renderOrgSheetState();
@@ -8554,11 +8606,17 @@ async function fillOrgPostInsights(){
   if(error) console.error('org_post_stats', error);
   const by = {};
   (data || []).forEach(r => { by[r.post_id] = r; });
+  // "inspired" = posts written in response to this one, from any space
+  const inspiredBy = {};
+  try{
+    const { data: insp } = await sb.from('posts').select('inspired_by_post_id').in('inspired_by_post_id', ids);
+    (insp || []).forEach(r => { inspiredBy[r.inspired_by_post_id] = (inspiredBy[r.inspired_by_post_id] || 0) + 1; });
+  }catch(err){ console.error('inspired count', err); }
   const pl = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
   ids.forEach(id => document.querySelectorAll(`.post-insight[data-insight-for="${id}"]`).forEach(el => {
     const r = by[id];
     if(!r){ el.remove(); return; }
-    el.textContent = `${pl(Number(r.likes), 'like')} · ${pl(Number(r.stands), 'stand')} · ${pl(Number(r.views), 'view')} · only you see this`;
+    el.textContent = `${pl(Number(r.likes), 'like')} · ${pl(Number(r.stands), 'stand')} · ${pl(Number(r.views), 'view')} · ${inspiredBy[id] || 0} inspired · only you see this`;
   }));
 }
 
@@ -10971,7 +11029,7 @@ async function openHappeningView(happeningId, name){
     const userLiked = likedIds.has(post.id);
     const likeCount = likeCounts[post.id] || 0;
     const likeHtml = `<span class="like-btn ${userLiked ? 'liked' : ''}" data-post-id="${post.id}" data-name="${escapeHtml(displayName)}"><span class="heart">${userLiked ? '♥' : '♡'}</span><span class="like-count">${likeCount}</span></span>`;
-    const inspiredHtml = `<span class="post-action inspired-trigger" data-post-id="${post.id}" data-space="Rant" data-name="${escapeHtml(displayName)}">inspired by this</span>`;
+    const inspiredHtml = `<span class="post-action inspired-trigger" data-post-id="${post.id}" data-space="Rant" data-name="${escapeHtml(displayName)}">↻ inspired</span>`;
     const wrap = document.createElement('div');
     wrap.className = 'yp-post';
     wrap.dataset.postId = post.id;
@@ -11702,7 +11760,7 @@ document.getElementById('compose-submit-btn').addEventListener('click', async ()
   const orgToUse = postAsOrgId ? { id: postAsOrgId, header: document.getElementById('compose-org-header').value.trim() } : null; // captured before closeComposeOverlay() clears it
   const founderToUse = !!(postAsFounder && isMeet8 && !orgToUse); // captured before closeComposeOverlay() clears it
   const content = document.getElementById('compose-textarea').value.trim();
-  if(orgToUse && orgInfo(orgToUse.id).type === 'newscast' && !orgToUse.header){
+  if(orgToUse && orgNeedsHeader(orgInfo(orgToUse.id)) && !orgToUse.header){
     composeOrgRefresh(true);
     return;
   }
@@ -11744,6 +11802,11 @@ document.getElementById('compose-submit-btn').addEventListener('click', async ()
 
   if(inspiredByPostId){
     if(inspiredBySpace === 'Rant'){ await saveRant(content, null, audio, inspiredByPostId, stickerToUse, null, null, null, null, founderToUse); if(currentScreenKey==='twin' && currentTwinMode==='rant') await loadFeed(); }
+    else if(inspiredBySpace === 'Orgs'){
+      if(!orgToUse){ showNavToast('Pick which organisation to post as.'); return; }
+      await saveRant(content, null, audio, inspiredByPostId, stickerToUse, null, null, null, orgToUse);
+      if(currentScreenKey === 'orgs') await loadOrgsFeed(true);
+    }
     else if(inspiredBySpace === 'Spill'){ await saveSpill(content, audio, inspiredByPostId, stickerToUse, null, null, founderToUse); if(currentTwinMode==='spill'){ const spills = await loadSpills(); cachedSpills = spills; renderSpills(spills); } }
     await refreshYourPostsIfOpen();
     toast.textContent = `posted to ${inspiredBySpace}.`;
@@ -11999,7 +12062,7 @@ function roundRect(ctx, x, y, w, h, r){
 // Link that opens one post inside the app (Rant, Spill or Organisations).
 function postShareUrl(id){
   if(!id) return null;
-  const base = /^https?:$/.test(location.protocol) ? location.origin : 'https://meet-me-three-beta.vercel.app';
+  const base = /^https?:$/.test(location.protocol) ? location.origin : 'https://meet-me-beta-six.vercel.app';
   return base + '/?post=' + encodeURIComponent(id);
 }
 let currentShareUrl = null;
@@ -12822,7 +12885,7 @@ function saveSnapshot(){
     let snap = {};
     try{ snap = JSON.parse(localStorage.getItem('mm_snap') || '{}') || {}; }catch(e){}
     const feedEl = document.getElementById('feed');
-    const snapHtml = (el)=>{ const c = el.cloneNode(true); c.querySelectorAll('.post-insight').forEach(x => x.remove()); return c.outerHTML; };
+    const snapHtml = (el)=>{ const c = el.cloneNode(true); c.querySelectorAll('.post-insight, .rm-toggle').forEach(x => x.remove()); c.querySelectorAll('[data-rm]').forEach(x => { x.removeAttribute('data-rm'); x.classList.remove('rm-clamp', 'rm-cut'); x.style.removeProperty('--rm-lines'); }); return c.outerHTML; };
     const posts = Array.from(feedEl.querySelectorAll('.post')).slice(0, 15).map(snapHtml).join('');
     if(posts){ snap.feed = posts; snap.feedScroll = feedEl.scrollTop; }
     const chatEl = document.getElementById('chat-list');
@@ -13712,6 +13775,77 @@ document.addEventListener('DOMContentLoaded', async function(){
 
   await Promise.allSettled([spillPromise, momentQuestionPromise, doorPromise]);
 });
+
+/* ============================================================
+   READ MORE -- long text in feed cards collapses to ~5 lines (3 when the card also
+   has a picture, sticker, voice note or video). Expands in place; "show less" folds it back.
+   Nothing is cut from the post itself -- this only changes how much the feed shows.
+   ============================================================ */
+(function(){
+  const LINES_TEXT = 5, LINES_MEDIA = 3;
+  const ro = new ResizeObserver(entries => {
+    entries.forEach(en => {
+      const b = en.target;
+      if(!b.clientWidth) return;          // card is on a hidden screen: measure when it shows up
+      ro.unobserve(b);
+      measure(b);
+    });
+  });
+  function measure(b){
+    if(b.scrollHeight > b.clientHeight + 2){
+      b.classList.add('rm-cut');
+      if(!b.nextElementSibling || !b.nextElementSibling.classList.contains('rm-toggle')){
+        const t = document.createElement('div');
+        t.className = 'rm-toggle post-action'; t.setAttribute('role','button'); t.tabIndex = 0; t.textContent = 'read more';
+        b.insertAdjacentElement('afterend', t);
+      }
+    } else {
+      b.classList.remove('rm-clamp', 'rm-cut');
+    }
+  }
+  function setup(b){
+    if(b.dataset.rm) return;
+    const card = b.closest('.post');
+    if(!card) return;
+    b.dataset.rm = '1';
+    const media = !!card.querySelector('.voice-note, .sticker-tap, video, .org-link-card');
+    b.style.setProperty('--rm-lines', media ? LINES_MEDIA : LINES_TEXT);
+    b.classList.add('rm-clamp');
+    ro.observe(b);
+  }
+  function scan(root){
+    if(root.nodeType !== 1) return;
+    if(root.matches && root.matches('.post-body')) setup(root);
+    root.querySelectorAll && root.querySelectorAll('.post .post-body').forEach(setup);
+  }
+  const mo = new MutationObserver(muts => muts.forEach(m => m.addedNodes.forEach(scan)));
+  ['feed', 'orgs-list'].forEach(id => {
+    const el = document.getElementById(id);
+    if(!el) return;
+    scan(el);
+    mo.observe(el, { childList:true, subtree:true });
+  });
+  function toggle(t){
+    const b = t.previousElementSibling;
+    if(!b || !b.classList.contains('post-body')) return;
+    const open = b.classList.contains('rm-clamp');
+    b.classList.toggle('rm-clamp', !open);
+    b.classList.toggle('rm-cut', !open);
+    t.textContent = open ? 'show less' : 'read more';
+    if(!open){ const card = b.closest('.post'); if(card && card.getBoundingClientRect().top < 0) card.scrollIntoView({ block:'nearest' }); }
+  }
+  document.addEventListener('click', e => {
+    const t = e.target.closest('.rm-toggle');
+    if(!t) return;
+    e.stopPropagation();
+    toggle(t);
+  });
+  document.addEventListener('keydown', e => {
+    if(e.key !== 'Enter' && e.key !== ' ') return;
+    const t = e.target.closest && e.target.closest('.rm-toggle');
+    if(t){ e.preventDefault(); toggle(t); }
+  });
+})();
 </script>
 <script id="mm-desktop-js">
 /* PC extras: keyboard shortcuts. Only active on a desktop-sized window with a mouse.
