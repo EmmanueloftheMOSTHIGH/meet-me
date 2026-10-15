@@ -12239,10 +12239,12 @@ async function buildShareCanvas(content, name, spaceLabel, style, stickerUrl, au
       const naturalW = media.videoWidth || media.naturalWidth || media.width;
       const naturalH = media.videoHeight || media.naturalHeight || media.height;
       const maxW = contentWidth, maxH = contentBottom - contentTop - capH;
-      const scale = Math.min(maxW / naturalW, maxH / naturalH, 1);
+      // Video stills and stickers are small files; let them grow to fill the card (stickers up to 3x, video stills to full width)
+      const scale = Math.min(maxW / naturalW, maxH / naturalH, isVid ? Infinity : 3);
       const w = naturalW * scale, h = naturalH * scale;
       const x = contentLeft + (maxW - w) / 2;
       const y = contentTop + (maxH - h) / 2;
+      ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(media, x, y, w, h);
     } catch(err){
       // The picture could not be drawn onto the card (almost always: the media host is not sending CORS headers,
