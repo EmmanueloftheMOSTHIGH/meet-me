@@ -427,6 +427,14 @@
   }
   .rm-toggle{ display:inline-block; margin-top:4px; font-size:12px; color:var(--gold-text); cursor:pointer; position:relative; }
   .rm-toggle::after{ content:''; position:absolute; top:-12px; bottom:-12px; left:-8px; right:-8px; }
+  .yp-post .yp-post-body.rm-clamp{
+    display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:var(--rm-lines,5); line-clamp:var(--rm-lines,5);
+    overflow:hidden; word-break:break-word;
+  }
+  .yp-post .yp-post-body.rm-clamp.rm-cut{
+    -webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 1.8em),transparent 100%);
+            mask-image:linear-gradient(to bottom,#000 calc(100% - 1.8em),transparent 100%);
+  }
 
   /* ---------- "inspired" -> pick a space ---------- */
   #inspire-overlay{
@@ -14026,8 +14034,9 @@ document.addEventListener('DOMContentLoaded', async function(){
 });
 
 /* ============================================================
-   READ MORE -- long text in feed cards collapses to ~5 lines (3 when the card also
-   has a picture, sticker, voice note or video). Expands in place; "show less" folds it back.
+   READ MORE -- long text in post cards (main feed, organisations, Your posts, bookmarks,
+   profiles, happenings, search) collapses to ~5 lines (3 when the card also has a picture,
+   sticker, voice note or video). Expands in place; "show less" folds it back.
    Nothing is cut from the post itself -- this only changes how much the feed shows.
    ============================================================ */
 (function(){
@@ -14054,7 +14063,7 @@ document.addEventListener('DOMContentLoaded', async function(){
   }
   function setup(b){
     if(b.dataset.rm) return;
-    const card = b.closest('.post');
+    const card = b.closest('.post, .yp-post');
     if(!card) return;
     b.dataset.rm = '1';
     const media = !!card.querySelector('.voice-note, .sticker-tap, video, .org-link-card');
@@ -14064,11 +14073,11 @@ document.addEventListener('DOMContentLoaded', async function(){
   }
   function scan(root){
     if(root.nodeType !== 1) return;
-    if(root.matches && root.matches('.post-body')) setup(root);
-    root.querySelectorAll && root.querySelectorAll('.post .post-body').forEach(setup);
+    if(root.matches && root.matches('.post-body, .yp-post-body')) setup(root);
+    root.querySelectorAll && root.querySelectorAll('.post .post-body, .yp-post .yp-post-body').forEach(setup);
   }
   const mo = new MutationObserver(muts => muts.forEach(m => m.addedNodes.forEach(scan)));
-  ['feed', 'orgs-list'].forEach(id => {
+  ['feed', 'orgs-list', 'yourposts-feed', 'bookmarks-feed', 'user-profile-feed', 'happening-view-feed', 'search-results'].forEach(id => {
     const el = document.getElementById(id);
     if(!el) return;
     scan(el);
@@ -14076,20 +14085,20 @@ document.addEventListener('DOMContentLoaded', async function(){
   });
   function toggle(t){
     const b = t.previousElementSibling;
-    if(!b || !b.classList.contains('post-body')) return;
-    const open = b.classList.contains('rm-clamp');
-    if(open && b.textContent.length > 1200 && typeof openTextViewer === 'function'){ openTextViewer(b.textContent); return; }   // long story: scrollable reading view
-    b.classList.toggle('rm-clamp', !open);
+    if(!b || !(b.classList.contains('post-body') || b.classList.contains('yp-post-body'))) return;
+    const open = b.classList.contains('rm-clamp');      // true = currently folded, so this tap expands it
+    b.classList.toggle('rm-clamp', !open);              // always expands in place, however long the post is
     b.classList.toggle('rm-cut', !open);
     t.textContent = open ? 'show less' : 'read more';
-    if(!open){ const card = b.closest('.post'); if(card && card.getBoundingClientRect().top < 0) card.scrollIntoView({ block:'nearest' }); }
+    if(!open){ const card = b.closest('.post, .yp-post'); if(card && card.getBoundingClientRect().top < 0) card.scrollIntoView({ block:'nearest' }); }   // folding back: keep the card in view
   }
   document.addEventListener('click', e => {
-    const t = e.target.closest('.rm-toggle');
+    const t = e.target.closest && e.target.closest('.rm-toggle');
     if(!t) return;
     e.stopPropagation();
+    e.preventDefault();
     toggle(t);
-  });
+  }, true);
   document.addEventListener('keydown', e => {
     if(e.key !== 'Enter' && e.key !== ' ') return;
     const t = e.target.closest && e.target.closest('.rm-toggle');
