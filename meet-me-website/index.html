@@ -260,94 +260,84 @@
   }
   #depth-bar-arrow{ font-size:11px; color:var(--muted-dim); }
 
-  @keyframes door-seam-glow{
-    0%,100%{ opacity:0.55; }
-    50%{ opacity:1; }
-  }
-  @keyframes door-swing-flash{
-    0%{ opacity:0.7; }
-    40%{ opacity:1; filter:drop-shadow(0 0 7px rgba(232,200,120,1)); }
-    100%{ opacity:1; }
-  }
-
+  /* ---------- THE DOOR: daily check-in. Flat, modern, no glow. Colours come from the theme variables. ---------- */
   .door-tag{ margin:0 0 12px; padding:2px 0 2px 11px; border-left:2px solid var(--gold-dim); }
-  .door-tag-head{ display:flex; align-items:center; gap:6px; font-size:9.5px; letter-spacing:0.2em; text-transform:uppercase; color:var(--gold-text); }
-  .door-tag-glyph{ width:8px; height:12px; flex-shrink:0; }
-  .door-tag-glyph path, .door-tag-glyph line{ stroke:var(--gold-text); stroke-width:4; fill:none; }
-  .door-tag-q{ margin-top:4px; font-family:'Fraunces',serif; font-style:italic; font-weight:300; font-size:13px; line-height:1.4; color:var(--muted);
+  .door-tag-head{ display:flex; align-items:center; gap:6px; font-size:9.5px; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; color:var(--gold-text); }
+  .door-tag-glyph{ width:9px; height:13px; flex-shrink:0; }
+  .door-tag-glyph rect, .door-tag-glyph path{ stroke:var(--gold-text); stroke-width:5; fill:none; }
+  .door-tag-glyph .dg-leaf{ fill:var(--gold-text); stroke:none; opacity:.55; }
+  .door-tag-q{ margin-top:4px; font-weight:400; font-size:13px; line-height:1.4; color:var(--muted);
     display:-webkit-box; -webkit-line-clamp:2; line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
 
-  /* THE DOOR (front door) -- once a day, before anything else. One tap on
-     how today is going, an optional line, then everyone else's day and the
-     app's only streak. Not part of any feed. */
+  /* once a day, before anything else. One tap on how today is going, an optional line, then everyone
+     else's day and the app's only streak. Not part of any feed. */
   body.door-open #compose-btn{ display:none !important; }
-  #door-front{ position:absolute; inset:0; z-index:90; opacity:0; pointer-events:none; transition:opacity .8s ease;
+  #door-front{ position:absolute; inset:0; z-index:90; opacity:0; pointer-events:none; transition:opacity .4s ease;
     background:
-      radial-gradient(ellipse 90% 46% at 50% 14%, rgba(212,168,87,0.20), transparent 70%),
-      radial-gradient(ellipse 80% 40% at 50% 108%, rgba(212,168,87,0.08), transparent 70%),
+      radial-gradient(circle at 1px 1px, rgba(140,140,140,0.13) 1px, transparent 0) 0 0/22px 22px,
+      linear-gradient(to bottom, rgba(212,168,87,0.07), transparent 38%),
       var(--bg); }
   #door-front.show{ opacity:1; pointer-events:auto; }
-  #door-front-scroll{ position:absolute; inset:0; overflow-y:auto; display:flex; padding:0 26px; }
+  #door-front-scroll{ position:absolute; inset:0; overflow-y:auto; display:flex; padding:0 24px; }
   #door-front-card{ margin:auto; width:100%; max-width:360px; padding:30px 0 34px; display:flex; flex-direction:column; align-items:center; text-align:center; }
 
-  #door-front #door-glyph{ position:relative; width:74px; height:112px; margin-bottom:30px; flex-shrink:0; }
-  #door-front #door-glyph svg{ position:relative; width:100%; height:100%; overflow:visible; }
-  #door-front #door-glyph::before{ content:''; position:absolute; left:-70px; right:-70px; top:-50px; bottom:-10px; pointer-events:none;
-    background:radial-gradient(ellipse at 50% 58%, rgba(232,200,120,0.30), transparent 62%); animation:door-halo 6s ease-in-out infinite; }
-  #door-front #door-glyph::after{ content:''; position:absolute; left:-34px; right:-34px; bottom:-16px; height:28px; pointer-events:none;
-    background:radial-gradient(ellipse at 50% 50%, rgba(232,200,120,0.38), transparent 70%); }
-  #door-front #door-glyph .door-frame{ fill:none; stroke:var(--gold-dim); stroke-width:1.6; }
-  #door-front #door-glyph .door-seam{ stroke:var(--gold-light); stroke-width:1.1; filter:drop-shadow(0 0 5px rgba(232,200,120,0.95)); animation:door-seam-glow 4.5s ease-in-out infinite; transition:stroke-width .6s ease; }
-  #door-front #door-glyph .door-knob{ fill:var(--gold-light); filter:drop-shadow(0 0 3px rgba(232,200,120,0.8)); }
-  #door-front.opening #door-glyph .door-seam{ stroke-width:6; animation:door-swing-flash .7s ease-out forwards; }
-  @keyframes door-halo{ 0%,100%{ opacity:.6; transform:scale(1); } 50%{ opacity:1; transform:scale(1.07); } }
+  /* the door icon: a plain frame, a door leaf that is slightly ajar, and it swings open when you check in */
+  #door-front #door-glyph{ position:relative; width:56px; height:78px; margin-bottom:26px; flex-shrink:0; }
+  #door-front #door-glyph svg{ width:100%; height:100%; overflow:visible; }
+  #door-front #door-glyph .door-frame{ fill:none; stroke:var(--gold-text); stroke-width:2.4; }
+  #door-front #door-glyph .door-light{ fill:var(--gold); opacity:.9; }
+  #door-front #door-glyph .door-leaf{ fill:var(--card); stroke:var(--gold-text); stroke-width:1.6; transform-box:fill-box; transform-origin:left center; transform:scaleX(.9);
+    transition:transform .6s cubic-bezier(.3,.7,.2,1); }
+  #door-front #door-glyph .door-knob{ fill:var(--gold-text); transition:opacity .3s ease; }
+  #door-front.opening #door-glyph .door-leaf{ transform:scaleX(.16); }
+  #door-front.opening #door-glyph .door-knob{ opacity:0; }
 
-  #door-front #door-eyebrow{ font-size:11px; letter-spacing:0.22em; text-transform:uppercase; color:var(--gold-text); }
-  #door-streak{ min-height:18px; margin:8px 0 18px; font-size:12px; letter-spacing:0.06em; color:var(--muted); font-style:italic; }
+  #door-front #door-eyebrow{ font-size:11px; font-weight:600; letter-spacing:0.14em; text-transform:uppercase; color:var(--gold-text); }
+  #door-streak{ min-height:18px; margin:8px 0 22px; font-size:12px; font-weight:500; color:var(--muted); }
   #door-step-line, #door-step-pick, #door-step-result{ width:100%; display:flex; flex-direction:column; align-items:center; }
   #door-step-pick, #door-step-result{ display:none; }
   #door-front.stage-pick #door-step-line{ display:none; }
-  #door-front.stage-pick #door-step-pick{ display:flex; animation:door-fade-up .7s ease both; }
+  #door-front.stage-pick #door-step-pick{ display:flex; animation:door-fade-up .45s ease both; }
   #door-front.stepped #door-step-pick{ display:none; }
-  #door-front.stepped #door-step-result{ display:flex; animation:door-fade-up .8s ease both; }
-  @keyframes door-fade-up{ from{ opacity:0; transform:translateY(10px); } to{ opacity:1; transform:none; } }
+  #door-front.stepped #door-step-result{ display:flex; animation:door-fade-up .5s ease both; }
+  @keyframes door-fade-up{ from{ opacity:0; transform:translateY(8px); } to{ opacity:1; transform:none; } }
 
-  #door-title, #door-line-title{ font-family:'Fraunces',serif; font-weight:400; font-size:clamp(25px,7vw,31px); line-height:1.25; color:var(--ivory); margin-bottom:26px; }
-  #door-orbs{ display:flex; justify-content:space-between; gap:10px; width:100%; margin-bottom:12px; }
-  .door-orb{ flex:1; max-width:56px; aspect-ratio:1; border-radius:50%; position:relative; cursor:pointer;
-    border:1px solid var(--gold-dim); transition:transform .25s ease, box-shadow .35s ease, border-color .3s ease, opacity .3s ease; }
-  .door-orb::before{ content:''; position:absolute; inset:5px; border-radius:50%; background:var(--gold); opacity:var(--lvl); transition:opacity .3s ease; }
-  .door-orb.on{ transform:scale(1.16); border-color:var(--gold-light); box-shadow:0 0 26px rgba(232,200,120,0.55); }
+  #door-title, #door-line-title{ font-family:'Karla',sans-serif; font-weight:700; font-size:clamp(24px,6.6vw,28px); line-height:1.25; letter-spacing:-0.01em; color:var(--ivory); margin-bottom:24px; }
+  /* mood picker: five tiles that fill up like a level meter */
+  #door-orbs{ display:flex; gap:8px; width:100%; margin-bottom:14px; }
+  .door-orb{ flex:1; height:64px; border-radius:12px; position:relative; cursor:pointer; overflow:hidden; background:var(--card); border:1px solid var(--card-border);
+    transition:transform .2s ease, border-color .2s ease, opacity .2s ease; }
+  .door-orb::before{ content:''; position:absolute; left:0; right:0; bottom:0; height:calc(16% + var(--lvl) * 70%); background:var(--gold); opacity:.38; transition:opacity .2s ease; }
+  .door-orb.on{ transform:translateY(-3px); border-color:var(--gold); }
   .door-orb.on::before{ opacity:1; }
-  #door-orbs.has-pick .door-orb:not(.on){ opacity:.4; }
-  #door-mood-word{ height:26px; font-family:'Fraunces',serif; font-style:italic; font-weight:300; font-size:19px; color:var(--gold-light); margin-bottom:6px; }
+  #door-orbs.has-pick .door-orb:not(.on){ opacity:.5; }
+  #door-mood-word{ height:24px; font-weight:600; font-size:16px; text-transform:capitalize; letter-spacing:0.02em; color:var(--ivory); margin-bottom:6px; }
 
-  #door-front-textarea{ width:100%; min-height:124px; resize:none; background:rgba(240,230,210,0.04); border:1px solid var(--card-border);
-    border-radius:14px 14px 6px 6px; padding:13px 15px; color:var(--ivory); font-family:'Karla',sans-serif; font-size:15px; line-height:1.5; outline:none; transition:border-color .3s ease; }
-  #door-front-textarea{ border-color:var(--gold-dim); }
-  #door-front-textarea:focus{ border-color:var(--gold-light); }
-  #door-front-textarea::placeholder{ color:var(--muted-dim); font-style:italic; }
+  #door-front-textarea{ width:100%; min-height:124px; resize:none; background:var(--card); border:1px solid var(--card-border);
+    border-radius:12px; padding:13px 15px; color:var(--ivory); font-family:'Karla',sans-serif; font-size:15px; line-height:1.5; outline:none; transition:border-color .2s ease; }
+  #door-front-textarea:focus{ border-color:var(--gold); }
+  #door-front-textarea::placeholder{ color:var(--muted-dim); }
 
-  #door-front-submit, #door-line-next, #door-enter-btn{ margin-top:20px; width:100%; padding:15px; border-radius:28px; background:var(--gold); color:#1a1408; font-weight:600; font-size:13.5px;
-    letter-spacing:0.14em; text-transform:uppercase; cursor:pointer; transition:transform .15s ease, opacity .3s ease; box-shadow:0 8px 28px -10px rgba(212,168,87,0.6); }
+  #door-front-submit, #door-line-next, #door-enter-btn{ margin-top:20px; width:100%; padding:15px; border-radius:12px; background:var(--gold); color:#1a1408; font-weight:700; font-size:14.5px;
+    letter-spacing:0.02em; cursor:pointer; transition:transform .15s ease, opacity .2s ease; }
   #door-front-submit:active, #door-line-next:active, #door-enter-btn:active{ transform:scale(0.98); }
-  #door-front-submit.disabled, #door-line-next.disabled{ opacity:0.3; pointer-events:none; box-shadow:none; }
-  #door-front-later, #door-line-skip{ margin-top:16px; font-size:11.5px; letter-spacing:0.16em; text-transform:uppercase; color:var(--muted-dim); cursor:pointer; padding:6px 12px; }
+  #door-front-submit.disabled, #door-line-next.disabled{ opacity:0.3; pointer-events:none; }
+  #door-front-later, #door-line-skip{ margin-top:14px; font-size:12.5px; font-weight:500; color:var(--muted-dim); cursor:pointer; padding:8px 12px; }
 
-  #door-result-day{ font-family:'Fraunces',serif; font-weight:400; font-size:34px; color:var(--gold-light); line-height:1.1; }
-  #door-result-sub{ margin-top:8px; font-size:13px; color:var(--muted); font-style:italic; min-height:18px; }
-  #door-bars{ display:flex; align-items:flex-end; gap:10px; width:100%; height:110px; margin:26px 0 0; }
+  #door-result-day{ font-family:'Karla',sans-serif; font-weight:700; font-size:48px; letter-spacing:-0.02em; color:var(--ivory); line-height:1.1; }
+  #door-result-sub{ margin-top:6px; font-size:13px; color:var(--muted); min-height:18px; }
+  #door-bars{ display:flex; align-items:flex-end; gap:8px; width:100%; height:110px; margin:24px 0 0; }
   .door-bar-col{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; }
-  .door-bar-pct{ font-size:10.5px; color:var(--muted); margin-bottom:5px; }
-  .door-bar{ width:100%; border-radius:8px 8px 3px 3px; background:var(--gold); opacity:var(--lvl); min-height:4px; transition:height .9s cubic-bezier(.2,.8,.2,1); }
-  .door-bar-col.mine .door-bar{ opacity:1; box-shadow:0 0 18px rgba(232,200,120,0.5); }
-  .door-bar-col.mine .door-bar-pct{ color:var(--gold-light); }
-  #door-bar-labels{ display:flex; gap:10px; width:100%; margin-top:8px; }
-  #door-bar-labels span{ flex:1; font-size:10px; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted-dim); }
-  #door-bar-labels span.mine{ color:var(--gold-text); }
+  .door-bar-pct{ font-size:10.5px; font-weight:500; color:var(--muted); margin-bottom:5px; }
+  .door-bar{ width:100%; border-radius:6px 6px 2px 2px; background:var(--gold); opacity:calc(.3 + var(--lvl) * .5); min-height:4px; transition:height .7s cubic-bezier(.2,.8,.2,1); }
+  .door-bar-col.mine .door-bar{ opacity:1; }
+  .door-bar-col.mine .door-bar-pct{ color:var(--gold-text); font-weight:700; }
+  #door-bar-labels{ display:flex; gap:8px; width:100%; margin-top:8px; }
+  #door-bar-labels span{ flex:1; font-size:10px; font-weight:500; letter-spacing:0.04em; text-transform:uppercase; color:var(--muted-dim); }
+  #door-bar-labels span.mine{ color:var(--gold-text); font-weight:700; }
   #door-result-count{ margin-top:14px; font-size:12px; color:var(--muted); min-height:16px; }
-  #door-share-btn{ margin-top:22px; font-size:12px; letter-spacing:0.16em; text-transform:uppercase; color:var(--gold-text); cursor:pointer; padding:10px 18px; border:1px solid var(--gold-dim); border-radius:24px; }
-  #door-share-btn:active{ background:rgba(212,168,87,0.14); }
+  #door-share-btn{ margin-top:20px; width:100%; padding:13px; box-sizing:border-box; font-size:13.5px; font-weight:600; color:var(--gold-text); cursor:pointer; border:1px solid var(--gold-dim); border-radius:12px; }
+  #door-share-btn:active{ background:rgba(212,168,87,0.12); }
 
   #feed{ flex:1; overflow-y:auto; padding:2px 16px 90px; display:flex; flex-direction:column; gap:14px; -webkit-overflow-scrolling:touch; position:relative; }
   #feed::-webkit-scrollbar{ width:0; }
@@ -3355,24 +3345,25 @@
     <div id="door-front-scroll">
       <div id="door-front-card">
         <div id="door-glyph">
-          <svg viewBox="0 0 38 58" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path class="door-frame" d="M3 56 V20 Q3 3 19 3 Q35 3 35 20 V56" />
-            <line class="door-seam" x1="19" y1="4" x2="19" y2="56" />
-            <circle class="door-knob" cx="22.5" cy="32" r="1.6" />
+          <svg viewBox="0 0 60 84" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect class="door-light" x="8" y="6" width="44" height="74" rx="2" />
+            <path class="door-leaf" d="M8 6 H52 V80 H8 Z" />
+            <rect class="door-frame" x="6" y="4" width="48" height="78" rx="3" />
+            <circle class="door-knob" cx="43" cy="45" r="2.2" />
           </svg>
         </div>
-        <div id="door-eyebrow">the door · today</div>
+        <div id="door-eyebrow">Daily check-in</div>
         <div id="door-streak"></div>
 
         <div id="door-step-line">
           <div id="door-line-title"></div>
-          <textarea id="door-front-textarea" placeholder="Whatever it is, in your own words."></textarea>
+          <textarea id="door-front-textarea" placeholder="Type your answer…"></textarea>
           <div id="door-line-next" class="disabled">Continue</div>
           <div id="door-line-skip">skip this</div>
         </div>
 
         <div id="door-step-pick">
-          <div id="door-title">How bright is your day?</div>
+          <div id="door-title">How's your day going?</div>
           <div id="door-orbs">
             <div class="door-orb" data-mood="1" style="--lvl:0.14"></div>
             <div class="door-orb" data-mood="2" style="--lvl:0.32"></div>
@@ -3381,7 +3372,7 @@
             <div class="door-orb" data-mood="5" style="--lvl:1"></div>
           </div>
           <div id="door-mood-word">&nbsp;</div>
-          <div id="door-front-submit" class="disabled">Step through</div>
+          <div id="door-front-submit" class="disabled">Check in</div>
           <div id="door-front-later">not now</div>
         </div>
 
@@ -7744,7 +7735,7 @@ async function fetchDoorQuestionTexts(posts){
 function doorTagHtml(post){
   const q = post.door_question_id && doorQuestionTextById[post.door_question_id];
   if(!q) return '';
-  return `<div class="door-tag"><div class="door-tag-head"><svg class="door-tag-glyph" viewBox="0 0 38 58" fill="none" aria-hidden="true"><path d="M3 56 V20 Q3 3 19 3 Q35 3 35 20 V56" /><line x1="19" y1="4" x2="19" y2="56" /></svg><span>the door</span></div><div class="door-tag-q">${escapeHtml(q)}</div></div>`;
+  return `<div class="door-tag"><div class="door-tag-head"><svg class="door-tag-glyph" viewBox="0 0 60 84" fill="none" aria-hidden="true"><path class="dg-leaf" d="M8 6 H44 V80 H8 Z" /><rect x="6" y="4" width="48" height="78" rx="3" /></svg><span>daily question</span></div><div class="door-tag-q">${escapeHtml(q)}</div></div>`;
 }
 
 // Batch-fetches display names for a set of "inspired by" source posts,
@@ -8805,7 +8796,7 @@ function renderRantPost(post, userLiked, likeCount, inspirationLabels){
   div.innerHTML = `
     <div class="post-head">
       <span class="post-id">${headHtml}</span>
-      <span class="post-head-right"><span class="post-time">${formatRelativeTime(post.created_at)}</span><span class="post-action share-trigger post-head-share" data-content="${escapeHtml(post.content || '')}" data-sticker-url="${escapeHtml(post.sticker_url || '')}" data-audio-url="${escapeHtml(post.audio_url || '')}" data-duration="${post.duration_seconds || ''}" data-name="${escapeHtml(displayName)}" data-space="Rant" data-share-id="${post.id}">share</span></span>
+      <span class="post-head-right"><span class="post-time">${formatRelativeTime(post.created_at)}</span><span class="post-action share-trigger post-head-share" data-content="${escapeHtml(post.content || '')}" data-sticker-url="${escapeHtml(post.sticker_url || '')}" data-audio-url="${escapeHtml(post.audio_url || '')}" data-duration="${post.duration_seconds || ''}" data-name="${escapeHtml(displayName)}" data-space="${isOrg ? 'Orgs' : 'Rant'}" data-share-id="${post.id}">share</span></span>
     </div>
     ${isOrg && post.header ? `<div class="org-header">${escapeHtml(post.header)}</div>` : ''}
     ${doorTagHtml(post)}
@@ -9391,7 +9382,7 @@ let doorSkippedThisSession = false;
 let doorPick = null;
 let doorBusy = false;
 let doorMyDays = new Set();
-const DOOR_MOODS = [null, 'dark', 'dim', 'soft', 'warm', 'bright'];
+const DOOR_MOODS = [null, 'rough', 'low', 'okay', 'good', 'great'];
 const DOOR_LVL = [0, 0.14, 0.32, 0.52, 0.76, 1];
 
 function localDayStr(d){
@@ -9441,7 +9432,7 @@ function maybeShowDoorFront(){
   document.getElementById('door-front-textarea').value = '';
   document.getElementById('door-line-next').classList.add('disabled');
   document.getElementById('door-front-submit').classList.add('disabled');
-  document.getElementById('door-eyebrow').textContent = 'the door · today';
+  document.getElementById('door-eyebrow').textContent = 'Daily check-in';
   const streak = computeDoorStreak();
   document.getElementById('door-streak').textContent = streak > 0 ? (streak + (streak === 1 ? ' day in a row' : ' days in a row')) : '';
   doorFront.classList.remove('stepped','opening','stage-pick');
@@ -9561,11 +9552,11 @@ async function postDoorLine(content){
 
 async function renderDoorResult(){
   const streak = computeDoorStreak();
-  document.getElementById('door-eyebrow').textContent = 'you stepped through';
+  document.getElementById('door-eyebrow').textContent = 'Checked in';
   document.getElementById('door-streak').textContent = '';
   document.getElementById('door-result-day').textContent = 'Day ' + streak;
   document.getElementById('door-result-sub').textContent =
-    streak <= 1 ? "The door opens again tomorrow." : (streak + ' days in a row.');
+    streak <= 1 ? "Next check-in opens tomorrow." : (streak + ' days in a row.');
 
   const bars = document.getElementById('door-bars');
   const counts = [0,0,0,0,0,0];
@@ -9594,7 +9585,7 @@ async function renderDoorResult(){
     bars.querySelectorAll('.door-bar').forEach(b => { b.style.height = (Number(b.dataset.h) * 0.78) + 'px'; });
   }));
   document.getElementById('door-result-count').textContent =
-    total <= 1 ? "You're the first through today." : (total + ' people have stepped through today.');
+    total <= 1 ? "You're the first to check in today." : (total + ' people have checked in today.');
 }
 
 document.getElementById('door-front-submit').addEventListener('click', async ()=>{
@@ -9607,7 +9598,7 @@ document.getElementById('door-front-submit').addEventListener('click', async ()=
   const { error } = await sb.from('door_pulses').insert({ user_id: currentUserId, day: today, mood: doorPick });
   if(error && error.code !== '23505'){
     console.error('Door pulse failed:', error);
-    toast.textContent = "Couldn't step through — try again.";
+    toast.textContent = "Couldn't check in — try again.";
     toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 2400);
     doorBusy = false; btn.classList.remove('disabled');
     return;
@@ -9626,31 +9617,33 @@ document.getElementById('door-enter-btn').addEventListener('click', hideDoorFron
 
 // Share card: a plain image people can post to a status.
 async function shareDoorCard(){
-  try{ await document.fonts.load('italic 300 60px Fraunces'); await document.fonts.load('400 120px Fraunces'); }catch(e){}
+  try{ await document.fonts.load('700 150px Karla'); await document.fonts.load('600 62px Karla'); }catch(e){}
   const W = 1080, H = 1350;
   const c = document.createElement('canvas'); c.width = W; c.height = H;
   const g = c.getContext('2d');
   g.fillStyle = '#0c0c0e'; g.fillRect(0,0,W,H);
-  const glow = g.createRadialGradient(W/2, 420, 20, W/2, 420, 640);
-  glow.addColorStop(0,'rgba(232,200,120,0.32)'); glow.addColorStop(1,'rgba(232,200,120,0)');
-  g.fillStyle = glow; g.fillRect(0,0,W,H);
+  // faint dot grid + soft top tint (flat, no glow)
+  g.fillStyle = 'rgba(140,140,140,0.16)';
+  for(let x = 20; x < W; x += 44){ for(let y = 20; y < H; y += 44){ g.fillRect(x, y, 2, 2); } }
+  const tint = g.createLinearGradient(0, 0, 0, 520);
+  tint.addColorStop(0, 'rgba(212,168,87,0.10)'); tint.addColorStop(1, 'rgba(212,168,87,0)');
+  g.fillStyle = tint; g.fillRect(0, 0, W, 520);
 
-  // door
-  const dx = W/2 - 110, dy = 250, dw = 220, dh = 340;
-  g.strokeStyle = 'rgba(212,168,87,0.75)'; g.lineWidth = 7; g.lineCap = 'round';
-  g.beginPath(); g.moveTo(dx, dy+dh); g.lineTo(dx, dy+dw/2); g.arc(dx+dw/2, dy+dw/2, dw/2, Math.PI, 0); g.lineTo(dx+dw, dy+dh); g.stroke();
-  g.strokeStyle = '#e8c878'; g.lineWidth = 6; g.shadowColor = 'rgba(232,200,120,0.9)'; g.shadowBlur = 26;
-  g.beginPath(); g.moveTo(W/2, dy+8); g.lineTo(W/2, dy+dh); g.stroke();
-  g.fillStyle = '#e8c878'; g.beginPath(); g.arc(W/2+34, dy+dh*0.56, 8, 0, Math.PI*2); g.fill();
-  g.shadowBlur = 0;
+  // door: plain frame, light behind a leaf that is slightly ajar
+  const dx = W/2 - 100, dy = 250, dw = 200, dh = 320;
+  g.fillStyle = '#d4a857'; g.fillRect(dx+8, dy+8, dw-16, dh-16);
+  g.fillStyle = '#17171b'; g.fillRect(dx+8, dy+8, (dw-16)*0.9, dh-16);
+  g.strokeStyle = '#c99a4e'; g.lineWidth = 7; g.lineJoin = 'round';
+  g.strokeRect(dx, dy, dw, dh);
+  g.fillStyle = '#c99a4e'; g.beginPath(); g.arc(dx+dw*0.7, dy+dh*0.56, 9, 0, Math.PI*2); g.fill();
 
   g.textAlign = 'center';
-  g.fillStyle = '#c99a4e'; g.font = '500 30px Karla, sans-serif';
-  g.fillText('T H E   D O O R', W/2, 700);
-  g.fillStyle = '#e8c878'; g.font = '400 150px Fraunces, serif';
-  g.fillText('Day ' + computeDoorStreak(), W/2, 880);
-  g.fillStyle = '#f0e6d2'; g.font = 'italic 300 62px Fraunces, serif';
-  g.fillText('my day is ' + DOOR_MOODS[doorPick], W/2, 1010);
+  g.fillStyle = '#c99a4e'; g.font = '700 30px Karla, sans-serif';
+  g.fillText('D A I L Y   C H E C K - I N', W/2, 690);
+  g.fillStyle = '#f0e6d2'; g.font = '700 150px Karla, sans-serif';
+  g.fillText('Day ' + computeDoorStreak(), W/2, 860);
+  g.fillStyle = '#d4a857'; g.font = '600 62px Karla, sans-serif';
+  g.fillText('my day is ' + DOOR_MOODS[doorPick], W/2, 990);
   g.fillStyle = '#8a8578'; g.font = '500 34px Karla, sans-serif';
   g.fillText('Meet Me', W/2, 1230);
 
