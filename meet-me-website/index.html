@@ -588,7 +588,23 @@
   .org-save-color{ display:none; text-align:center; padding:10px; border-radius:12px; font-size:13px; border:1px solid var(--gold-dim); color:var(--gold-light); cursor:pointer; }
   .org-follow-title{ font-size:12px; color:var(--muted); margin:16px 0 4px; }
   .org-list-row .org-mini-btn{ margin-left:auto; font-size:11.5px; color:var(--muted); border:1px solid var(--card-border); border-radius:10px; padding:4px 10px; cursor:pointer; }
-  #org-list-body{ max-height:62vh; overflow-y:auto; }
+  #org-list-body{ max-height:56vh; overflow-y:auto; overscroll-behavior:contain; }
+  #org-list-search-wrap{ position:relative; margin:0 0 6px; }
+  #org-list-search{
+    width:100%; box-sizing:border-box; background:var(--card); border:1px solid var(--card-border); border-radius:14px;
+    padding:12px 40px 12px 40px; color:var(--ivory); font-family:'Karla',sans-serif; font-size:15px; outline:none;
+  }
+  #org-list-search:focus{ border-color:var(--gold-dim); }
+  #org-list-search::-webkit-search-cancel-button, #org-list-search::-webkit-search-decoration{ -webkit-appearance:none; appearance:none; }
+  #org-list-search-icon{ position:absolute; left:14px; top:50%; transform:translateY(-50%); font-size:14px; opacity:0.6; pointer-events:none; }
+  #org-list-search-clear{ position:absolute; right:6px; top:50%; transform:translateY(-50%); width:32px; height:32px; display:none; align-items:center; justify-content:center; color:var(--muted); cursor:pointer; font-size:14px; }
+  #org-list-search-wrap.has-text #org-list-search-clear{ display:flex; }
+  #org-list-nomatch{ display:none; font-size:13px; color:var(--muted); padding:18px 4px; text-align:center; }
+  #orgs-search-bar{
+    display:flex; align-items:center; gap:10px; margin-top:2px; padding:11px 14px; border-radius:14px; cursor:pointer;
+    background:var(--card); border:1px solid var(--card-border); color:var(--muted-dim); font-size:14px;
+  }
+  #orgs-search-bar:active{ opacity:0.8; }
   .org-claim{ margin-top:18px; padding-top:14px; border-top:1px solid var(--card-border); }
   .org-claim-link{ font-size:13px; color:var(--gold-text); cursor:pointer; }
   .org-claim-form{ display:none; gap:8px; align-items:center; margin-top:10px; }
@@ -1873,6 +1889,32 @@
 }
 #compose-textarea:focus{ border-color:rgba(212,168,87,0.4); }
 
+/* ---- long text never leaves the card, line breaks are kept (added) ---- */
+.post, .spill-card, .yp-post{ min-width:0; max-width:100%; }
+.post-body, .yp-post-body, .spill-card-body, .org-header, .stand-text, .op-body, .anon-post-text, #text-viewer-body{
+  overflow-wrap:anywhere; word-break:break-word; white-space:pre-wrap; min-width:0; max-width:100%;
+}
+
+/* ---- roomy compose: grows as you type, can go full screen (added) ---- */
+#compose-textarea{ box-sizing:border-box; max-height:42vh; overflow-y:auto; overflow-wrap:anywhere; -webkit-overflow-scrolling:touch; }
+.compose-title-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px; }
+.compose-title-row .compose-title{ margin-bottom:0; min-width:0; }
+#compose-expand-btn{
+  width:34px; height:34px; border-radius:50%; flex-shrink:0; cursor:pointer;
+  display:flex; align-items:center; justify-content:center; font-size:16px; line-height:1;
+  background:var(--card); border:1px solid var(--card-border); color:var(--gold-text);
+}
+#compose-count{ display:none; text-align:right; font-size:11.5px; color:var(--muted-dim); margin:-8px 0 12px; }
+#compose-count.show{ display:block; }
+#compose-count.near{ color:var(--gold-text); }
+#compose-overlay.compose-full{ padding:0; align-items:stretch; }
+#compose-overlay.compose-full .compose-panel{
+  max-width:none; height:100%; border-radius:0; border:none; box-sizing:border-box;
+  display:flex; flex-direction:column; overflow-y:auto;
+  padding:18px 18px calc(18px + env(safe-area-inset-bottom, 0px));
+}
+#compose-overlay.compose-full #compose-textarea{ flex:1 1 auto; min-height:30vh; max-height:none; font-size:16px; line-height:1.65; }
+
 .spill-card-share{ font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted-dim); cursor:pointer; }
 
 /* ============ COMMUNITY THREAD OVERLAY ============ */
@@ -2428,6 +2470,7 @@
           <span class="orgs-head-title">Organisations</span>
           <span class="orgs-head-btn" id="orgs-browse-btn">Browse</span>
         </div>
+        <div id="orgs-search-bar" role="button" tabindex="0"><span>🔍</span><span>Search organisations</span></div>
         <div id="orgs-list"></div>
       </div>
     </div>
@@ -2578,6 +2621,12 @@
     <div id="org-list-panel">
       <div id="org-list-title">Organisations</div>
       <div id="org-list-sub">Newscasts, creators and groups that broadcast here. Follow or mute them.</div>
+      <div id="org-list-search-wrap">
+        <span id="org-list-search-icon">🔍</span>
+        <input id="org-list-search" type="search" placeholder="Search organisations" autocomplete="off" autocapitalize="none" enterkeyhint="search">
+        <span id="org-list-search-clear" role="button" aria-label="Clear search">✕</span>
+      </div>
+      <div id="org-list-nomatch">No organisation with that name.</div>
       <div id="org-list-body"></div>
       <div id="org-list-close">close</div>
     </div>
@@ -2847,8 +2896,12 @@
 
   <div id="compose-overlay" class="account-overlay">
     <div class="compose-panel">
-      <div class="compose-title" id="compose-title">What's true right now?</div>
+      <div class="compose-title-row">
+        <div class="compose-title" id="compose-title">What's true right now?</div>
+        <div id="compose-expand-btn" role="button" tabindex="0" title="Write full screen" aria-label="Write full screen">⤢</div>
+      </div>
       <textarea id="compose-textarea" placeholder="Say it plainly."></textarea>
+      <div id="compose-count"></div>
       <div id="compose-org-header-wrap">
         <input id="compose-org-header" type="text" maxlength="60" placeholder="Header" autocomplete="off">
         <span id="compose-org-header-count">0/60</span>
@@ -3550,7 +3603,7 @@ document.getElementById('profile-online-count-row').addEventListener('click', ()
 
 const orgListOverlay = document.getElementById('org-list-overlay');
 const orgListClose = document.getElementById('org-list-close');
-const profileOrgRow = document.getElementById('profile-org-row');function openOrgList(){ renderOrgList(); orgListOverlay.classList.add('show'); }
+const profileOrgRow = document.getElementById('profile-org-row');function openOrgList(focusSearch){ document.getElementById('org-list-search').value = ''; orgListCounts = null; renderOrgList(); orgListOverlay.classList.add('show'); if(focusSearch === true) setTimeout(()=>document.getElementById('org-list-search').focus(), 350); }
 function closeOrgList(){ orgListOverlay.classList.remove('show'); }
 
 logoBtn.addEventListener('click', ()=>goToScreen('orgs'));
@@ -8192,6 +8245,7 @@ document.getElementById('org-sheet-follow').addEventListener('click', async ()=>
       myMutedOrgIds.delete(id);
     }
   }
+  orgsFollowDirty = true;
   renderOrgSheetState();
 });
 document.getElementById('org-sheet-notify').addEventListener('click', async ()=>{
@@ -8208,6 +8262,7 @@ document.getElementById('org-sheet-mute').addEventListener('click', async ()=>{
     const { error } = await sb.from('org_mutes').delete().eq('user_id', currentUserId).eq('organization_id', id);
     if(error){ console.error(error); showNavToast("That didn't go through. Try again."); return; }
     myMutedOrgIds.delete(id);
+    orgsFollowDirty = true;
     showNavToast('Unmuted. Their posts will show on your next refresh.');
   } else {
     const { error } = await sb.from('org_mutes').insert({ user_id: currentUserId, organization_id: id });
@@ -8216,6 +8271,7 @@ document.getElementById('org-sheet-mute').addEventListener('click', async ()=>{
     document.querySelectorAll(`.post[data-org-id="${id}"]`).forEach(el => el.remove());
     showNavToast('Muted. Unmute any time in Profile, under Organisations.');
   }
+  orgsFollowDirty = true;
   renderOrgSheetState();
 });
 document.addEventListener('click', (e)=>{
@@ -8253,14 +8309,20 @@ function ownOrgBlockHtml(o, count){
     <div class="org-insights-btn" data-org-id="${o.id}">Insights</div>
   </div>`;
 }
-async function renderOrgList(){
+let orgListCounts = null;      // follower counts of the orgs you own: fetched once per opening, not on every tap
+let orgsFollowDirty = false;   // true once a follow / unfollow / mute changed, so the Orgs page knows it must refresh when the sheet closes
+async function renderOrgList(quiet){
   const body = document.getElementById('org-list-body');
-  body.innerHTML = '<div class="stand-empty">…</div>';
-  await ensureOrgs(true);
-  const counts = await Promise.all(myOrgs.map(async o => {
-    const { data, error } = await sb.rpc('org_follower_count', { p_org_id: o.id });
-    return error ? null : data;
-  }));
+  const keepScroll = body.scrollTop;
+  if(!quiet || !orgListCounts){
+    body.innerHTML = '<div class="stand-empty">…</div>';
+    await ensureOrgs(true);
+    orgListCounts = await Promise.all(myOrgs.map(async o => {
+      const { data, error } = await sb.rpc('org_follower_count', { p_org_id: o.id });
+      return error ? null : data;
+    }));
+  }
+  const counts = orgListCounts;
   let html = myOrgs.map((o, i) => ownOrgBlockHtml(orgMap[o.id] ? Object.assign({}, orgMap[o.id], { color_changed_at:o.color_changed_at }) : o, counts[i])).join('');
   const ids = new Set([...Object.keys(myFollows).map(Number), ...myMutedOrgIds]);
   myOrgIds.forEach(id => ids.delete(id));
@@ -8287,7 +8349,38 @@ async function renderOrgList(){
     <div class="org-claim-note" style="display:none">Your Meet number stays private. The organisation becomes linked to this account, so secure your account first so you never lose it.</div>
   </div>`;
   body.innerHTML = html;
+  if(quiet) body.scrollTop = keepScroll;
+  orgListApplySearch();
 }
+/* ---- search inside Browse: filters the rows as you type, nothing is refetched ---- */
+function orgListApplySearch(){
+  const input = document.getElementById('org-list-search');
+  const q = input.value.trim().toLowerCase();
+  document.getElementById('org-list-search-wrap').classList.toggle('has-text', !!input.value);
+  const body = document.getElementById('org-list-body');
+  let any = false, hasRows = false, curTitle = null, titleVisible = 0;
+  const closeTitle = () => { if(curTitle) curTitle.style.display = (!q || titleVisible) ? '' : 'none'; };
+  [...body.children].forEach(el => {
+    if(el.classList.contains('org-follow-title')){ closeTitle(); curTitle = el; titleVisible = 0; return; }
+    let name = null;
+    if(el.classList.contains('org-list-row')){ const n = el.querySelector('.org-list-name'); name = n ? n.textContent : ''; }
+    else if(el.classList.contains('org-own')){ const n = el.querySelector('.org-own-name'); name = n ? n.textContent : ''; }
+    if(name !== null){
+      hasRows = true;
+      const hit = !q || name.toLowerCase().includes(q);
+      el.style.display = hit ? '' : 'none';
+      if(hit){ any = true; titleVisible++; }
+    } else if(el.classList.contains('org-claim')){
+      el.style.display = q ? 'none' : '';
+    }
+  });
+  closeTitle();
+  document.getElementById('org-list-nomatch').style.display = (q && hasRows && !any) ? 'block' : 'none';
+}
+document.getElementById('org-list-search').addEventListener('input', orgListApplySearch);
+document.getElementById('org-list-search-clear').addEventListener('click', ()=>{
+  const i = document.getElementById('org-list-search'); i.value = ''; orgListApplySearch(); i.focus();
+});
 document.getElementById('org-list-body').addEventListener('click', async (e)=>{
   const claimLink = e.target.closest('.org-claim-link');
   if(claimLink){
@@ -8354,7 +8447,8 @@ document.getElementById('org-list-body').addEventListener('click', async (e)=>{
       if(error){ showNavToast("That didn't go through. Try again."); return; }
       myMutedOrgIds.delete(id);
     }
-    renderOrgList();
+    orgsFollowDirty = true;
+    renderOrgList(true);
   }
 });
 
@@ -8370,7 +8464,7 @@ async function saveRant(content, communityId, audio, inspiredByPostId, stickerUr
   if(asOrg && !communityId){ row.organization_id = asOrg.id; row.header = asOrg.header || null; }
   else if(asFounder && isMeet8 && !communityId){ row.as_founder = true; }   // the database trigger is what really enforces Meet 8 only
   const { error } = await sb.from('posts').insert(row);
-  if(error){ console.error('Error saving rant:', error); showNavToast(orgErrorMessage(error) || 'Your post didn\'t go through. Try again.'); return; }
+  if(error){ console.error('Error saving rant:', error); composeDraftRestoreAfterFail(content); showNavToast(orgErrorMessage(error) || 'Your post didn\'t go through. Try again.'); return; }
   if(inspiredByPostId) await notifyInspiredBy(inspiredByPostId);
 }
 
@@ -8988,7 +9082,9 @@ document.getElementById('orgs-new-banner').addEventListener('click', async (e)=>
   });
 })();
 
-document.getElementById('orgs-browse-btn').addEventListener('click', openOrgList);
+document.getElementById('orgs-browse-btn').addEventListener('click', ()=> openOrgList(false));
+document.getElementById('orgs-search-bar').addEventListener('click', ()=> openOrgList(true));
+document.getElementById('orgs-search-bar').addEventListener('keydown', e=>{ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); openOrgList(true); } });
 document.getElementById('orgs-feed').addEventListener('click', async (e)=>{
   if(e.target.closest('#orgs-open-rant')){ await goToScreen('twin'); return; }
   const likeBtn = e.target.closest('.like-btn');
@@ -9002,7 +9098,7 @@ document.getElementById('orgs-feed').addEventListener('click', async (e)=>{
   let wasOpen = false;
   new MutationObserver(()=>{
     const open = el.classList.contains('show');
-    if(wasOpen && !open){ orgsFeedLoadedAt = 0; if(currentScreenKey === 'orgs') loadOrgsFeed(true); }
+    if(wasOpen && !open && orgsFollowDirty){ orgsFollowDirty = false; orgsFeedLoadedAt = 0; if(currentScreenKey === 'orgs') loadOrgsFeed(true); }
     wasOpen = open;
   }).observe(el, { attributes: true, attributeFilter: ['class'] });
 });
@@ -9182,7 +9278,7 @@ async function saveSpill(content, audio, inspiredByPostId, stickerUrl, doorQuest
   if(stickerUrl) row.sticker_url = stickerUrl;
   if(doorQuestionId){ row.door_question_id = doorQuestionId; row.door_route_score = doorRouteScore; }
   const { error } = await sb.from('posts').insert(row);
-  if(error){ console.error('Error saving spill:', error); showNavToast('Your post didn\'t go through. Try again.'); return; }
+  if(error){ console.error('Error saving spill:', error); composeDraftRestoreAfterFail(content); showNavToast('Your post didn\'t go through. Try again.'); return; }
   if(inspiredByPostId) await notifyInspiredBy(inspiredByPostId);
 }
 
@@ -10772,6 +10868,81 @@ function setupComposeButton(){
   });
 }
 
+/* ---- long writing: auto-grow, full-screen mode, character limits, saved drafts ---- */
+const COMPOSE_LIMITS = { spill: 8000, org: 5000, rant: 2000 };   // change these numbers to taste
+let composeLastDraftKey = null;
+function composeDraftKey(){
+  if(currentPostAsCommunityId || currentInspiredByPostId) return null;
+  if(currentScreenKey === 'orgs') return 'org';
+  if(currentScreenKey === 'twin' && currentTwinMode === 'spill') return 'spill';
+  if(currentScreenKey === 'twin' && currentTwinMode === 'rant') return 'rant';
+  return null;
+}
+function composeLimit(){
+  const k = composeDraftKey();
+  if(k) return COMPOSE_LIMITS[k];
+  if(currentInspiredBySpace === 'Spill') return COMPOSE_LIMITS.spill;
+  if(currentInspiredBySpace === 'Orgs') return COMPOSE_LIMITS.org;
+  return COMPOSE_LIMITS.rant;
+}
+function composeDraftStore(key){ return key ? 'mm_draft_' + key + '_' + (currentUserId || 'anon') : null; }
+function composeDraftSave(){
+  try{
+    const k = composeDraftStore(composeDraftKey()); if(!k) return;
+    const v = document.getElementById('compose-textarea').value;
+    if(v.trim()) localStorage.setItem(k, v); else localStorage.removeItem(k);
+  }catch(e){}
+}
+function composeDraftClear(key){ try{ const k = composeDraftStore(key); if(k) localStorage.removeItem(k); }catch(e){} }
+function composeDraftRestoreAfterFail(content){   // called by saveRant / saveSpill when the post didn't go through
+  try{ const k = composeDraftStore(composeLastDraftKey); if(k && content) localStorage.setItem(k, content); }catch(e){}
+}
+function composeAutosize(){
+  const ta = document.getElementById('compose-textarea');
+  if(document.getElementById('compose-overlay').classList.contains('compose-full')){ ta.style.height = ''; return; }
+  ta.style.height = 'auto';
+  ta.style.height = Math.min(ta.scrollHeight + 2, Math.round(window.innerHeight * 0.42)) + 'px';
+}
+function composeCountUpdate(){
+  const ta = document.getElementById('compose-textarea'), el = document.getElementById('compose-count');
+  const lim = composeLimit(), n = ta.value.length;
+  if(n >= lim * 0.8){ el.textContent = n.toLocaleString() + ' / ' + lim.toLocaleString(); el.classList.add('show'); el.classList.toggle('near', n >= lim * 0.95); }
+  else el.classList.remove('show', 'near');
+}
+function composeSetFull(on){
+  const ov = document.getElementById('compose-overlay'), btn = document.getElementById('compose-expand-btn');
+  ov.classList.toggle('compose-full', !!on);
+  btn.textContent = on ? '⤡' : '⤢';
+  const label = on ? 'Back to small' : 'Write full screen';
+  btn.title = label; btn.setAttribute('aria-label', label);
+  composeAutosize();
+}
+function composeLongSetup(){
+  // The callers that open compose for a community or an "inspired" post set that context just AFTER
+  // openComposeOverlay() returns, so the final checks wait one tick.
+  setTimeout(()=>{
+    const ta = document.getElementById('compose-textarea');
+    ta.maxLength = composeLimit();
+    const key = composeDraftKey();
+    if(key && !ta.value){
+      try{ const d = localStorage.getItem(composeDraftStore(key)); if(d) ta.value = d.slice(0, ta.maxLength); }catch(e){}
+    }
+    composeSetFull(currentScreenKey === 'twin' && currentTwinMode === 'spill' && !currentPostAsCommunityId && !currentInspiredByPostId);
+    composeCountUpdate();
+  }, 0);
+}
+document.getElementById('compose-textarea').addEventListener('input', ()=>{
+  composeAutosize(); composeCountUpdate();
+  clearTimeout(composeDraftSave._t); composeDraftSave._t = setTimeout(composeDraftSave, 400);
+});
+document.getElementById('compose-expand-btn').addEventListener('click', ()=>{
+  composeSetFull(!document.getElementById('compose-overlay').classList.contains('compose-full'));
+  document.getElementById('compose-textarea').focus();
+});
+document.getElementById('compose-expand-btn').addEventListener('keydown', e=>{
+  if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); e.target.click(); }
+});
+
 function openComposeOverlay(){
   const title = document.getElementById('compose-title');
   const happeningRow = document.getElementById('compose-happening-row');
@@ -10815,10 +10986,12 @@ function openComposeOverlay(){
   composeFounderSetup(currentScreenKey === 'twin' && (currentTwinMode === 'rant' || currentTwinMode === 'spill') && !currentPostAsCommunityId);
 
   document.getElementById('compose-overlay').classList.add('show');
+  composeLongSetup();
   setTimeout(()=>textarea.focus(), 100);
 }
 function closeComposeOverlay(){
   document.getElementById('compose-overlay').classList.remove('show');
+  composeSetFull(false);
   composeOrgReset();
   composeFounderSetup(false);
   currentPostAsCommunityId = null;
@@ -11771,6 +11944,7 @@ document.getElementById('compose-submit-btn').addEventListener('click', async ()
   const postingAsCommunity = currentPostAsCommunityId; // same -- captured before it's cleared
   const inspiredByPostId = currentInspiredByPostId;
   const inspiredBySpace = currentInspiredBySpace;
+  const draftKeyAtSubmit = composeDraftKey();   // same -- read before closeComposeOverlay() clears the context
 
   if(!content && !blobToUpload && !stickerToUse) return; // need at least one of text, voice, or sticker
 
@@ -11789,6 +11963,8 @@ document.getElementById('compose-submit-btn').addEventListener('click', async ()
   }
 
   closeComposeOverlay();
+  composeLastDraftKey = draftKeyAtSubmit;
+  composeDraftClear(draftKeyAtSubmit);          // the draft comes back automatically if saving fails (see saveRant / saveSpill)
 
   // If Your Posts is open on top of whatever screen you were composing
   // from, its list was fetched once on open and never refreshed -- a new
@@ -11868,6 +12044,9 @@ function wrapCanvasText(ctx, text, x, y, maxWidth, lineHeight){
 // afterward -- this only succeeds if the storage bucket serves the sticker
 // with permissive CORS headers, which Supabase's public buckets do by
 // default.
+function corsFreshUrl(url){   // the feed already cached a copy WITHOUT CORS headers; a changed URL forces a proper CORS request
+  return /^https?:/i.test(url) ? url + (url.indexOf('?') < 0 ? '?' : '&') + 'mmcors=1' : url;
+}
 function loadImageForCanvas(url){
   return new Promise((resolve, reject)=>{
     const img = new Image();
@@ -11875,7 +12054,7 @@ function loadImageForCanvas(url){
     const t = setTimeout(()=>reject(new Error('image timeout')), 10000);
     img.onload = ()=>{ clearTimeout(t); resolve(img); };
     img.onerror = (e)=>{ clearTimeout(t); reject(e); };
-    img.src = url;
+    img.src = corsFreshUrl(url);
   });
 }
 // A video sticker's small still picture loads faster and more reliably than seeking into the video itself,
@@ -11903,7 +12082,7 @@ function loadVideoFrameForCanvas(url){
     video.addEventListener('seeked', ()=>resolve(video), { once:true });
     video.addEventListener('error', reject, { once:true });
     setTimeout(()=>reject(new Error('video timeout')), 10000);
-    video.src = url;
+    video.src = corsFreshUrl(url);
   });
 }
 
@@ -11935,6 +12114,77 @@ function drawVoiceNoteVisual(ctx, palette, x, y, w, h, durationSeconds){
     const durWidth = ctx.measureText(durText).width;
     ctx.fillText(durText, x + (w - durWidth)/2, centerY + maxBarHeight/2 + 56);
   }
+}
+
+// ---- share card text: wraps long words, honours line breaks, and fits or trims with a "read more" note ----
+function canvasWrapLines(ctx, text, maxWidth){
+  const out = [];
+  String(text || '').replace(/\r/g, '').replace(/\n{3,}/g, '\n\n').split('\n').forEach(par => {
+    if(!par.trim()){ out.push(''); return; }
+    let line = '';
+    par.split(' ').forEach(word => {
+      if(!word) return;
+      let w = word;
+      while(ctx.measureText(w).width > maxWidth){          // one huge word: cut it to fit
+        let k = w.length - 1;
+        while(k > 1 && ctx.measureText(w.slice(0, k)).width > maxWidth) k--;
+        if(line){ out.push(line); line = ''; }
+        out.push(w.slice(0, k)); w = w.slice(k);
+      }
+      const test = line ? line + ' ' + w : w;
+      if(line && ctx.measureText(test).width > maxWidth){ out.push(line); line = w; } else line = test;
+    });
+    out.push(line);
+  });
+  while(out.length && out[out.length - 1] === '') out.pop();
+  return out;
+}
+function canvasTrimLine(ctx, line, maxWidth){
+  let t = line.replace(/\s+$/, '');
+  while(t && ctx.measureText(t + '…').width > maxWidth) t = t.slice(0, -1).replace(/\s+$/, '');
+  return t + '…';
+}
+// Main text of a text-only card. Short text stays big; longer text steps down in size; text that still
+// doesn't fit is cut with "…" and the card says the rest is in Meet Me.
+function drawCardText(ctx, palette, text, x, top, bottom, maxW){
+  const sizes = [52, 46, 42, 38];
+  for(let i = 0; i < sizes.length; i++){
+    const size = sizes[i], lh = Math.round(size * 1.3);
+    ctx.font = size + 'px Georgia, serif';
+    const lines = canvasWrapLines(ctx, text, maxW);
+    const maxLines = Math.floor((bottom - 20 - top) / lh) + 1;
+    if(lines.length <= maxLines || i === sizes.length - 1){
+      const cut = lines.length > maxLines;
+      const room = cut ? Math.floor((bottom - 70 - top) / lh) + 1 : maxLines;   // leave space for the note
+      const shown = cut ? lines.slice(0, room) : lines;
+      ctx.fillStyle = palette.body;
+      shown.forEach((ln, n) => {
+        const last = cut && n === shown.length - 1;
+        ctx.fillText(last ? canvasTrimLine(ctx, ln, maxW) : ln, x, top + n * lh);
+      });
+      if(cut){
+        ctx.font = 'italic 30px Georgia, serif';
+        ctx.fillStyle = palette.label;
+        ctx.fillText('Read the rest in Meet Me', x, bottom + 20);
+      }
+      return;
+    }
+  }
+}
+// Caption under a sticker / video / voice note: at most 3 lines.
+function cardCaptionLines(ctx, text, maxW){
+  if(!text) return [];
+  ctx.font = '34px Georgia, serif';
+  let lines = canvasWrapLines(ctx, text, maxW);
+  if(lines.length > 3){ lines = lines.slice(0, 3); lines[2] = canvasTrimLine(ctx, lines[2], maxW); }
+  return lines;
+}
+function drawCardCaption(ctx, palette, lines, x, bottom){
+  if(!lines.length) return;
+  ctx.font = '34px Georgia, serif';
+  ctx.fillStyle = palette.body;
+  const first = bottom + 18 - (lines.length - 1) * 44;
+  lines.forEach((ln, n) => ctx.fillText(ln, x, first + n * 44));
 }
 
 async function buildShareCanvas(content, name, spaceLabel, style, stickerUrl, audioUrl, durationSeconds, shareUrl){
@@ -11979,54 +12229,48 @@ async function buildShareCanvas(content, name, spaceLabel, style, stickerUrl, au
   const contentLeft = pad + 60;
   const contentWidth = canvas.width - pad*2 - 120;
 
+  const capLines = cardCaptionLines(ctx, content, contentWidth);
+  const capH = capLines.length ? capLines.length * 44 + 24 : 0;
+
   if(stickerUrl){
+    const isVid = isVideoStickerUrl(stickerUrl);
     try{
-      const media = isVideoStickerUrl(stickerUrl) ? await loadVideoStickerForCanvas(stickerUrl) : await loadImageForCanvas(stickerUrl);
+      const media = isVid ? await loadVideoStickerForCanvas(stickerUrl) : await loadImageForCanvas(stickerUrl);
       const naturalW = media.videoWidth || media.naturalWidth || media.width;
       const naturalH = media.videoHeight || media.naturalHeight || media.height;
-      const maxW = contentWidth, maxH = contentBottom - contentTop;
+      const maxW = contentWidth, maxH = contentBottom - contentTop - capH;
       const scale = Math.min(maxW / naturalW, maxH / naturalH, 1);
       const w = naturalW * scale, h = naturalH * scale;
       const x = contentLeft + (maxW - w) / 2;
       const y = contentTop + (maxH - h) / 2;
       ctx.drawImage(media, x, y, w, h);
-      if(content){
-        ctx.fillStyle = palette.body;
-        ctx.font = '34px Georgia, serif';
-        wrapCanvasText(ctx, content, contentLeft, contentBottom + 36, contentWidth, 44);
-      }
     } catch(err){
-      // Sticker failed to load onto the canvas (network hiccup, or the
-      // bucket doesn't send CORS headers) -- fall back to a label rather
-      // than leaving the card blank.
-      console.error('Could not draw sticker onto share card, falling back to label:', err);
-      const bx = contentLeft + contentWidth/2 - 230, by = contentTop + 40, bs = 460;
+      // The picture could not be drawn onto the card (almost always: the media host is not sending CORS headers,
+      // so the browser refuses to let a canvas use it). Show a neutral tile instead of a blank card.
+      console.error('Could not draw sticker onto share card, falling back to a tile:', err);
+      const bs = Math.min(460, contentBottom - contentTop - capH - 20);
+      const bx = contentLeft + contentWidth/2 - bs/2, by = contentTop + 20;
       ctx.fillStyle = palette.bg; roundRect(ctx, bx, by, bs, bs, 28); ctx.fill();
-      ctx.fillStyle = isGold ? '#2e2208' : '#d4a857';
       const cx = bx + bs/2, cy = by + bs/2;
-      ctx.beginPath(); ctx.arc(cx, cy, 70, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = isGold ? '#f3e0ab' : '#0c0c0e';
-      ctx.beginPath(); ctx.moveTo(cx-18, cy-30); ctx.lineTo(cx-18, cy+30); ctx.lineTo(cx+34, cy); ctx.closePath(); ctx.fill();
-      if(content){
-        ctx.fillStyle = palette.body;
-        ctx.font = '34px Georgia, serif';
-        wrapCanvasText(ctx, content, contentLeft, contentBottom + 36, contentWidth, 44);
+      if(isVid){
+        ctx.fillStyle = isGold ? '#2e2208' : '#d4a857';
+        ctx.beginPath(); ctx.arc(cx, cy, 70, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = isGold ? '#f3e0ab' : '#0c0c0e';
+        ctx.beginPath(); ctx.moveTo(cx-18, cy-30); ctx.lineTo(cx-18, cy+30); ctx.lineTo(cx+34, cy); ctx.closePath(); ctx.fill();
+      } else {
+        ctx.fillStyle = palette.label; ctx.font = '34px Karla, sans-serif';
+        const tw = ctx.measureText('sticker').width; ctx.fillText('sticker', cx - tw/2, cy + 12);
       }
     }
+    drawCardCaption(ctx, palette, capLines, contentLeft, contentBottom);
   } else if(audioUrl){
     ctx.fillStyle = palette.label;
     ctx.font = '30px Karla, sans-serif';
     ctx.fillText('🎙 VOICE NOTE', contentLeft, contentTop + 10);
-    drawVoiceNoteVisual(ctx, palette, contentLeft, contentTop + 40, contentWidth, contentBottom - contentTop - 40, durationSeconds);
-    if(content){
-      ctx.fillStyle = palette.body;
-      ctx.font = '34px Georgia, serif';
-      wrapCanvasText(ctx, content, contentLeft, contentBottom + 36, contentWidth, 44);
-    }
-  } else {
-    ctx.fillStyle = palette.body;
-    ctx.font = '52px Georgia, serif';
-    wrapCanvasText(ctx, content, contentLeft, contentTop, contentWidth, 68);
+    drawVoiceNoteVisual(ctx, palette, contentLeft, contentTop + 40, contentWidth, contentBottom - contentTop - 40 - capH, durationSeconds);
+    drawCardCaption(ctx, palette, capLines, contentLeft, contentBottom);
+  } else if(content){
+    drawCardText(ctx, palette, content, contentLeft, contentTop, contentBottom, contentWidth);
   }
 
   ctx.fillStyle = palette.name;
@@ -13829,6 +14073,7 @@ document.addEventListener('DOMContentLoaded', async function(){
     const b = t.previousElementSibling;
     if(!b || !b.classList.contains('post-body')) return;
     const open = b.classList.contains('rm-clamp');
+    if(open && b.textContent.length > 1200 && typeof openTextViewer === 'function'){ openTextViewer(b.textContent); return; }   // long story: scrollable reading view
     b.classList.toggle('rm-clamp', !open);
     b.classList.toggle('rm-cut', !open);
     t.textContent = open ? 'show less' : 'read more';
