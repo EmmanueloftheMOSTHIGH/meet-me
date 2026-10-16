@@ -429,10 +429,9 @@
 
   /* ---------- quieter cards: icon actions, "⋯" menu, header hierarchy, lock ---------- */
   .post .post-head .post-id{ color:var(--ivory); font-weight:500; letter-spacing:0.02em; }
-  .post .post-body{ font-weight:400; }
+  .post .post-body{ font-family:'Fraunces',serif; font-weight:400; font-size:16px; line-height:1.55; }
   .post .post-head .post-time{ color:var(--muted-dim); }
   .post-action.bookmark-trigger, .post-action.inspired-trigger{ font-size:17px; line-height:1; }
-  .post-lock{ display:inline-flex; align-items:center; color:var(--muted-dim); cursor:pointer; }
   .post-more{ position:relative; margin-left:auto; display:inline-flex; }
   .post-more-btn{ font-size:19px; line-height:1; padding:0 6px; letter-spacing:0.05em; position:relative; }
   .post-more-btn::after{ content:''; position:absolute; top:-14px; bottom:-14px; left:-8px; right:-8px; }
@@ -8719,15 +8718,6 @@ const insightQueue = new Set(); let insightTimer = null;
 function addOrgPostInsight(div, post){
   const foot = div.querySelector('.post-foot');
   if(!foot) return;
-  const lockHost = div.querySelector('.post-head-right');
-  if(lockHost && !lockHost.querySelector('.post-lock')){
-    const lk = document.createElement('span');
-    lk.className = 'post-action post-lock';
-    lk.setAttribute('role', 'img');
-    lk.setAttribute('aria-label', 'Only you see these numbers');
-    lk.innerHTML = '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
-    lockHost.insertBefore(lk, lockHost.firstChild);
-  }
   const line = document.createElement('div');
   line.className = 'post-insight';
   line.dataset.insightFor = post.id;
@@ -12573,8 +12563,6 @@ document.addEventListener('click', (e)=>{
       if(menu && wrap.getBoundingClientRect().top - top < menu.offsetHeight + 16) wrap.classList.add('down');
       return;
     }
-    const lock = e.target.closest('.post-lock');
-    if(lock){ e.stopPropagation(); showNavToast('Only you see these numbers.'); return; }
     closeMenus();
   });
   const lastTop = new WeakMap();
