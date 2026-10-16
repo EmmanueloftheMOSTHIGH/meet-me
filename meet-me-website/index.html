@@ -426,6 +426,27 @@
             mask-image:linear-gradient(to bottom,#000 calc(100% - 1.8em),transparent 100%);
   }
 
+
+  /* ---------- quieter cards: icon actions, "⋯" menu, header hierarchy, lock ---------- */
+  .post .post-head .post-id{ color:var(--ivory); font-weight:600; }
+  .post .post-head .post-time{ color:var(--muted-dim); }
+  .post-action.bookmark-trigger, .post-action.inspired-trigger{ font-size:17px; line-height:1; }
+  .post-lock{ display:inline-flex; align-items:center; color:var(--muted-dim); cursor:pointer; }
+  .post-more{ position:relative; margin-left:auto; display:inline-flex; }
+  .post-more-btn{ font-size:19px; line-height:1; padding:0 6px; letter-spacing:0.05em; position:relative; }
+  .post-more-btn::after{ content:''; position:absolute; top:-14px; bottom:-14px; left:-8px; right:-8px; }
+  .post-more-menu{
+    display:none; position:absolute; right:0; bottom:calc(100% + 8px); z-index:30; min-width:128px;
+    background:var(--card); border:1px solid var(--card-border); border-radius:12px; padding:4px 0;
+    box-shadow:0 10px 28px rgba(0,0,0,0.45);
+  }
+  .post-more.open .post-more-menu{ display:block; }
+  .post-more.down .post-more-menu{ bottom:auto; top:calc(100% + 8px); }
+  .post-more-menu .post-action{ display:block; padding:12px 18px; font-size:13.5px; color:var(--ivory); white-space:nowrap; }
+  .post-more-menu .post-action:active{ background:rgba(212,168,87,0.10); }
+  .post-more-menu .delete-post-trigger{ color:#d98a7e; }
+  .post-more-menu .post-action::after{ display:none; }
+
   /* ---------- "inspired" -> pick a space ---------- */
   #inspire-overlay{
     position:absolute; inset:0; background:rgba(6,6,7,0.75); z-index:78;
@@ -2108,6 +2129,14 @@
 #compose-btn:active {
   transform: scale(0.94);
   box-shadow: 0 1px 6px rgba(212, 168, 87, 0.15);
+}
+
+/* + button steps back while you read down the feed, returns when you scroll up */
+#compose-btn{ transition: transform 0.15s ease, box-shadow 0.2s ease, opacity 0.25s ease; }
+#compose-btn.fab-away{ opacity:0.3; transform:scale(0.82); }
+#compose-btn.fab-away:active{ opacity:1; transform:scale(0.94); }
+@media (min-width:1000px) and (hover:hover) and (pointer:fine){
+  #compose-btn.fab-away{ opacity:1; transform:none; }
 }
 #screen-chat.active ~ #compose-btn,
 #room-overlay.show ~ #compose-btn {
@@ -6658,7 +6687,8 @@ async function toggleBookmark(postId, btnEl){
   document.querySelectorAll(`.bookmark-trigger[data-post-id="${postId}"]`).forEach(el => {
     const nowSaved = myBookmarkIds.has(postId);
     el.classList.toggle('bookmarked', nowSaved);
-    el.textContent = nowSaved ? '★ saved' : '☆ save';
+    el.textContent = nowSaved ? '★' : '☆';
+    el.setAttribute('aria-label', nowSaved ? 'Saved' : 'Save'); el.title = nowSaved ? 'Saved' : 'Save';
   });
   // If we're looking at the Saved list itself, unsaving should remove it live.
   if(!myBookmarkIds.has(postId) && document.getElementById('bookmarks-overlay')?.classList.contains('show')){
@@ -7352,7 +7382,7 @@ function repliesBlockHtml(replies){
     </div>`).join('') + '</div>';
 }
 
-function postActionsHtml(postId, authorId, content, stickerUrl, audioUrl, durationSeconds, displayName, spaceLabel, userLiked, likeCount, includeShare, communityId, isOrgPost, storyReplyTo){
+function postActionsHtml(postId, authorId, content, stickerUrl, audioUrl, durationSeconds, displayName, spaceLabel, userLiked, likeCount, includeShare, communityId, isOrgPost, storyReplyTo, shareSpace){
   if(includeShare === undefined) includeShare = true;
   // Like counts are shown publicly only in Rant -- Spill
   // keeps likes as a private signal to the poster, with no visible
@@ -7362,12 +7392,17 @@ function postActionsHtml(postId, authorId, content, stickerUrl, audioUrl, durati
   const countHtml = showCount ? `<span class="like-count">${likeCount}</span>` : '';
   const likeHtml = `<span class="like-btn ${userLiked ? 'liked' : ''}" data-post-id="${postId}" data-name="${escapeHtml(displayName)}"><span class="heart">${userLiked ? '♥' : '♡'}</span>${countHtml}</span>`;
   const isBookmarked = myBookmarkIds.has(postId);
-  const bookmarkHtml = `<span class="post-action bookmark-trigger ${isBookmarked ? 'bookmarked' : ''}" data-post-id="${postId}">${isBookmarked ? '★ saved' : '☆ save'}</span>`;
-  const shareHtml = includeShare ? `<span class="post-action share-trigger" data-content="${escapeHtml(content || '')}" data-sticker-url="${escapeHtml(stickerUrl || '')}" data-audio-url="${escapeHtml(audioUrl || '')}" data-duration="${durationSeconds || ''}" data-name="${escapeHtml(displayName)}" data-space="${spaceLabel}" data-share-id="${postId}">share</span>` : '';
+  const bookmarkHtml = `<span class="post-action bookmark-trigger ${isBookmarked ? 'bookmarked' : ''}" data-post-id="${postId}" role="button" aria-label="${isBookmarked ? 'Saved' : 'Save'}" title="${isBookmarked ? 'Saved' : 'Save'}">${isBookmarked ? '★' : '☆'}</span>`;
+  const shareHtml = includeShare ? `<span class="post-action share-trigger" data-content="${escapeHtml(content || '')}" data-sticker-url="${escapeHtml(stickerUrl || '')}" data-audio-url="${escapeHtml(audioUrl || '')}" data-duration="${durationSeconds || ''}" data-name="${escapeHtml(displayName)}" data-space="${shareSpace || spaceLabel}" data-share-id="${postId}">Share</span>` : '';
   const canInspire = ['Rant','Spill'].includes(spaceLabel);
-  const inspiredHtml = canInspire ? `<span class="post-action inspired-trigger" data-post-id="${postId}" data-space="${spaceLabel}" data-name="${escapeHtml(displayName)}">↻ inspired</span>` : '';
+  const inspiredHtml = canInspire ? `<span class="post-action inspired-trigger" data-post-id="${postId}" data-space="${spaceLabel}" data-name="${escapeHtml(displayName)}" role="button" aria-label="Inspired by this" title="Inspired by this">↻</span>` : '';
   const isOwn = authorId && currentUserId && authorId === currentUserId;
-  const deleteHtml = isOwn ? `<span class="post-action delete-post-trigger" data-post-id="${postId}">delete</span>` : '';
+  const deleteHtml = isOwn ? `<span class="post-action delete-post-trigger" data-post-id="${postId}">Delete</span>` : '';
+  // Share + delete live behind one "⋯" button so the action row stays quiet.
+  const moreItems = shareHtml + deleteHtml;
+  const moreHtml = moreItems
+    ? `<span class="post-more"><span class="post-action post-more-btn" role="button" aria-label="More" aria-haspopup="true">⋯</span><span class="post-more-menu">${moreItems}</span></span>`
+    : '';
   const ownRepliesHtml = isOwn ? `<span class="post-action own-replies-trigger" data-post-id="${postId}">replies &amp; likes</span>` : '';
   // Shown on a community's own Rant posts, only to people who aren't
   // members of that community yet -- lets someone act on a post they
@@ -7380,18 +7415,18 @@ function postActionsHtml(postId, authorId, content, stickerUrl, audioUrl, durati
   // thread of mini-rants that stays hidden until someone taps "stand".
   if(isOrgPost){
     const standHtml = `<span class="post-action stand-trigger" data-post-id="${postId}">stand</span>`;
-    return likeHtml + bookmarkHtml + deleteHtml + standHtml + inspiredHtml + interestHtml + shareHtml;
+    return likeHtml + bookmarkHtml + standHtml + inspiredHtml + interestHtml + moreHtml;
   }
 
   if(storyReplyTo && !isOwn){
     // Curated story: people can reply privately, addressed to the reserved number only.
     return likeHtml + bookmarkHtml
       + `<span class="post-action reply-trigger" data-post-id="${postId}" data-receiver-id="${storyReplyTo.ownerId}" data-name="Meet ${storyReplyTo.number}" data-story="1">reply</span>`
-      + inspiredHtml + shareHtml;
+      + inspiredHtml + moreHtml;
   }
   if(!authorId || isOwn){
     // Community/organization-authored post, or your own -- no one to reply/friend/block.
-    return likeHtml + bookmarkHtml + deleteHtml + inspiredHtml + interestHtml + ownRepliesHtml + shareHtml;
+    return likeHtml + bookmarkHtml + inspiredHtml + interestHtml + ownRepliesHtml + moreHtml;
   }
   if(myFriendIds.has(authorId)){
     return likeHtml
@@ -7399,14 +7434,14 @@ function postActionsHtml(postId, authorId, content, stickerUrl, audioUrl, durati
       + `<span class="post-action reply-trigger" data-post-id="${postId}" data-receiver-id="${authorId}" data-name="${escapeHtml(displayName)}">reply</span>`
       + `<span class="post-action message-trigger" data-other-id="${authorId}">message</span>`
       + inspiredHtml
-      + shareHtml;
+      + moreHtml;
   }
   return likeHtml
     + bookmarkHtml
     + `<span class="post-action reply-trigger" data-post-id="${postId}" data-receiver-id="${authorId}" data-name="${escapeHtml(displayName)}">reply</span>`
     + `<span class="post-action friend-trigger" data-post-id="${postId}" data-receiver-id="${authorId}" data-name="${escapeHtml(displayName)}">friend request</span>`
     + inspiredHtml
-    + shareHtml;
+    + moreHtml;
 }
 
 // THE STAND -- public mini-rants under an organisation post (or a
@@ -8683,6 +8718,15 @@ const insightQueue = new Set(); let insightTimer = null;
 function addOrgPostInsight(div, post){
   const foot = div.querySelector('.post-foot');
   if(!foot) return;
+  const lockHost = div.querySelector('.post-head-right');
+  if(lockHost && !lockHost.querySelector('.post-lock')){
+    const lk = document.createElement('span');
+    lk.className = 'post-action post-lock';
+    lk.setAttribute('role', 'img');
+    lk.setAttribute('aria-label', 'Only you see these numbers');
+    lk.innerHTML = '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
+    lockHost.insertBefore(lk, lockHost.firstChild);
+  }
   const line = document.createElement('div');
   line.className = 'post-insight';
   line.dataset.insightFor = post.id;
@@ -8709,7 +8753,7 @@ async function fillOrgPostInsights(){
   ids.forEach(id => document.querySelectorAll(`.post-insight[data-insight-for="${id}"]`).forEach(el => {
     const r = by[id];
     if(!r){ el.remove(); return; }
-    el.textContent = `${pl(Number(r.likes), 'like')} · ${pl(Number(r.stands), 'stand')} · ${pl(Number(r.views), 'view')} · ${inspiredBy[id] || 0} inspired · only you see this`;
+    el.textContent = `${pl(Number(r.likes), 'like')} · ${pl(Number(r.stands), 'stand')} · ${pl(Number(r.views), 'view')} · ${inspiredBy[id] || 0} inspired`;
   }));
 }
 
@@ -8796,7 +8840,7 @@ function renderRantPost(post, userLiked, likeCount, inspirationLabels){
   div.innerHTML = `
     <div class="post-head">
       <span class="post-id">${headHtml}</span>
-      <span class="post-head-right"><span class="post-time">${formatRelativeTime(post.created_at)}</span><span class="post-action share-trigger post-head-share" data-content="${escapeHtml(post.content || '')}" data-sticker-url="${escapeHtml(post.sticker_url || '')}" data-audio-url="${escapeHtml(post.audio_url || '')}" data-duration="${post.duration_seconds || ''}" data-name="${escapeHtml(displayName)}" data-space="${isOrg ? 'Orgs' : 'Rant'}" data-share-id="${post.id}">share</span></span>
+      <span class="post-head-right"><span class="post-time">${formatRelativeTime(post.created_at)}</span></span>
     </div>
     ${isOrg && post.header ? `<div class="org-header">${escapeHtml(post.header)}</div>` : ''}
     ${doorTagHtml(post)}
@@ -8804,7 +8848,7 @@ function renderRantPost(post, userLiked, likeCount, inspirationLabels){
     ${happeningPillHtml(post)}
     ${bodyHtml}
     <div class="post-foot">
-      ${postActionsHtml(post.id, isCommunity ? null : (isStory ? (isOwnStory ? currentUserId : null) : ((isOrg || isFounder) ? (isOwn ? post.user_id : null) : post.user_id)), post.content, post.sticker_url, post.audio_url, post.duration_seconds, displayName, 'Rant', userLiked, likeCount, false, isCommunity ? post.community_id : null, (isCommunity || isOrg), (isStory && !isOwnStory) ? { ownerId: post.user_id, number: post.story_number } : null)}
+      ${postActionsHtml(post.id, isCommunity ? null : (isStory ? (isOwnStory ? currentUserId : null) : ((isOrg || isFounder) ? (isOwn ? post.user_id : null) : post.user_id)), post.content, post.sticker_url, post.audio_url, post.duration_seconds, displayName, 'Rant', userLiked, likeCount, true, isCommunity ? post.community_id : null, (isCommunity || isOrg), (isStory && !isOwnStory) ? { ownerId: post.user_id, number: post.story_number } : null, isOrg ? 'Orgs' : 'Rant')}
     </div>`;
   if(fresh) watchFreshOrgPost(div);
   watchPostView(div, post);
@@ -11203,7 +11247,7 @@ async function openHappeningView(happeningId, name){
     const userLiked = likedIds.has(post.id);
     const likeCount = likeCounts[post.id] || 0;
     const likeHtml = `<span class="like-btn ${userLiked ? 'liked' : ''}" data-post-id="${post.id}" data-name="${escapeHtml(displayName)}"><span class="heart">${userLiked ? '♥' : '♡'}</span><span class="like-count">${likeCount}</span></span>`;
-    const inspiredHtml = `<span class="post-action inspired-trigger" data-post-id="${post.id}" data-space="Rant" data-name="${escapeHtml(displayName)}">↻ inspired</span>`;
+    const inspiredHtml = `<span class="post-action inspired-trigger" data-post-id="${post.id}" data-space="Rant" data-name="${escapeHtml(displayName)}" role="button" aria-label="Inspired by this" title="Inspired by this">↻</span>`;
     const wrap = document.createElement('div');
     wrap.className = 'yp-post';
     wrap.dataset.postId = post.id;
@@ -12497,6 +12541,58 @@ document.addEventListener('click', (e)=>{
   }
 });
 
+
+// ---------- "⋯" menu, lock hint, + button fade ----------
+(function(){
+  function scrollParent(el){
+    let n = el.parentElement;
+    while(n && n !== document.body){
+      const oy = getComputedStyle(n).overflowY;
+      if(oy === 'auto' || oy === 'scroll') return n;
+      n = n.parentElement;
+    }
+    return null;
+  }
+  function closeMenus(except){
+    document.querySelectorAll('.post-more.open').forEach(m => { if(m !== except) m.classList.remove('open'); });
+  }
+  document.addEventListener('click', (e)=>{
+    const btn = e.target.closest('.post-more-btn');
+    if(btn){
+      e.stopPropagation();
+      const wrap = btn.closest('.post-more');
+      const wasOpen = wrap.classList.contains('open');
+      closeMenus(wrap);
+      if(wasOpen){ wrap.classList.remove('open'); return; }
+      wrap.classList.remove('down');
+      wrap.classList.add('open');
+      const menu = wrap.querySelector('.post-more-menu');
+      const sp = scrollParent(wrap);
+      const top = sp ? sp.getBoundingClientRect().top : 0;
+      if(menu && wrap.getBoundingClientRect().top - top < menu.offsetHeight + 16) wrap.classList.add('down');
+      return;
+    }
+    const lock = e.target.closest('.post-lock');
+    if(lock){ e.stopPropagation(); showNavToast('Only you see these numbers.'); return; }
+    closeMenus();
+  });
+  const lastTop = new WeakMap();
+  document.addEventListener('scroll', (e)=>{
+    const t = e.target;
+    if(!(t instanceof Element)) return;
+    closeMenus();
+    if(!t.matches('#feed, #orgs-feed')) return;
+    const fab = document.getElementById('compose-btn');
+    if(!fab) return;
+    const y = t.scrollTop;
+    const prev = lastTop.has(t) ? lastTop.get(t) : y;
+    lastTop.set(t, y);
+    const d = y - prev;
+    if(y < 40 || d < -6) fab.classList.remove('fab-away');
+    else if(d > 6) fab.classList.add('fab-away');
+  }, true);
+})();
+
 function updateComposeVisibility(){
   const composeBtn = document.getElementById('compose-btn');
   if(!composeBtn) return;
@@ -12934,7 +13030,7 @@ async function loadBookmarksList(){
       ${bodyHtml}
       <div class="yp-post-time">${formatRelativeTime(post.created_at)}</div>
       <div class="post-foot" style="margin-top:8px;">
-        <span class="post-action bookmark-trigger bookmarked" data-post-id="${post.id}">★ saved</span>
+        <span class="post-action bookmark-trigger bookmarked" data-post-id="${post.id}" role="button" aria-label="Saved" title="Saved">★</span>
       </div>`;
     feed.appendChild(wrap);
   });
