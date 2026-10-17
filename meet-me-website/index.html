@@ -3008,7 +3008,7 @@
   <div id="video-trim-overlay" class="account-overlay">
     <div class="account-panel" style="max-width:360px;">
       <div class="account-title">Trim your video</div>
-      <div class="account-sub" id="video-trim-sub">Drag the left and right handles to cut the front and back. Up to 30 seconds.</div>
+      <div class="account-sub" id="video-trim-sub">Drag the left and right handles to cut the front and back. Up to 60 seconds.</div>
       <video id="video-trim-preview" playsinline style="width:100%; max-height:260px; background:#000; border-radius:12px; display:block; margin-bottom:14px; object-fit:contain;"></video>
       <div id="video-trim-track" style="position:relative; height:44px; margin:0 14px 8px; touch-action:none; user-select:none; -webkit-user-select:none;">
         <div style="position:absolute; left:0; right:0; top:18px; height:8px; border-radius:4px; background:var(--bg-elevated);"></div>
@@ -11537,18 +11537,18 @@ async function prepareStickerImage(file){
 /* ============================================================
    SHRINK VIDEO -- keeps Supabase's free storage and bandwidth from filling up.
    Before a video sticker is uploaded it is checked and re-recorded smaller, on the phone:
-     - 30 seconds at most (longer clips open a trimmer: drag the front and back handles to pick the part to keep)
+     - 60 seconds at most (longer clips open a trimmer: drag the front and back handles to pick the part to keep)
      - scaled down to fit inside 480 x 640 (sticker-sized screens don't need more)
-     - about 450 kbps video + 48 kbps sound, about 2 MB for a full 30 seconds
+     - about 1.5 Mbps video + 96 kbps sound, recorded as MP4 (H.264) when the browser can, otherwise WebM
    The sound is kept (organisation clips play with sound when tapped open).
    Already-small clips are uploaded as they are. If this browser can't re-record video, a clip is
    uploaded only if it is already small, otherwise the person is asked for a smaller one.
    ============================================================ */
-const VIDEO_MAX_SECONDS = 30;
+const VIDEO_MAX_SECONDS = 60;
 const VIDEO_SKIP_BYTES  = 30 * 1024 * 1024;   // Cloudflare has no download fees, so an untrimmed clip up to 30 MB is uploaded exactly as it was filmed (instant, smooth, original sound)
 const VIDEO_FALLBACK_MAX_BYTES = 30 * 1024 * 1024;
-const VIDEO_MAX_W = 720, VIDEO_MAX_H = 960;   // only used by the fallback path (browsers that can't capture the video directly)
-const VIDEO_BITS = 3000000, AUDIO_BITS = 128000;   // only used when a long clip is trimmed (it has to be re-recorded)
+const VIDEO_MAX_W = 480, VIDEO_MAX_H = 640;   // re-recorded (trimmed) clips: phone-screen size, easy for weak phones to play
+const VIDEO_BITS = 1500000, AUDIO_BITS = 96000;   // only used when a long clip is trimmed (it has to be re-recorded)
 
 function showShrinkToast(text){
   toast.textContent = text; toast.classList.add('show');
@@ -11657,11 +11657,14 @@ async function prepareVideoForUpload(file){
     if(!trimmed && file.size <= VIDEO_SKIP_BYTES) return { file, poster };
 
     // 2) can this browser re-record?
-    const mime = ['video/webm;codecs=vp8,opus', 'video/webm;codecs=vp9,opus', 'video/webm']
+    // MP4 (H.264) first: phones decode it in hardware, so it plays smoothly even on budget phones. WebM only if MP4 can't be recorded.
+    const mime = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4',
+                  'video/webm;codecs=vp8,opus', 'video/webm;codecs=vp9,opus', 'video/webm']
       .find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m));
+    const isMp4 = !!mime && mime.startsWith('video/mp4');
     const canCapture = !!mime && !!HTMLCanvasElement.prototype.captureStream && (window.AudioContext || window.webkitAudioContext);
     if(!canCapture){
-      if(trimmed) return { error: 'This browser can\u2019t trim videos. Try a clip that is 30 seconds or shorter.' };
+      if(trimmed) return { error: 'This browser can\u2019t trim videos. Try a clip that is 60 seconds or shorter.' };
       return file.size <= VIDEO_FALLBACK_MAX_BYTES ? { file, poster } : { error: 'That video is too big. Try a shorter or smaller one.' };
     }
 
@@ -11670,12 +11673,9 @@ async function prepareVideoForUpload(file){
     const w = Math.max(2, Math.round(v.videoWidth * scale / 2) * 2), h = Math.max(2, Math.round(v.videoHeight * scale / 2) * 2);
     const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
     const g = canvas.getContext('2d');
-    // Best path: take the picture track straight from the player (keeps the real frame rate and quality).
-    // Fallback: redraw onto a canvas.
-    let directV = [];
-    try{ const cs = v.captureStream ? v.captureStream() : (v.mozCaptureStream ? v.mozCaptureStream() : null); if(cs) directV = cs.getVideoTracks(); }catch(e){}
-    const useCanvas = !directV.length;
-    const tracks = useCanvas ? canvas.captureStream(30).getTracks() : [...directV];
+    // Always redraw onto the small canvas and record that at a steady 30 fps (the player's own stream has uneven frame timing).
+    const useCanvas = true;
+    const tracks = canvas.captureStream(30).getTracks();
     let ctx = null;
     try{
       const AC = window.AudioContext || window.webkitAudioContext;
@@ -11712,10 +11712,12 @@ async function prepareVideoForUpload(file){
     clearTimeout(safety); clearInterval(tick); hideShrinkToast();
     if(ctx) ctx.close().catch(()=>{});
 
-    const blob = new Blob(chunks, { type: 'video/webm' });
+    const blob = new Blob(chunks, { type: isMp4 ? 'video/mp4' : 'video/webm' });
     if(!blob.size) return file.size <= VIDEO_FALLBACK_MAX_BYTES ? { file, poster } : { error: 'Could not prepare that video.' };
     if(!trimmed && blob.size >= file.size) return { file, poster };   // never make an untrimmed clip bigger
-    return { file: new File([blob], 'sticker.webm', { type: 'video/webm' }), poster };
+    return isMp4
+      ? { file: new File([blob], 'sticker.mp4', { type: 'video/mp4' }), poster }
+      : { file: new File([blob], 'sticker.webm', { type: 'video/webm' }), poster };
   }catch(e){
     console.error('Video shrink failed:', e);
     hideShrinkToast();
@@ -11844,7 +11846,7 @@ document.getElementById('sticker-upload-input').addEventListener('change', async
 document.getElementById('compose-sticker-remove').addEventListener('click', discardSticker);
 
 /* ---------- compose: VIDEO (its own button, separate from stickers) ---------- */
-// Same rules as before: organisation owners only, 30 seconds max, trim + shrink on the phone.
+// Same rules as before: organisation owners only, 60 seconds max, trim + shrink on the phone.
 // The finished video attaches to this post directly. It is NOT added to the person's sticker collection.
 async function refreshComposeVideoBtn(){
   const b = document.getElementById('compose-video-btn');
