@@ -1216,6 +1216,7 @@
     max-width:88vw; max-height:80vh; width:auto; height:auto;
     object-fit:contain; border-radius:8px;
   }
+  #sticker-viewer-media-wrap video{ border-radius:0; background:#000; }   /* rounded clipping on a playing video can tear/flicker on some Android phones */
   .sticker-tap{ cursor:pointer; }
   /* Video stickers in feeds: autoplay silent loop while on screen (poster picture shows first; golden play button only if the video is missing). */
   .vid-poster{ position:relative; display:block; background:#0b0b0b; border-radius:8px; overflow:hidden; }
@@ -7108,8 +7109,9 @@ function vidStop(v){
 }
 function vidApply(){
   const mid = window.innerHeight / 2;
+  const viewerOpen = !!(document.getElementById('sticker-viewer-overlay') && document.getElementById('sticker-viewer-overlay').classList.contains('show'));   // viewer open: the phone's video decoder belongs to it alone
   const picks = [...vidVisible]
-    .filter(v => v.isConnected && vidShown(v) && !document.hidden)
+    .filter(v => !viewerOpen && v.isConnected && vidShown(v) && !document.hidden)
     .map(v => { const r = v.getBoundingClientRect(); return { v, d: Math.abs((r.top + r.bottom) / 2 - mid) }; })
     .sort((x, y) => x.d - y.d).slice(0, VID_MAX_PLAYING).map(x => x.v);
   const chosen = new Set(picks);
@@ -7223,6 +7225,7 @@ function openStickerViewer(url, isVideo, withSound){
   watchViewerVideoExpired();
   viewerLoading();
   stickerViewerOverlay.classList.add('show');
+  try{ vidApply(); }catch(e){}   // pause the feed's silent copies right away so only one video decodes
 }
 // Three breathing lights while the full-size picture or video is still on its way.
 function viewerLoading(){
@@ -7242,6 +7245,7 @@ function closeStickerViewer(){
   stickerViewerOverlay.classList.remove('show');
   stickerViewerMute.classList.remove('show');
   stickerViewerMediaWrap.innerHTML = '';
+  try{ vidRefresh(); }catch(e){}   // feed videos may play again
 }
 document.addEventListener('click', (e)=>{
   const viewerVideo = e.target.closest('#sticker-viewer-media-wrap video');
