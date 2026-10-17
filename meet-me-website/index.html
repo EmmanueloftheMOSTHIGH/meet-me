@@ -6981,6 +6981,16 @@ function stickerMediaTag(url, size, withSound){
   return `<img class="sticker-tap" data-sticker-url="${escapeHtml(url)}" src="${escapeHtml(url)}" loading="lazy" decoding="async" onerror="stickerImgRetry(this)" style="width:${size}px; height:${size}px; object-fit:contain; display:block;">`;
 }
 
+// A post can carry up to 4 PICTURES (never videos). They are stored in the same sticker_url column, joined with "|".
+const MAX_POST_PICS = 4;
+function stickerUrlList(v){ return (v || '').split('|').map(x => x.trim()).filter(Boolean); }
+function postPicsHtml(urls, size){
+  const cell = `min(${size}px, 44vw)`;
+  return `<div style="display:grid; grid-template-columns:repeat(2, ${cell}); gap:6px; margin-bottom:8px;">`
+    + urls.map(u => `<img class="sticker-tap" data-sticker-url="${escapeHtml(u)}" src="${escapeHtml(u)}" loading="lazy" decoding="async" onerror="stickerImgRetry(this)" style="width:100%; aspect-ratio:1; object-fit:contain; display:block; background:var(--card); border:1px solid var(--card-border); border-radius:8px;">`).join('')
+    + `</div>`;
+}
+
 function stickerHtml(stickerUrl, size, withSound){
   if(!stickerUrl) return '';
   const alreadyMine = myStickers.includes(stickerUrl);
@@ -6997,7 +7007,10 @@ function stickerHtml(stickerUrl, size, withSound){
 // see TEXT VIEWER below.
 function postBodyHtml(post, textClass, stickerSize, tapExpand, withSound){
   let parts = '';
-  if(post.sticker_url) parts += stickerHtml(post.sticker_url, stickerSize, withSound);
+  if(post.sticker_url){
+    const pics = stickerUrlList(post.sticker_url);
+    parts += pics.length > 1 ? postPicsHtml(pics, stickerSize) : stickerHtml(pics[0] || post.sticker_url, stickerSize, withSound);
+  }
   if(post.audio_url) parts += voiceNoteHtml(post.audio_url, post.duration_seconds);
   if(post.content) parts += `<div class="${textClass}${tapExpand ? ' text-tap' : ''}">${escapeHtml(post.content)}</div>`;
   return parts;
@@ -11066,6 +11079,22 @@ function closeComposeOverlay(){
   discardSticker();
   discardHappening();
 }
+// Picking a picture ADDS it (up to MAX_POST_PICS, for comparisons). A video can't be combined: it stays on its own.
+function composeAddPicture(url){
+  const cur = stickerUrlList(selectedStickerUrl);
+  let next;
+  if(isVideoStickerUrl(url) || cur.some(isVideoStickerUrl)) next = [url];
+  else if(cur.includes(url)) next = cur;
+  else if(cur.length >= MAX_POST_PICS){
+    toast.textContent = 'Up to ' + MAX_POST_PICS + ' pictures per post.';
+    toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 2200);
+    return;
+  } else next = [...cur, url];
+  selectedStickerUrl = next.join('|');
+  document.getElementById('compose-sticker-remove').textContent = next.length > 1 ? 'remove pictures (' + next.length + '/' + MAX_POST_PICS + ')' : 'remove sticker';
+  document.getElementById('compose-sticker-preview-media').innerHTML = '<div style="display:flex; gap:6px; flex-wrap:wrap;">' + next.map(u => stickerMediaTag(u, 56)).join('') + '</div>';
+  document.getElementById('compose-sticker-preview-row').style.display = 'flex';
+}
 function discardSticker(){
   selectedStickerUrl = null;
   document.getElementById('compose-sticker-remove').textContent = 'remove sticker';
@@ -11342,10 +11371,7 @@ function renderStickerPicker(){
         document.getElementById('sticker-picker-overlay').classList.remove('show');
         return;
       }
-      selectedStickerUrl = url;
-      document.getElementById('compose-sticker-remove').textContent = 'remove sticker';
-      document.getElementById('compose-sticker-preview-media').innerHTML = stickerMediaTag(url, 56);
-      document.getElementById('compose-sticker-preview-row').style.display = 'flex';
+      composeAddPicture(url);
       document.getElementById('sticker-picker-overlay').classList.remove('show');
     });
     grid.appendChild(tile);
@@ -12255,6 +12281,7 @@ function drawCardCaption(ctx, palette, lines, x, bottom){
 }
 
 async function buildShareCanvas(content, name, spaceLabel, style, stickerUrl, audioUrl, durationSeconds, shareUrl){
+  stickerUrl = stickerUrlList(stickerUrl)[0] || null;   // the share card shows the first picture only
   style = style || 'dark';
   const isGold = style === 'gold';
   const canvas = document.createElement('canvas');
@@ -12399,7 +12426,7 @@ async function openShareCard(content, name, spaceLabel, stickerUrl, audioUrl, du
   currentShareContent = content;
   currentShareName = name;
   currentShareSpace = spaceLabel;
-  currentShareStickerUrl = stickerUrl || null;
+  currentShareStickerUrl = stickerUrlList(stickerUrl)[0] || null;
   currentShareAudioUrl = audioUrl || null;
   currentShareDuration = durationSeconds || null;
   currentShareStyle = 'dark';
