@@ -2080,6 +2080,8 @@
 .reply-preview-cancel{ cursor:pointer; color:var(--muted-dim); font-size:13px; flex-shrink:0; }
 
 .seen-label{ font-size:10.5px; color:var(--muted-dim); align-self:flex-end; margin:-6px 4px 2px 0; }
+.msg-ticks{ display:block; text-align:right; font-size:10px; line-height:1; margin-top:3px; letter-spacing:-1px; color:rgba(240,230,210,0.55); }
+.msg-ticks.seen{ color:#7fe0b4; }
 
 /* ---------- Happenings (Rant only) ---------- */
 .happening-pill{
@@ -5374,6 +5376,7 @@ let currentRepliesThreads = {};
 let currentThreadOtherId = null;
 let cameFromNotificationThread = false;
 let threadMeId = null;                 // whose side "me" is in the open thread (the hidden story account, for Meet 8 on a story)
+let currentThreadStoryNumber = null;
 let currentThreadStoryOwnerId = null;  // set only while Meet 8 has a story post's replies open
 
 async function openPostRepliesSheet(postId, fullScreen){
@@ -5393,10 +5396,10 @@ async function openPostRepliesSheet(postId, fullScreen){
   updateComposeVisibility();
 
   // Meet 8 reading replies on a curated story: those are addressed to / sent from the hidden story account.
-  currentThreadStoryOwnerId = null; threadMeId = currentUserId;
+  currentThreadStoryOwnerId = null; currentThreadStoryNumber = null; threadMeId = currentUserId;
   if(isMeet8){
     const { data: storyRow } = await sb.from('posts').select('user_id, story_number').eq('id', postId).maybeSingle();
-    if(storyRow && storyRow.story_number){ currentThreadStoryOwnerId = storyRow.user_id; threadMeId = storyRow.user_id; }
+    if(storyRow && storyRow.story_number){ currentThreadStoryOwnerId = storyRow.user_id; threadMeId = storyRow.user_id; currentThreadStoryNumber = storyRow.story_number; }
   }
   const meId = threadMeId;
 
@@ -5514,7 +5517,7 @@ async function sendPrivateReply(postId, receiverId, content){
     // Answering a person who replied to a curated story: saved under the hidden story account, never as Meet 8.
     const { data: storyReplyId, error: storyErr } = await sb.rpc('story_reply_back', { p_post_id: postId, p_receiver_id: receiverId, p_content: content });
     if(storyErr){ console.error('Error answering story reply:', storyErr); return null; }
-    sendPushTo(receiverId, 'Meet Me', content.length > 80 ? content.slice(0, 77) + '...' : content, '/');
+    sendPushTo(receiverId, currentThreadStoryNumber ? ('Meet ' + currentThreadStoryNumber) : 'Meet Me', content.length > 80 ? content.slice(0, 77) + '...' : content, '/');
     return { id: storyReplyId };
   }
   const { data: postRows } = await sb.from('posts').select('user_id').eq('id', postId);
@@ -5526,7 +5529,7 @@ async function sendPrivateReply(postId, receiverId, content){
     const notifType = (currentUserId === ownerId) ? 'reply_back' : 'reply';
     await createNotification(receiverId, notifType, postId);
     const pushBody = content.length > 80 ? content.slice(0, 77) + '...' : content;
-    sendPushTo(receiverId, 'Meet Me', pushBody, '/');
+    sendPushTo(receiverId, pushSenderName(), pushBody, '/');
   }
   return data;
 }
@@ -6364,7 +6367,7 @@ document.getElementById('community-invite-submit-btn').addEventListener('click',
     toast.textContent = 'Could not send invite — for a closed community, they need to be a Friend first.';
   } else {
     await createNotification(matches[0].id, 'community_invite', currentInviteCommunityId);
-    sendPushTo(matches[0].id, 'Meet Me', `${currentMeetNumber || 'Someone'} invited you to a community.`, '/');
+    sendPushTo(matches[0].id, pushSenderName(), 'invited you to a community.', '/');
     toast.textContent = 'Invite sent.';
     document.getElementById('community-invite-input').value = '';
   }
@@ -9919,7 +9922,7 @@ async function toggleLike(postId, likeBtnEl){
       const ownerId = postRows && postRows[0]?.user_id;
       if(ownerId && ownerId !== currentUserId){
         await createNotification(ownerId, 'like', postId);
-        sendPushTo(ownerId, 'Meet Me', `${currentMeetNumber || 'Someone'} liked your post.`, '/');
+        sendPushTo(ownerId, pushSenderName(), 'liked your post.', '/');
         const likedName = likeBtnEl?.dataset.name || 'them';
         toast.textContent = `you liked ${likedName}'s post.`;
         toast.classList.add('show'); setTimeout(()=>{ toast.classList.remove('show'); }, 2000);
@@ -9945,7 +9948,7 @@ async function saveReply(postId, receiverId, content, stickerUrl){
   if(receiverId !== currentUserId){
     await createNotification(receiverId, 'reply', postId);
     const pushBody = stickerUrl && !content ? 'sent a sticker reply' : (content.length > 80 ? content.slice(0,77) + '...' : content);
-    sendPushTo(receiverId, 'Meet Me', pushBody, '/');
+    sendPushTo(receiverId, pushSenderName(), pushBody, '/');
   }
 }
 
@@ -9965,7 +9968,7 @@ async function sendFriendRequest(receiverId, postId, asFounder){
   if(data){
     await createNotification(receiverId, 'friend_request', data.id);
     const who = asFounder ? 'Meet Founder' : (currentMeetNumber || 'Someone');
-    sendPushTo(receiverId, 'Meet Me', `${who} sent you a friend request.`, '/');
+    sendPushTo(receiverId, who, 'sent you a friend request.', '/');
   }
   return true;
 }
@@ -10008,7 +10011,7 @@ async function notifyInspiredBy(inspiredByPostId){
   const ownerId = postRows && postRows[0]?.user_id;
   if(ownerId && ownerId !== currentUserId){
     await createNotification(ownerId, 'inspired', inspiredByPostId);
-    sendPushTo(ownerId, 'Meet Me', `${currentMeetNumber || 'Someone'} was inspired by your post.`, '/');
+    sendPushTo(ownerId, pushSenderName(), 'was inspired by your post.', '/');
   }
 }
 
@@ -10392,19 +10395,37 @@ async function markChatMessagesReadFromOther(){
     .is('read_at', null);
 }
 
+// Ticks on your own messages: one = sent, two = their phone has it, two (green) = they've read it.
+function paintTicks(el, m){
+  const state = m.read_at ? 'seen' : (m.delivered_at ? 'delivered' : 'sent');
+  el.className = 'msg-ticks ' + state;
+  el.textContent = state === 'sent' ? '✓' : '✓✓';
+  el.title = state === 'seen' ? 'Seen' : state === 'delivered' ? 'Delivered' : 'Sent';
+}
 function updateChatSeenLabel(){
   const container = document.getElementById('chat-thread-messages');
   container.querySelectorAll('.seen-label').forEach(el => el.remove());
-  const myMsgs = Object.values(chatMessagesById)
-    .filter(m => m.sender_id === currentUserId)
-    .sort((a,b) => new Date(a.sent_at) - new Date(b.sent_at));
-  const last = myMsgs[myMsgs.length - 1];
-  if(last && last.read_at){
-    const label = document.createElement('div');
-    label.className = 'seen-label';
-    label.textContent = 'Seen';
-    container.appendChild(label);
-  }
+  container.querySelectorAll('.room-msg-wrap.me[data-msg-id]').forEach(w => {
+    const m = chatMessagesById[w.dataset.msgId];
+    const t = w.querySelector('.msg-ticks');
+    if(m && t) paintTicks(t, m);
+  });
+}
+
+// "Delivered" = the other phone's app received it. Best-effort: if the
+// delivered_at column doesn't exist yet this quietly does nothing.
+let deliveredColumnMissing = false;
+function noteDeliveredError(error){ if(error && /delivered_at/i.test(error.message || '')) deliveredColumnMissing = true; }
+async function markMessageDelivered(id){
+  if(deliveredColumnMissing || !id) return;
+  const { error } = await sb.from('chat_messages').update({ delivered_at: new Date().toISOString() }).eq('id', id).is('delivered_at', null);
+  noteDeliveredError(error);
+}
+async function markBacklogDelivered(chatIds){
+  if(deliveredColumnMissing || !chatIds || !chatIds.length || !currentUserId) return;
+  const { error } = await sb.from('chat_messages').update({ delivered_at: new Date().toISOString() })
+    .in('chat_id', chatIds).neq('sender_id', currentUserId).is('delivered_at', null);
+  noteDeliveredError(error);
 }
 
 async function acceptFriendRequest(requestId, otherUserId){
@@ -10420,7 +10441,7 @@ async function acceptFriendRequest(requestId, otherUserId){
   }
 
   await createNotification(otherUserId, 'friend_accept', requestId);
-  sendPushTo(otherUserId, 'Meet Me', `${currentMeetNumber || 'Someone'} accepted your friend request — Chat is open.`, '/');
+  sendPushTo(otherUserId, pushSenderName(), 'accepted your friend request — Chat is open.', '/');
   await loadMyFriendMap();
   await loadChatList();
 }
@@ -10435,9 +10456,17 @@ function pinIconSvg(pinned){
     : `<svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 1a4 4 0 0 0-4 4c0 3 4 8 4 8s4-5 4-8a4 4 0 0 0-4-4z"/></svg>`;
 }
 
+// The circle shows only the meet number (57, 346...), never part of an id.
+function avatarLabel(name){
+  const n = String(name || '').trim();
+  if(n === 'Meet Founder') return '✦';
+  const m = /^(?:Meet\s*)?(\d+)$/i.exec(n);
+  return m ? m[1] : '·';
+}
+
 function chatRowHtml({ chatId, otherId, name, preview, pinned, unread }){
   return `
-    <div class="chat-avatar">${escapeHtml(otherId.slice(0,3))}</div>
+    <div class="chat-avatar">${escapeHtml(avatarLabel(name))}</div>
     <div class="chat-info">
       ${pinned ? '<div class="chat-pinned-label">pinned</div>' : ''}
       <div class="chat-name">${escapeHtml(name)}</div>
@@ -10453,9 +10482,33 @@ function chatRowHtml({ chatId, otherId, name, preview, pinned, unread }){
 // (myFriendChatIds / myFriendMeetNumbers / chatPreviewCache) -- no network
 // call, no gap where the list is empty. loadChatList() calls this first,
 // then quietly refreshes the cache in the background and calls it again.
+let chatListSig = '';
+// The list is kept on the phone between sessions so the very first paint
+// already has the right names, previews and order (nothing "corrects
+// itself" afterwards).
+function saveChatCache(){
+  try{
+    if(!currentUserId || !Object.keys(myFriendChatIds).length) return;
+    const previews = {};
+    Object.entries(chatPreviewCache).forEach(([k, v]) => { previews[k] = { preview: v.preview, lastAt: v.lastAt }; });
+    localStorage.setItem('mm_chat_cache', JSON.stringify({ uid: currentUserId, ids: myFriendChatIds, names: myFriendMeetNumbers, previews }));
+  }catch(e){}
+}
+function restoreChatCache(){
+  try{
+    if(!currentUserId) return;
+    const c = JSON.parse(localStorage.getItem('mm_chat_cache') || 'null');
+    if(!c || c.uid !== currentUserId) return;
+    Object.assign(myFriendChatIds, c.ids || {});
+    Object.assign(myFriendMeetNumbers, c.names || {});
+    Object.entries(c.previews || {}).forEach(([k, v]) => { if(!chatPreviewCache[k]) chatPreviewCache[k] = { preview: v.preview, lastAt: v.lastAt }; });
+  }catch(e){}
+}
+
 function renderCachedChatRows(){
   const section = document.getElementById('chat-rows-section');
   if(!section) return;
+  if(!Object.keys(myFriendChatIds).length) restoreChatCache();
   if(!Object.keys(myFriendChatIds).length && section.childElementCount) return; // keep the instant copy until real data arrives
   const pinnedIds = getPinnedChatIds();
   const entries = Object.entries(myFriendChatIds).map(([otherId, chatId]) => {
@@ -10477,6 +10530,11 @@ function renderCachedChatRows(){
     return bTime - aTime;
   });
 
+  // Same content as what's already on screen: leave it alone (no flicker, no jumping).
+  const sig = JSON.stringify(entries.map(e => [e.chatId, e.name, e.preview, e.pinned, e.unread]));
+  if(sig === chatListSig && section.childElementCount) return;
+  chatListSig = sig;
+
   const frag = document.createDocumentFragment();
   entries.forEach(en => {
     const row = document.createElement('div');
@@ -10488,6 +10546,7 @@ function renderCachedChatRows(){
   });
   section.replaceChildren(frag);
   updateChatEmptyNote();
+  saveChatCache();
 }
 
 function updateChatEmptyNote(){
@@ -10547,7 +10606,7 @@ async function loadChatList(){
       const row = document.createElement('div');
       row.className = 'chat-row';
       row.innerHTML = `
-        <div class="chat-avatar">${fr.as_founder ? '✦' : fr.sender_id.slice(0,3)}</div>
+        <div class="chat-avatar">${fr.as_founder ? '✦' : escapeHtml(avatarLabel(name))}</div>
         <div class="chat-info">
           <div class="chat-name">${escapeHtml(name)}</div>
           <div class="chat-preview">wants to be friends</div>
@@ -10560,7 +10619,7 @@ async function loadChatList(){
       const row = document.createElement('div');
       row.className = 'chat-row';
       row.innerHTML = `
-        <div class="chat-avatar">${fr.receiver_id.slice(0,3)}</div>
+        <div class="chat-avatar">${escapeHtml(avatarLabel(name))}</div>
         <div class="chat-info">
           <div class="chat-name">${escapeHtml(name)}</div>
           <div class="chat-preview">request sent</div>
@@ -10672,6 +10731,7 @@ async function refreshChatUnread(){
   if(currentChatId && isChatThreadOpen()) delete map[currentChatId];   // the one on screen is being read
   chatUnreadByChat = map;
   paintChatUnread();
+  markBacklogDelivered(chatIds);   // anything that reached this phone while the app was closed
 }
 
 function startChatUnreadWatch(){
@@ -10688,6 +10748,7 @@ function startChatUnreadWatch(){
         if(!Object.values(myFriendChatIds).includes(m.chat_id)) return;
       }
       chatPreviewCache[m.chat_id] = { preview: m.sticker_url ? '🏷 sent a sticker' : m.content, lastAt: m.sent_at, _batched: true };
+      markMessageDelivered(m.id);
       if(isChatThreadOpen() && String(currentChatId) === String(m.chat_id)){ return; }   // already reading it
       chatUnreadByChat[m.chat_id] = (chatUnreadByChat[m.chat_id] || 0) + 1;
       paintChatUnread();
@@ -10703,15 +10764,22 @@ function startChatUnreadWatch(){
 
 // Anything that arrived while the app was in the background (realtime pauses there).
 document.addEventListener('visibilitychange', ()=>{
-  if(document.visibilityState === 'visible') refreshChatUnread();
+  if(document.visibilityState === 'visible'){
+    refreshChatUnread();
+    // Realtime sleeps while the app is in the background, so the bell must catch up by hand.
+    refreshNotifDot();
+    if(notifOverlay.classList.contains('show')) loadNotifications();
+    clearShownPushes();
+  }
 });
+window.addEventListener('focus', ()=>{ clearShownPushes(); });
 
 let currentChatChannel = null;
 
 async function openChatThread(chatId, otherUserId){
   currentChatId = chatId;
   currentChatOtherUserId = otherUserId;
-  document.getElementById('chat-thread-title').textContent = 'Meet ' + otherUserId.slice(0,6); // placeholder until the real lookup below resolves
+  document.getElementById('chat-thread-title').textContent = myFriendMeetNumbers[otherUserId] || ('Meet ' + otherUserId.slice(0,6)); // known name straight away; the lookup below only confirms it
   sb.from('users').select('meet_number').eq('id', otherUserId).maybeSingle().then(({ data }) => {
     if(data?.meet_number) document.getElementById('chat-thread-title').textContent = myFounderFriendIds.has(otherUserId) ? 'Meet Founder' : data.meet_number;
   });
@@ -10761,6 +10829,7 @@ function appendChatMessage(m){
   const quoteHtml = m.reply_to_id ? replyQuoteHtml(chatMessagesById[m.reply_to_id], 'You', document.getElementById('chat-thread-title').textContent) : '';
   if(m.sticker_url) div.innerHTML = quoteHtml + stickerHtml(m.sticker_url, 130);
   else div.innerHTML = quoteHtml + `<span class="msg-body-text">${escapeHtml(m.content)}</span>`;
+  if(isMe){ const t = document.createElement('span'); paintTicks(t, m); div.appendChild(t); }
   wrap.appendChild(div);
   container.appendChild(wrap);
   container.scrollTop = container.scrollHeight;
@@ -10795,7 +10864,7 @@ async function sendChatMessage(){
   clearChatReplyingTo();
   const { error } = await sb.from('chat_messages').insert({ chat_id: currentChatId, sender_id: currentUserId, content: text, reply_to_id: replyToId });
   if(error) console.error('Error sending chat message:', error);
-  sendPushTo(currentChatOtherUserId, myFounderSentChatIds.has(currentChatId) ? 'Meet Founder' : 'Meet ' + (currentMeetNumber || ''), text.length > 80 ? text.slice(0,77) + '...' : text, '/');
+  sendPushTo(currentChatOtherUserId, myFounderSentChatIds.has(currentChatId) ? 'Meet Founder' : pushSenderName(), text.length > 80 ? text.slice(0,77) + '...' : text, '/', 'chat-' + currentChatId);
   // no manual reload -- the realtime subscription renders it for both sides
 }
 
@@ -10805,7 +10874,7 @@ async function sendChatSticker(url){
   clearChatReplyingTo();
   const { error } = await sb.from('chat_messages').insert({ chat_id: currentChatId, sender_id: currentUserId, content: '', sticker_url: url, reply_to_id: replyToId });
   if(error){ console.error('Error sending chat sticker:', error); return; }
-  sendPushTo(currentChatOtherUserId, myFounderSentChatIds.has(currentChatId) ? 'Meet Founder' : 'Meet ' + (currentMeetNumber || ''), 'sent a sticker', '/');
+  sendPushTo(currentChatOtherUserId, myFounderSentChatIds.has(currentChatId) ? 'Meet Founder' : pushSenderName(), 'sent a sticker', '/', 'chat-' + currentChatId);
   // no manual reload -- the realtime subscription renders it for both sides
 }
 
@@ -12769,7 +12838,7 @@ async function runSearch(){
     row.className = 'search-user-row user-link';
     row.dataset.userId = u.id;
     row.innerHTML = `
-      <div class="chat-avatar">${u.id.slice(0,3)}</div>
+      <div class="chat-avatar">${escapeHtml(avatarLabel(u.meet_number))}</div>
       <div class="chat-info"><div class="chat-name">${escapeHtml(u.meet_number)}</div></div>`;
     results.appendChild(row);
   });
@@ -13234,7 +13303,25 @@ document.getElementById('profile-push-row').addEventListener('click', async ()=>
 // awaited by its caller in a way that would block the UI -- if this
 // silently fails (they never enabled push, or it errors), nothing about
 // the rest of the app should notice or care.
-async function sendPushTo(userId, title, body, url){
+// Takes the phone's notification-shade entries away once the app is open:
+// everything in them is already inside the app (bell, chat list).
+// Who a push is "from": always a real name in the title, never a bare "Meet Me".
+function pushSenderName(){
+  const n = String(currentMeetNumber || '').trim();
+  if(!n) return 'Someone';
+  return /^meet\b/i.test(n) ? n : 'Meet ' + n;
+}
+
+async function clearShownPushes(){
+  try{
+    if(!('serviceWorker' in navigator)) return;
+    const reg = swRegistration || await navigator.serviceWorker.getRegistration();
+    if(!reg || !reg.getNotifications) return;
+    (await reg.getNotifications()).forEach(n => n.close());
+  }catch(e){}
+}
+
+async function sendPushTo(userId, title, body, url, tag){
   if(!userId || userId === currentUserId) return;
   try{
     const { data: { session } } = await sb.auth.getSession();
@@ -13245,7 +13332,7 @@ async function sendPushTo(userId, title, body, url){
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${session.access_token}`
       },
-      body: JSON.stringify({ user_id: userId, title, body, url: url || '/' })
+      body: JSON.stringify({ user_id: userId, title, body, url: url || '/', tag: tag || undefined })
     });
   } catch(err){
     console.error('sendPushTo failed (non-fatal):', err);
@@ -14162,6 +14249,7 @@ document.addEventListener('DOMContentLoaded', async function(){
   await refreshNotifDot();
   startNotifRealtime();
   await registerServiceWorker();
+  clearShownPushes();
   await refreshPushRowLabel();
   setTimeout(updateComposeVisibility, 200);
   maybeShowOnlineCount(); // fire-and-forget -- never blocks the rest of init

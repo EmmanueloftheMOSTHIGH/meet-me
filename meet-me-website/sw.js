@@ -1,54 +1,50 @@
-// Meet Me service worker: web push + a light offline fallback.
-// Bump VERSION whenever you ship a new index.html so installed copies refresh.
-const VERSION = 'mm-v1';
-const SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
+// Meet Me service worker — handles incoming web push notifications.
 
-self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+self.addEventListener('install', function (event) {
+  self.skipWaiting();
 });
 
-self.addEventListener('activate', (e) => {
-  e.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k))))
-      .then(() => self.clients.claim())
+self.addEventListener('activate', function (event) {
+  event.waitUntil(self.clients.claim());
+});
+
+self.addEventListener('push', function (event) {
+  var data = { title: 'Meet Me', body: 'Something new happened.' };
+  if (event.data) {
+    try { data = event.data.json(); } catch (e) { data.body = event.data.text(); }
+  }
+  var options = {
+    body: data.body,
+    // No tag = its own notification. A tag (e.g. one per chat) makes newer
+    // messages replace the older one, and renotify still alerts you.
+    tag: data.tag || undefined,
+    renotify: !!data.tag,
+    icon: data.icon,
+    badge: data.badge,
+    data: { url: data.url || './' }
+  };
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (clientList) {
+      // The app is open and on screen: everything is already visible inside it
+      // (toast, badge, bell), so don't also pop a notification on top.
+      for (var i = 0; i < clientList.length; i++) {
+        if (clientList[i].visibilityState === 'visible') return;
+      }
+      return self.registration.showNotification(data.title || 'Meet Me', options);
+    })
   );
 });
 
-// Network-first for the page itself (so updates always win), cached copy only when offline.
-// Everything else (Supabase API, realtime, fonts, CDN scripts) goes straight to the network.
-self.addEventListener('fetch', (e) => {
-  const req = e.request;
-  if (req.method !== 'GET' || req.mode !== 'navigate') return;
-  e.respondWith(
-    fetch(req).then((res) => {
-      const copy = res.clone();
-      caches.open(VERSION).then((c) => c.put('./index.html', copy));
-      return res;
-    }).catch(() => caches.match('./index.html'))
-  );
-});
-
-self.addEventListener('push', (e) => {
-  let data = {};
-  try { data = e.data ? e.data.json() : {}; }
-  catch (_) { data = { body: e.data ? e.data.text() : '' }; }
-  const title = data.title || 'Meet Me';
-  e.waitUntil(self.registration.showNotification(title, {
-    body: data.body || '',
-    icon: 'icon-192.png',
-    badge: 'icon-192.png',
-    data: { url: data.url || './' },
-  }));
-});
-
-self.addEventListener('notificationclick', (e) => {
-  e.notification.close();
-  const url = (e.notification.data && e.notification.data.url) || './';
-  e.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
-      for (const c of list) { if ('focus' in c) return c.focus(); }
-      return self.clients.openWindow(url);
+self.addEventListener('notificationclick', function (event) {
+  event.notification.close();
+  var targetUrl = (event.notification.data && event.notification.data.url) || './';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (clientList) {
+      for (var i = 0; i < clientList.length; i++) {
+        var client = clientList[i];
+        if ('focus' in client) { return client.focus(); }
+      }
+      if (self.clients.openWindow) { return self.clients.openWindow(targetUrl); }
     })
   );
 });
