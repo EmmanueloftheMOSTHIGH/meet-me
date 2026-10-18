@@ -4583,7 +4583,7 @@ if(document.documentElement.classList.contains('mm-resume')){
         Array.from(tmp.children).forEach(n => feedEl0.insertBefore(n, boundary0));
         feedEl0.scrollTop = snap.feedScroll || 0;
       }
-      if(snap.chat){ document.getElementById('chat-list').innerHTML = snap.chat; }
+      if(snap.chat && snap.chatV === 2){ document.getElementById('chat-list').innerHTML = snap.chat; }
     }
   }catch(e){}
 }
@@ -10483,6 +10483,7 @@ function chatRowHtml({ chatId, otherId, name, preview, pinned, unread }){
 // call, no gap where the list is empty. loadChatList() calls this first,
 // then quietly refreshes the cache in the background and calls it again.
 let chatListSig = '';
+let chatPreviewsLoaded = false;   // true once the real last messages have arrived at least once this session
 // The list is kept on the phone between sessions so the very first paint
 // already has the right names, previews and order (nothing "corrects
 // itself" afterwards).
@@ -10499,8 +10500,8 @@ function restoreChatCache(){
     if(!currentUserId) return;
     const c = JSON.parse(localStorage.getItem('mm_chat_cache') || 'null');
     if(!c || c.uid !== currentUserId) return;
-    Object.assign(myFriendChatIds, c.ids || {});
-    Object.assign(myFriendMeetNumbers, c.names || {});
+    if(!Object.keys(myFriendChatIds).length) Object.assign(myFriendChatIds, c.ids || {});
+    Object.entries(c.names || {}).forEach(([k, v]) => { if(!myFriendMeetNumbers[k]) myFriendMeetNumbers[k] = v; });
     Object.entries(c.previews || {}).forEach(([k, v]) => { if(!chatPreviewCache[k]) chatPreviewCache[k] = { preview: v.preview, lastAt: v.lastAt }; });
   }catch(e){}
 }
@@ -10508,7 +10509,7 @@ function restoreChatCache(){
 function renderCachedChatRows(){
   const section = document.getElementById('chat-rows-section');
   if(!section) return;
-  if(!Object.keys(myFriendChatIds).length) restoreChatCache();
+  if(!Object.keys(myFriendChatIds).length || !Object.keys(chatPreviewCache).length) restoreChatCache();
   if(!Object.keys(myFriendChatIds).length && section.childElementCount) return; // keep the instant copy until real data arrives
   const pinnedIds = getPinnedChatIds();
   const entries = Object.entries(myFriendChatIds).map(([otherId, chatId]) => {
@@ -10516,7 +10517,7 @@ function renderCachedChatRows(){
     return {
       chatId, otherId,
       name: myFriendMeetNumbers[otherId] || ('Meet ' + otherId.slice(0,6)),
-      preview: cached.preview || 'say hello',
+      preview: cached.preview || (chatPreviewsLoaded ? 'say hello' : ''),
       lastAt: cached.lastAt || null,
       pinned: pinnedIds.has(chatId),
       unread: chatUnreadByChat[chatId] || 0
@@ -10635,6 +10636,7 @@ async function loadChatList(){
     // opening the tab wait on a burst of network calls before anything
     // would show up.
     const chatIds = Object.values(myFriendChatIds);
+    let msgErrOccurred = false;
     if(chatIds.length){
       const { data: msgRows, error: msgErr } = await sb
         .from('chat_messages')
@@ -10642,7 +10644,7 @@ async function loadChatList(){
         .in('chat_id', chatIds)
         .order('sent_at', { ascending: false })
         .limit(500);
-      if(msgErr) console.error('Error batch-loading chat previews:', msgErr);
+      if(msgErr){ console.error('Error batch-loading chat previews:', msgErr); msgErrOccurred = true; }
       (msgRows||[]).forEach(m => {
         // Rows arrive newest-first, so the first one seen per chat_id is
         // that chat's latest message -- skip any chat already recorded.
@@ -10652,6 +10654,7 @@ async function loadChatList(){
       });
     }
 
+    if(!msgErrOccurred) chatPreviewsLoaded = true;
     await refreshChatUnread();
     updateChatEmptyNote();
   }catch(e){
@@ -13369,7 +13372,7 @@ function saveSnapshot(){
     const posts = Array.from(feedEl.querySelectorAll('.post')).slice(0, 15).map(snapHtml).join('');
     if(posts){ snap.feed = posts; snap.feedScroll = feedEl.scrollTop; }
     const chatEl = document.getElementById('chat-list');
-    if(chatEl.querySelector('.chat-row')) snap.chat = chatEl.innerHTML;
+    if(chatEl.querySelector('.chat-row') && chatPreviewsLoaded){ snap.chat = chatEl.innerHTML; snap.chatV = 2; }
     const orgsEl = document.getElementById('orgs-list');
     if(orgsEl && orgsEl.querySelector('.post')){
       let n = 0; const keep = [];
