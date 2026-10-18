@@ -2079,6 +2079,7 @@
 .reply-preview-text b{ color:var(--gold-text); font-weight:600; }
 .reply-preview-cancel{ cursor:pointer; color:var(--muted-dim); font-size:13px; flex-shrink:0; }
 
+.notif-item-snippet{ font-size:12.5px; color:var(--muted); margin-top:3px; line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
 .seen-label{ font-size:10.5px; color:var(--muted-dim); align-self:flex-end; margin:-6px 4px 2px 0; }
 .msg-ticks{ display:block; text-align:right; font-size:10px; line-height:1; margin-top:3px; letter-spacing:-1px; color:rgba(240,230,210,0.55); }
 .msg-ticks.seen{ color:#7fe0b4; }
@@ -10210,6 +10211,12 @@ const NOTIF_NAV = {
       const { data: sp } = await sb.from('posts').select('story_number').eq('id', n.reference_id).maybeSingle();
       if(sp && sp.story_number) return openPostRepliesSheet(n.reference_id, true);
     }
+    if(n._otherId){
+      await openPostRepliesSheet(n.reference_id);
+      const t = currentRepliesThreads[n._otherId];
+      if(t) openPrivateThreadDetail(n._otherId, t.name || 'Someone', t.rows);
+      return;
+    }
     return navigateToPost(n.reference_id);
   },
   reply_back: (n)=>{ notifOverlay.classList.remove('show'); return openPrivateThreadFromNotification(n.reference_id); },
@@ -10249,6 +10256,24 @@ async function loadNotifications(){
     notifs.forEach(n => { if(n.type === 'reply_back' && storyById[n.reference_id]) n._story = storyById[n.reference_id]; });
   }
 
+  // Reply notifications carry no text of their own: look up the message itself so the bell can show it.
+  const replyPostIds = [...new Set(notifs.filter(n => (n.type === 'reply' || n.type === 'reply_back') && n.reference_id).map(n => n.reference_id))];
+  if(replyPostIds.length){
+    const { data: replyRows } = await sb.from('replies')
+      .select('post_id, sender_id, content, sticker_url, created_at')
+      .eq('receiver_id', currentUserId).in('post_id', replyPostIds)
+      .order('created_at', { ascending: false }).limit(300);
+    notifs.forEach(n => {
+      if(n.type !== 'reply' && n.type !== 'reply_back') return;
+      const at = Date.parse(n.created_at) + 5000;
+      const row = (replyRows || []).find(r => String(r.post_id) === String(n.reference_id) && r.sender_id === n.actor_id && Date.parse(r.created_at) <= at);
+      if(!row) return;
+      n._otherId = row.sender_id;
+      const txt = row.sticker_url && !row.content ? '🏷 sent a sticker' : String(row.content || '').trim();
+      n._snippet = txt.length > 90 ? txt.slice(0, 87) + '...' : txt;
+    });
+  }
+
   const list = document.getElementById('notif-list');
   list.innerHTML = '';
   if(!notifs.length){
@@ -10264,6 +10289,7 @@ async function loadNotifications(){
       <div class="notif-item-icon">${n.type === 'like' ? '♥' : n.type === 'inspired' ? '↻' : n.type === 'system' ? '✦' : n.type === 'org_post' ? '◈' : (n.type === 'community_post' || n.type === 'community_message') ? '◍' : '◐'}</div>
       <div class="notif-item-body">
         <div class="notif-item-text">${NOTIF_TEXT[n.type] ? NOTIF_TEXT[n.type](n) : 'Update.'}</div>
+        ${n._snippet ? `<div class="notif-item-snippet">“${escapeHtml(n._snippet)}”</div>` : ''}
         <div class="notif-item-time">${formatRelativeTime(n.created_at)}</div>
       </div>`;
     if(canNavigate){
