@@ -559,7 +559,7 @@
   @media (prefers-reduced-motion: reduce){ #org-manage{ transition:none; transform:none; } }
   .orgpage-own{ font-size:12px; color:var(--muted-dim); margin-bottom:8px; }
   .orgpage-nameline{ display:flex; align-items:center; gap:8px; margin-top:10px; }
-  #orgpage-name{ font-family:'Fraunces',serif; font-size:23px; color:var(--ivory); }
+  #orgpage-name{ font-family:'Fraunces',serif; font-size:23px; color:var(--ivory); margin-left:-2px; }   /* the big serif letter has a built-in gap on its left; pull it back so the name lines up with the logo and the line below */
   #orgpage-tag{ font-size:9.5px; font-weight:600; padding:1px 7px; border-radius:999px; color:var(--gold-text); border:1px solid color-mix(in srgb, var(--gold) 60%, transparent); }
   #orgpage-tag:empty{ display:none; }
   #orgpage-sub{ font-size:13.5px; line-height:1.5; color:var(--muted); margin-top:4px; }
@@ -1167,7 +1167,7 @@
   .org-list-name{ font-size:14px; color:var(--ivory); }
   .org-list-main{ display:flex; flex-direction:column; min-width:0; }
   .org-list-tag{ font-size:11.5px; color:var(--muted); font-style:italic; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .org-tagline{ font-size:12px; line-height:1.35; color:var(--muted); font-style:italic; margin:-5px 0 10px; }
+  .org-tagline{ font-size:12px; line-height:1.35; color:var(--muted); font-style:italic; margin:-5px 0 10px -1px; }
   .org-tagline-edit{ display:flex; align-items:center; gap:8px; margin:0 0 12px; flex-wrap:wrap; }
   .org-tagline-input{ flex:1; min-width:0; background:var(--card); border:1px solid var(--card-border); border-radius:10px; padding:10px 12px; color:var(--ivory); font-size:14px; outline:none; }
   .org-tagline-input:focus{ border-color:var(--gold-dim); }
@@ -14987,7 +14987,7 @@ const BACK_LAYERS = [
   ['game-overlay','game-back'], ['room-overlay','room-back'], ['chat-thread-overlay','chat-thread-back'],
   ['community-thread-overlay','community-thread-back'],
   ['happening-view-overlay','happening-view-back'], ['user-profile-overlay','user-profile-back'],
-  ['bookmarks-overlay','bookmarks-back'], ['yourreplies-overlay','yourreplies-back'], ['yourweek-overlay','yourweek-back'], ['orgposts-overlay','orgposts-back'], ['org-manage','manage-back'],
+  ['bookmarks-overlay','bookmarks-back'], ['yourreplies-overlay','yourreplies-back'], ['yourweek-overlay','yourweek-back'], ['orgposts-overlay','orgposts-back'], ['org-page','orgpage-back'], ['strip-viewer','strip-close'], ['org-manage','manage-back'],
   ['yourposts-overlay','yourposts-back'], ['search-overlay','search-back']
 ];
 
