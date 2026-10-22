@@ -347,8 +347,10 @@
   #orgs-list{ display:flex; flex-direction:column; gap:14px; }
   .orgs-head{ display:flex; align-items:center; justify-content:space-between; padding:6px 2px 0; }
   .orgs-head-title{ font-family:'Fraunces',serif; font-size:19px; color:var(--ivory); }
-  .orgs-head-btn{ font-size:12.5px; font-weight:600; color:var(--bg); background:var(--gold); border:1px solid transparent; border-radius:14px; padding:7px 16px; cursor:pointer; box-shadow:0 0 0 1px var(--gold-dim), 0 4px 14px rgba(212,168,87,0.22); transition:transform 0.12s ease, opacity 0.12s ease; }
-  .orgs-head-btn:active{ transform:scale(0.96); opacity:0.85; }
+  .orgs-head-btn{ display:inline-flex; align-items:center; gap:7px; font-size:13px; font-weight:500; letter-spacing:0.02em; color:var(--ivory); background:transparent; border:1px solid color-mix(in srgb, var(--ivory) 22%, transparent); border-radius:8px; padding:8px 14px; cursor:pointer; box-shadow:none; transition:background 0.15s ease, border-color 0.15s ease; }
+  .orgs-head-btn svg{ width:15px; height:15px; flex:none; opacity:0.75; }
+  @media (hover:hover){ .orgs-head-btn:hover{ background:color-mix(in srgb, var(--ivory) 6%, transparent); border-color:color-mix(in srgb, var(--ivory) 36%, transparent); } }
+  .orgs-head-btn:active{ background:color-mix(in srgb, var(--ivory) 10%, transparent); }
   .orgs-section{ font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted-dim); padding:4px 2px 0; }
   .orgs-note{ font-size:12.5px; line-height:1.5; color:var(--muted); background:rgba(0,0,0,0.25); border:1px solid var(--card-border); border-radius:12px; padding:12px 14px; }
   .orgs-note b{ display:block; color:var(--ivory); font-weight:600; margin-bottom:3px; }
@@ -2672,7 +2674,7 @@
         <div id="orgs-pull-indicator">↓ pull to refresh</div>
         <div class="orgs-head">
           <span class="orgs-head-title">Organisations</span>
-          <span class="orgs-head-btn" id="orgs-browse-btn" role="button" aria-label="Search or browse organisations">🔍 Search</span>
+          <span class="orgs-head-btn" id="orgs-browse-btn" role="button" aria-label="Search or browse organisations"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Search</span>
         </div>
         <div id="orgs-strip"></div>
         <div id="orgs-list"></div>
