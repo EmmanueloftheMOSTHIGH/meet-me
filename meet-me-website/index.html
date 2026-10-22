@@ -559,10 +559,10 @@
   @media (prefers-reduced-motion: reduce){ #org-manage{ transition:none; transform:none; } }
   .orgpage-own{ font-size:12px; color:var(--muted-dim); margin-bottom:8px; }
   .orgpage-nameline{ display:flex; align-items:center; gap:8px; margin-top:10px; }
-  #orgpage-name{ font-family:'Fraunces',serif; font-size:23px; color:var(--ivory); margin-left:-2px; }   /* the big serif letter has a built-in gap on its left; pull it back so the name lines up with the logo and the line below */
+  #orgpage-name{ font-family:'Fraunces',serif; font-size:23px; color:var(--ivory); }
   #orgpage-tag{ font-size:9.5px; font-weight:600; padding:1px 7px; border-radius:999px; color:var(--gold-text); border:1px solid color-mix(in srgb, var(--gold) 60%, transparent); }
   #orgpage-tag:empty{ display:none; }
-  #orgpage-sub{ font-size:13.5px; line-height:1.5; color:var(--muted); margin-top:4px; }
+  #orgpage-sub{ font-size:13.5px; line-height:1.5; color:color-mix(in srgb, var(--ivory) 72%, var(--bg)); margin-top:4px; }
   #orgpage-meta{ display:flex; align-items:center; gap:16px; font-size:12px; color:var(--muted-dim); margin-top:14px; padding-top:12px; border-top:1px solid var(--card-border); }
   .orgpage-act{ cursor:pointer; color:var(--muted); }
   .orgpage-act.on{ color:var(--gold-light); }
@@ -1167,7 +1167,10 @@
   .org-list-name{ font-size:14px; color:var(--ivory); }
   .org-list-main{ display:flex; flex-direction:column; min-width:0; }
   .org-list-tag{ font-size:11.5px; color:var(--muted); font-style:italic; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .org-tagline{ font-size:12px; line-height:1.35; color:var(--muted); font-style:italic; margin:-5px 0 10px -1px; }
+  /* The tagline belongs to the organisation's name, so it sits directly under the name (past the 9px dot + 7px gap), and is clearer to read. */
+  .org-tagline{ font-size:12.5px; line-height:1.35; color:color-mix(in srgb, var(--ivory) 72%, var(--bg)); font-style:italic; margin:-5px 0 10px; }
+  .post .org-tagline{ padding-left:16px; }
+  #strip-body .org-tagline{ padding-left:0; }
   .org-tagline-edit{ display:flex; align-items:center; gap:8px; margin:0 0 12px; flex-wrap:wrap; }
   .org-tagline-input{ flex:1; min-width:0; background:var(--card); border:1px solid var(--card-border); border-radius:10px; padding:10px 12px; color:var(--ivory); font-size:14px; outline:none; }
   .org-tagline-input:focus{ border-color:var(--gold-dim); }
