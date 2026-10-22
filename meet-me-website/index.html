@@ -52,6 +52,30 @@
     --moon-card:#eeecf4;
   }
 
+  /* White & Gold -- warm paper background, white cards, ink text, gold kept for small accents only. */
+  #root[data-theme="white"]{
+    --bg:#faf7f0;
+    --bg-elevated:#f1ecdf;
+    --card:#ffffff;
+    --card-border:rgba(60,45,15,0.11);
+    --gold:#b8892f;
+    --gold-light:#c99a3a;
+    --gold-dim:rgba(184,137,47,0.5);
+    --gold-text:#8a6416;
+    --ivory:#1c1913;
+    --muted:#6b6455;
+    --muted-dim:#9a917e;
+    --sq1:#c99a3a;
+    --sq2:#b8892f;
+    --sq3:#d8ae52;
+    --sq4:#a47820;
+    --moon:#6b7385;
+    --moon-dim:rgba(107,115,133,0.45);
+    --moon-surface:#eef0f4;
+    --moon-surface-border:rgba(107,115,133,0.22);
+    --moon-card:#f5f6f9;
+  }
+
   /* Aurora -- the Sunday-only palette. Sunday is the resting day in the
      seven-day creation week, so it gets its own look instead of the
      usual gold (dark) or gold (light): deep night-sky background with
@@ -77,6 +101,29 @@
     --moon-surface:#161428;
     --moon-surface-border:rgba(168,120,232,0.18);
     --moon-card:#1e1a38;
+  }
+  /* Aurora Light -- the same Sunday look by day: pale mint paper, white cards, the greens/teals/violets deepened so they read on light. */
+  #root[data-theme="aurora-light"]{
+    --bg:#f1f8f5;
+    --bg-elevated:#e4f0ea;
+    --card:#ffffff;
+    --card-border:rgba(20,70,55,0.12);
+    --gold:#1f9d74;
+    --gold-light:#2bb386;
+    --gold-dim:rgba(31,157,116,0.5);
+    --gold-text:#13795a;
+    --ivory:#0f1f1a;
+    --muted:#55706a;
+    --muted-dim:#8aa39c;
+    --sq1:#1f9d74;
+    --sq2:#5866d6;
+    --sq3:#8a5cd0;
+    --sq4:#1a9aa6;
+    --moon:#7a55c8;
+    --moon-dim:rgba(122,85,200,0.45);
+    --moon-surface:#ece8f7;
+    --moon-surface-border:rgba(122,85,200,0.22);
+    --moon-card:#f4f1fb;
   }
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   html,body{ background:#050506; color:var(--ivory); font-family:'Karla',sans-serif; height:100%; overscroll-behavior:none; display:flex; align-items:center; justify-content:center; }
@@ -217,6 +264,10 @@
     transition:background 0.3s ease;
   }
   #root[data-theme="light"] #theme-toggle-dot{ background:var(--gold-light); }
+  #root[data-theme="white"] #theme-toggle-dot{ background:var(--gold); }
+  #root[data-theme="white"] #theme-toggle{ background:#fff; }
+  #root[data-theme="aurora-light"] #theme-toggle-dot{ background:var(--gold); }
+  #root[data-theme="aurora-light"] #theme-toggle{ background:#fff; }
 
   .screen{ display:none; flex:1; flex-direction:column; min-height:0; }
   .screen.active{ display:flex; }
@@ -2611,6 +2662,7 @@
   <div id="phone-screen">
 
 <div id="root">
+<script>try{ var _t = (new Date().getDay() === 0) ? (localStorage.getItem('mm_theme_aurora') === 'light' ? 'aurora-light' : 'aurora') : localStorage.getItem('mm_theme'); if(_t === 'aurora' || _t === 'aurora-light'){ document.getElementById('root').setAttribute('data-theme', _t); var _m0 = document.querySelector('meta[name="theme-color"]'); if(_m0) _m0.setAttribute('content', _t === 'aurora' ? '#0a0e14' : '#f1f8f5'); _t = null; } if(_t === 'dark' || _t === 'white' || _t === 'light'){ document.getElementById('root').setAttribute('data-theme', _t); var _m = document.querySelector('meta[name="theme-color"]'); if(_m) _m.setAttribute('content', {dark:'#0c0c0e', white:'#faf7f0', light:'#d9a94a'}[_t]); } }catch(e){}</script>
 
   <div id="splash">
     <div id="veil-tl" class="veil-piece"></div>
@@ -3782,7 +3834,11 @@ const profileThemeValue = document.getElementById('profile-theme-value');
 
 // Keeps the OS status bar (Android/iOS PWA chrome) in sync with the
 // in-app theme -- otherwise it stays permanently dark even in light mode.
-const THEME_COLORS = { dark: '#0c0c0e', light: '#d9a94a', aurora: '#0a0e14' };
+const THEME_COLORS = { dark: '#0c0c0e', white: '#faf7f0', light: '#d9a94a', aurora: '#0a0e14', 'aurora-light': '#f1f8f5' };
+// Three looks, cycled in this order: Dark -> White & Gold -> Gold. ('light' is the original gold look, kept under its old key.)
+const THEME_ORDER = ['dark', 'white', 'light'];
+const THEME_LABELS = { dark: 'Dark', white: 'White & Gold', light: 'Gold' };
+function currentTheme(){ const t = rootEl.getAttribute('data-theme'); return THEME_ORDER.includes(t) ? t : 'dark'; }
 
 // Aurora Sunday: the resting day in the seven-day creation week gets its
 // own fixed look instead of a user-chosen dark/light theme. Checked
@@ -3801,23 +3857,36 @@ function syncStatusBarColor(theme){
   document.head.appendChild(meta);
 }
 
-themeToggle.addEventListener('click', ()=>{
-  if(isAuroraSunday()) return; // locked to Aurora for the day -- not a user choice
-  const isLight = rootEl.getAttribute('data-theme') === 'light';
-  const newTheme = isLight ? 'dark' : 'light';
+function auroraTheme(){ try{ return localStorage.getItem('mm_theme_aurora') === 'light' ? 'aurora-light' : 'aurora'; }catch(e){ return 'aurora'; } }
+function auroraLabel(t){ return t === 'aurora-light' ? 'Aurora Light (Sunday)' : 'Aurora (Sunday)'; }
+function cycleTheme(){
+  if(isAuroraSunday()){   // Sundays are Aurora; the toggle flips between its dark and light looks
+    const t = rootEl.getAttribute('data-theme') === 'aurora' ? 'aurora-light' : 'aurora';
+    rootEl.setAttribute('data-theme', t);
+    profileThemeValue.textContent = auroraLabel(t);
+    syncStatusBarColor(t);
+    try{ localStorage.setItem('mm_theme_aurora', t === 'aurora-light' ? 'light' : 'dark'); }catch(e){}
+    return;
+  }
+  const newTheme = THEME_ORDER[(THEME_ORDER.indexOf(currentTheme()) + 1) % THEME_ORDER.length];
   rootEl.setAttribute('data-theme', newTheme);
-  profileThemeValue.textContent = isLight ? 'Dark' : 'Light';
+  profileThemeValue.textContent = THEME_LABELS[newTheme];
   syncStatusBarColor(newTheme);
-});
+  try{ localStorage.setItem('mm_theme', newTheme); }catch(e){}
+}
+themeToggle.addEventListener('click', cycleTheme);
+profileThemeValue.parentElement.addEventListener('click', cycleTheme);   // the Theme row in Profile switches it too
+profileThemeValue.parentElement.style.cursor = 'pointer';
+if(!isAuroraSunday()){ profileThemeValue.textContent = THEME_LABELS[currentTheme()]; syncStatusBarColor(currentTheme()); }
 
 // On Sundays, override whatever theme would normally apply: aurora is
 // the day's look, not a toggle state. The toggle dot dims and the click
 // handler above becomes a no-op so it reads as "off" rather than broken.
 if(isAuroraSunday()){
-  rootEl.setAttribute('data-theme', 'aurora');
-  if(profileThemeValue) profileThemeValue.textContent = 'Aurora (Sunday)';
-  themeToggle.style.opacity = '0.4';
-  syncStatusBarColor('aurora');
+  const _a = auroraTheme();
+  rootEl.setAttribute('data-theme', _a);
+  if(profileThemeValue) profileThemeValue.textContent = auroraLabel(_a);
+  syncStatusBarColor(_a);
 }
 
 /* ============================================================
