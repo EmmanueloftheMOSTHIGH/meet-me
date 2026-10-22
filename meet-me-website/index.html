@@ -439,6 +439,17 @@
   #root[data-theme="white"] .strip-item.unseen .strip-ring, #root[data-theme="aurora-light"] .strip-item.unseen .strip-ring{
     border:2px solid var(--oc,#D4AF37); opacity:1; box-shadow:0 0 0 3px color-mix(in srgb, var(--oc,#D4AF37) 20%, transparent);
   }
+  /* Gold theme: the organisation's colour is gold too, so the ring vanished into the page. Use dark ink on a pale disc instead. */
+  #root[data-theme="light"] .strip-ring{
+    color:var(--ivory); background:var(--card);
+    border:1.5px solid color-mix(in srgb, var(--ivory) 45%, transparent); opacity:0.9;
+  }
+  #root[data-theme="light"] .strip-item.unseen .strip-ring{
+    border:2px solid var(--ivory); opacity:1; box-shadow:0 0 0 3px color-mix(in srgb, var(--ivory) 18%, transparent);
+  }
+  #root[data-theme="light"] .strip-label{ color:var(--ivory); opacity:0.8; }
+  #root[data-theme="light"] .strip-item.unseen .strip-label{ opacity:1; font-weight:500; }
+  #root[data-theme="light"] .strip-fd{ border-color:var(--bg); }
   #root[data-theme="white"] .strip-label, #root[data-theme="aurora-light"] .strip-label{ color:var(--ivory); opacity:0.75; }
   #root[data-theme="white"] .strip-item.unseen .strip-label, #root[data-theme="aurora-light"] .strip-item.unseen .strip-label{ opacity:1; font-weight:500; }
   .strip-fd{ position:absolute; top:0; right:5px; width:10px; height:10px; border-radius:50%; background:var(--oc,#D4AF37); border:2px solid var(--bg); animation:orgBlink 1.5s ease-in-out 5; }
