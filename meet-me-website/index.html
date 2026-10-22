@@ -4801,6 +4801,11 @@ try{
     const ol = document.getElementById('orgs-list');
     if(ol && !ol.children.length) ol.innerHTML = snapO.orgs;
   }
+  // The 24-hour strip too: show last time's strip at once; the fresh one swaps in (and becomes tappable) when it arrives.
+  if(snapO && snapO.strip && (Date.now() - (snapO.stripTs || 0)) < 24 * 60 * 60 * 1000){
+    const sb0 = document.getElementById('orgs-strip');
+    if(sb0 && !sb0.children.length) sb0.innerHTML = snapO.strip;
+  }
 }catch(e){}
 // The veil pieces fully cover #main while the splash is up, so the feed can
 // be at full opacity underneath. Fading it in AFTER the veil tears away is
@@ -9726,6 +9731,7 @@ document.getElementById('orgpage-posts').addEventListener('click', async (e)=>{
 
 async function renderOrgsFeed(){
   const list = document.getElementById('orgs-list');
+  const orgsReady = ensureOrgs();   // start loading org names/follows at the same time as the posts, not after them
   const { data: rawPosts, error } = await sb
     .from('posts')
     .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), users!posts_user_id_fkey(meet_number), communities(name, icon)')
@@ -9743,11 +9749,12 @@ async function renderOrgsFeed(){
     }
     return;
   }
-  await ensureOrgs();
+  await orgsReady;
   const rows = (rawPosts || []).filter(p => !myMutedOrgIds.has(p.organization_id));
   const isFollowed = p => !!myFollows[p.organization_id] || myOrgIds.has(p.organization_id);
   const followed = rows.filter(isFollowed);
   const others = rows.filter(p => !isFollowed(p));
+  renderOrgsStrip(rows, null);   // the strip needs only posts + org info, so draw it now instead of waiting for like counts
 
   const [likedIds, likeCounts, inspirationLabels] = await Promise.all([
     (async ()=>{
@@ -9760,7 +9767,7 @@ async function renderOrgsFeed(){
     fetchInspirationLabels(rows)
   ]);
 
-  renderOrgsStrip(rows, { likedIds, likeCounts, inspirationLabels });
+  stripCtx = { likedIds, likeCounts, inspirationLabels };   // the viewer reads likes from here once they arrive
   const frag = document.createDocumentFragment();
   const section = (text) => { const d = document.createElement('div'); d.className = 'orgs-section'; d.textContent = text; frag.appendChild(d); };
   const note = (html) => { const d = document.createElement('div'); d.className = 'orgs-note'; d.innerHTML = html; frag.appendChild(d); };
@@ -14105,6 +14112,9 @@ function saveSnapshot(){
       // otherwise the old posts come back every time the app opens.
       delete snap.orgs; delete snap.orgsTs;
     }
+    const stripEl = document.getElementById('orgs-strip');
+    if(stripEl && stripEl.querySelector('.strip-item') && orgsFeedLoadedAt){ snap.strip = stripEl.innerHTML; snap.stripTs = Date.now(); }
+    else if(stripEl && orgsFeedLoadedAt){ delete snap.strip; delete snap.stripTs; }   // loaded fresh and nothing new: forget the old one
     let str = JSON.stringify(snap);
     if(str.length >= 1500000){ delete snap.orgs; str = JSON.stringify(snap); }
     if(str.length < 1500000) localStorage.setItem('mm_snap', str);
