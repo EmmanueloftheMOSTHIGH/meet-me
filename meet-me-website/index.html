@@ -471,6 +471,8 @@
   #strip-name{ font-size:15px; font-weight:600; color:var(--ivory); }
   #strip-tag{ font-size:9.5px; font-weight:600; padding:1px 7px; border-radius:999px; color:var(--gold-text); border:1px solid color-mix(in srgb, var(--gold) 60%, transparent); }
   #strip-tag:empty{ display:none; }
+  #strip-tagline{ flex-shrink:0; padding:3px 18px 0 37px; font-size:12.5px; line-height:1.35; font-style:italic; color:color-mix(in srgb, var(--ivory) 72%, var(--bg)); }   /* sits under the name: 20px edge + 9px dot + 8px gap */
+  #strip-tagline:empty{ display:none; }
   #strip-time{ margin-left:auto; font-size:11px; color:var(--muted-dim); }
   #strip-close{ width:32px; height:32px; margin-right:-6px; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:18px; cursor:pointer; }
   #strip-body{ flex:1; min-height:0; overflow-y:auto; display:flex; flex-direction:column; padding:18px 26px 8px 28px; -webkit-overflow-scrolling:touch; }
@@ -746,6 +748,12 @@
     display:inline-block; width:9px; height:9px; border-radius:50%;
     background:var(--muted-dim); margin-right:7px; vertical-align:middle; flex-shrink:0;
   }
+  /* the dot on a card is tappable: it shows the organisation's tagline for a few seconds (bigger invisible tap area, same look) */
+  .post .post-id .org-dot{ position:relative; cursor:pointer; }
+  .post .post-id .org-dot::after{ content:''; position:absolute; inset:-11px; }
+  #org-tip{ position:fixed; z-index:9999; max-width:min(260px, calc(100vw - 32px)); padding:9px 13px; border-radius:12px; background:var(--bg-elevated); color:var(--ivory); border:1px solid var(--card-border); box-shadow:0 8px 26px rgba(0,0,0,0.28); font-size:12.5px; line-height:1.4; font-style:italic; opacity:0; transform:translateY(-4px); transition:opacity 0.18s ease, transform 0.18s ease; pointer-events:none; }
+  #org-tip.show{ opacity:1; transform:none; }
+  @media (prefers-reduced-motion: reduce){ #org-tip{ transition:none; transform:none; } }
   .org-dot.fresh{ background:var(--oc,#D4AF37); box-shadow:0 0 7px var(--oc,#D4AF37); }
   .org-dot.fresh.blinking{ animation:orgBlink 1.5s ease-in-out 5; }
   @keyframes orgBlink{ 0%,100%{ opacity:1; } 50%{ opacity:0.2; } }
@@ -1169,8 +1177,7 @@
   .org-list-tag{ font-size:11.5px; color:var(--muted); font-style:italic; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   /* The tagline belongs to the organisation's name, so it sits directly under the name (past the 9px dot + 7px gap), and is clearer to read. */
   .org-tagline{ font-size:12.5px; line-height:1.35; color:color-mix(in srgb, var(--ivory) 72%, var(--bg)); font-style:italic; margin:-5px 0 10px; }
-  .post .org-tagline{ padding-left:16px; }
-  #strip-body .org-tagline{ padding-left:0; }
+  .post .org-tagline{ display:none; }   /* cards never show it (also hides it in an older saved copy of the feed); it lives on the organisation page */
   .org-tagline-edit{ display:flex; align-items:center; gap:8px; margin:0 0 12px; flex-wrap:wrap; }
   .org-tagline-input{ flex:1; min-width:0; background:var(--card); border:1px solid var(--card-border); border-radius:10px; padding:10px 12px; color:var(--ivory); font-size:14px; outline:none; }
   .org-tagline-input:focus{ border-color:var(--gold-dim); }
@@ -2982,6 +2989,7 @@
       <span id="strip-time"></span>
       <span id="strip-close" role="button" aria-label="Close">✕</span>
     </div>
+    <div id="strip-tagline"></div>
     <div id="strip-body"></div>
     <div id="strip-foot" role="button"><span id="strip-open"></span></div>
   </div>
@@ -5591,7 +5599,7 @@ document.getElementById('action-sheet-block').addEventListener('click', async ()
    ============================================================ */
 const postRepliesSheet = document.getElementById('post-replies-sheet');
 const OWN_POST_SELECTOR = '.post[data-post-id], .spill-card[data-post-id], .yp-post[data-post-id]';
-const POST_INTERACTIVE_SELECTOR = '.spill-lock, .org-follow-pill, .post-action, .like-btn, .user-link, .sticker-tap, .text-tap, .voice-play-btn, .reply-trigger, .follow-trigger, .stand-trigger, .stand-panel, .org-name-link, .bookmark-trigger, .delete-post-trigger, .community-interest-trigger, .inspired-trigger, .rm-toggle, .inspired-source-link, .message-trigger, .friend-trigger, .share-trigger, .happening-pill, a, button, input, textarea';
+const POST_INTERACTIVE_SELECTOR = '.org-dot, .spill-lock, .org-follow-pill, .post-action, .like-btn, .user-link, .sticker-tap, .text-tap, .voice-play-btn, .reply-trigger, .follow-trigger, .stand-trigger, .stand-panel, .org-name-link, .bookmark-trigger, .delete-post-trigger, .community-interest-trigger, .inspired-trigger, .rm-toggle, .inspired-source-link, .message-trigger, .friend-trigger, .share-trigger, .happening-pill, a, button, input, textarea';
 
 document.addEventListener('click', (e)=>{
   const trigger = e.target.closest('.own-replies-trigger');
@@ -8671,6 +8679,47 @@ document.getElementById('org-sheet-mute').addEventListener('click', async ()=>{
   orgsFollowDirty = true;
   renderOrgSheetState();
 });
+/* Tap the little dot on an organisation's card: its tagline pops up for a few seconds, then fades. Tap anywhere else (or the dot again) to close it. */
+let orgTipEl = null, orgTipTimer = null, orgTipDot = null;
+function hideOrgTip(){
+  clearTimeout(orgTipTimer); orgTipTimer = null; orgTipDot = null;
+  if(orgTipEl) orgTipEl.classList.remove('show');
+}
+function showOrgTip(dot, text){
+  if(!orgTipEl){
+    orgTipEl = document.createElement('div');
+    orgTipEl.id = 'org-tip';
+    orgTipEl.setAttribute('role', 'status');
+    document.getElementById('root').appendChild(orgTipEl);
+  }
+  orgTipEl.textContent = text;
+  orgTipEl.classList.remove('show');
+  orgTipEl.style.left = '0px'; orgTipEl.style.top = '0px';
+  const r = dot.getBoundingClientRect(), w = orgTipEl.offsetWidth;
+  const left = Math.max(16, Math.min(r.left - 6, window.innerWidth - w - 16));
+  orgTipEl.style.left = left + 'px';
+  orgTipEl.style.top = (r.bottom + 10) + 'px';
+  void orgTipEl.offsetWidth;
+  orgTipEl.classList.add('show');
+  orgTipDot = dot;
+  clearTimeout(orgTipTimer);
+  orgTipTimer = setTimeout(hideOrgTip, 3500);
+}
+document.addEventListener('click', (e)=>{
+  const dot = e.target.closest('.post .post-id .org-dot');
+  if(dot){
+    const nameEl = dot.nextElementSibling;
+    const id = nameEl && nameEl.classList.contains('org-name-link') ? nameEl.dataset.orgId : null;
+    const tag = id ? orgInfo(Number(id)).tagline : '';
+    if(!tag) return;                                        // no tagline set: nothing to show
+    e.stopPropagation();
+    if(orgTipDot === dot) hideOrgTip(); else showOrgTip(dot, tag);
+    return;
+  }
+  if(orgTipDot) hideOrgTip();
+}, true);
+document.addEventListener('scroll', ()=>{ if(orgTipDot) hideOrgTip(); }, true);
+
 document.addEventListener('click', (e)=>{
   const link = e.target.closest('.org-name-link');
   if(!link) return;
@@ -8834,8 +8883,7 @@ async function orgBodyClick(e){
     if(error){ console.error(error); showNavToast(orgErrorMessage(error) || "That didn't go through. Try again."); return; }
     if(orgMap[id]) orgMap[id].tagline = val;
     document.querySelectorAll(`.post[data-org-id="${id}"]`).forEach(card => {
-      const old = card.querySelector(':scope > .org-tagline'); if(old) old.remove();
-      if(val){ const d = document.createElement('div'); d.className = 'org-tagline'; d.textContent = val; const h = card.querySelector('.post-head'); if(h) h.after(d); }
+      const old = card.querySelector(':scope > .org-tagline'); if(old) old.remove();   // taglines live on the organisation page only, not on cards
     });
     showNavToast(val ? 'Saved.' : 'Line removed.');
     renderOrgList(true);
@@ -9230,7 +9278,6 @@ function renderRantPost(post, userLiked, likeCount, inspirationLabels){
       <span class="post-id">${headHtml}</span>
       <span class="post-head-right">${(isOrg && currentUserId && !myFollows[org.id] && !myOrgIds.has(org.id)) ? `<span class="org-follow-pill" role="button" data-org-id="${org.id}">Follow</span>` : ''}<span class="post-time">${formatRelativeTime(post.created_at)}</span></span>
     </div>
-    ${isOrg && org.tagline ? `<div class="org-tagline">${escapeHtml(org.tagline)}</div>` : ''}
     ${isOrg && post.header ? `<div class="org-header">${escapeHtml(post.header)}</div>` : ''}
     ${doorTagHtml(post)}
     ${inspiredLine}
@@ -9482,6 +9529,7 @@ function showStripPost(){
   v.style.setProperty('--oc', o.color);
   document.getElementById('strip-bars').innerHTML = g.posts.map((_, k) => `<i class="${k < stripPos.i ? 'done' : (k === stripPos.i ? 'now' : '')}"></i>`).join('');
   document.getElementById('strip-name').textContent = o.name;
+  document.getElementById('strip-tagline').textContent = o.tagline || '';
   document.getElementById('strip-tag').textContent = orgTypeLabel(o.type);
   document.getElementById('strip-time').textContent = formatRelativeTime(post.created_at);
   document.getElementById('strip-open').textContent = 'Open ' + o.name;
@@ -9521,6 +9569,12 @@ document.getElementById('orgs-strip').addEventListener('keydown', (e)=>{
   if(it){ e.preventDefault(); openStrip(Number(it.dataset.gi)); }
 });
 document.getElementById('strip-close').addEventListener('click', closeStrip);
+// Tapping the organisation's name (or its line under it) in the viewer opens its page, the same as tapping the name on a card.
+['strip-name', 'strip-tagline'].forEach(id => {
+  const el = document.getElementById(id);
+  el.style.cursor = 'pointer';
+  el.addEventListener('click', ()=>{ const g = stripOrder[stripPos.g]; if(g) openOrgPage(g.orgId); });
+});
 document.getElementById('strip-foot').addEventListener('click', ()=>{
   const g = stripOrder[stripPos.g];
   if(g) openOrgPage(g.orgId);
