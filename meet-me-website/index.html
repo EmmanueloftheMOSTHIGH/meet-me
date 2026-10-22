@@ -408,6 +408,34 @@
   #strip-foot{ flex-shrink:0; margin:0 20px; text-align:center; font-size:12px; color:var(--muted); cursor:pointer; padding:12px 0 calc(env(safe-area-inset-bottom,0px) + 16px); border-top:1px solid var(--card-border); }
   @media (prefers-reduced-motion: reduce){ #strip-viewer{ transition:none; transform:none; } }
 
+  /* strip viewer: make the content the star */
+  #strip-viewer{ background:
+      radial-gradient(130% 55% at 50% 0%, color-mix(in srgb, var(--oc,#D4AF37) 15%, transparent), transparent 72%),
+      color-mix(in srgb, var(--oc,#D4AF37) 5%, var(--bg)); }
+  #strip-body{ padding:12px 26px 6px 28px; }
+  #strip-body > .post{ animation:stripIn 0.22s ease both; }
+  @keyframes stripIn{ from{ opacity:0; transform:translateY(8px); } to{ opacity:1; transform:none; } }
+  @media (prefers-reduced-motion: reduce){ #strip-body > .post{ animation:none; } }
+  #strip-body .save-sticker-trigger{ display:none !important; }
+  #strip-body .post-body, #strip-body .org-header{ font-family:'Fraunces',serif; }
+
+  /* text posts: big, quiet type with a short rule in the organisation's colour */
+  #strip-body[data-kind="text"] > .post::before{ display:block; content:''; width:38px; height:3px; border-radius:3px; background:var(--oc,#D4AF37); margin-bottom:22px; position:static; }
+  #strip-body[data-kind="text"][data-len="s"] .post-body{ font-size:40px; line-height:1.16; letter-spacing:-0.012em; font-weight:400; color:var(--ivory); }
+  #strip-body[data-kind="text"][data-len="m"] .post-body{ font-size:28px; line-height:1.3; letter-spacing:-0.006em; color:var(--ivory); }
+  #strip-body[data-kind="text"][data-len="l"] .post-body{ font-size:20px; line-height:1.6; color:var(--ivory); }
+  #strip-body .org-header{ font-size:32px; line-height:1.12; letter-spacing:-0.015em; margin:0 0 16px; }
+  #strip-body .org-header + .post-body, #strip-body .org-header ~ .post-body{ font-size:19px !important; line-height:1.6 !important; color:var(--muted) !important; letter-spacing:0 !important; }
+
+  /* pictures and videos: edge to edge, rounded, large */
+  #strip-body img.sticker-tap{ width:100% !important; height:auto !important; max-height:52vh; object-fit:contain !important; border-radius:18px; background:color-mix(in srgb, var(--oc,#D4AF37) 8%, var(--card)); }
+  #strip-body .vid-poster{ display:block; width:100% !important; height:50vh !important; border-radius:18px; overflow:hidden; }
+  #strip-body[data-kind="media"] .post-body{ font-size:22px; line-height:1.35; letter-spacing:-0.005em; color:var(--ivory); margin-top:6px; }
+  #strip-body[data-kind="media"] .post-body + .post-body{ margin-top:8px; }
+
+  #strip-body .post-foot{ margin-top:26px; }
+  #strip-open::before{ content:'⌃'; display:block; font-size:15px; line-height:1; margin-bottom:5px; color:var(--oc,#D4AF37); }
+
   /* ===== Organisation home page ===== */
   #org-page{
     position:absolute; inset:0; z-index:76; background:var(--bg); display:flex; flex-direction:column;
@@ -441,6 +469,12 @@
   .orgpage-empty{ font-size:13px; color:var(--muted-dim); text-align:center; padding:28px 0; }
   #orgpage-more{ display:none; text-align:center; font-size:12.5px; color:var(--muted); padding:18px 0 6px; cursor:pointer; }
   @media (prefers-reduced-motion: reduce){ #org-page{ transition:none; transform:none; } }
+
+  /* Follow pill on organisation cards you don't follow yet */
+  .org-follow-pill{ font-size:11px; font-weight:600; letter-spacing:0.02em; color:var(--gold-text); border:1px solid color-mix(in srgb, var(--gold) 60%, transparent); border-radius:999px; padding:3px 12px; cursor:pointer; -webkit-tap-highlight-color:transparent; transition:opacity 0.2s ease; }
+  .org-follow-pill:active{ opacity:0.7; }
+  .org-follow-pill.done{ color:var(--muted); border-color:var(--card-border); font-weight:500; }
+  #org-page .org-follow-pill, #strip-viewer .org-follow-pill{ display:none; }
 
   #feed-pull-indicator{
     position:absolute; left:0; right:0; top:0; z-index:5;
@@ -5401,7 +5435,7 @@ document.getElementById('action-sheet-block').addEventListener('click', async ()
    ============================================================ */
 const postRepliesSheet = document.getElementById('post-replies-sheet');
 const OWN_POST_SELECTOR = '.post[data-post-id], .spill-card[data-post-id], .yp-post[data-post-id]';
-const POST_INTERACTIVE_SELECTOR = '.spill-lock, .post-action, .like-btn, .user-link, .sticker-tap, .text-tap, .voice-play-btn, .reply-trigger, .follow-trigger, .stand-trigger, .stand-panel, .org-name-link, .bookmark-trigger, .delete-post-trigger, .community-interest-trigger, .inspired-trigger, .rm-toggle, .inspired-source-link, .message-trigger, .friend-trigger, .share-trigger, .happening-pill, a, button, input, textarea';
+const POST_INTERACTIVE_SELECTOR = '.spill-lock, .org-follow-pill, .post-action, .like-btn, .user-link, .sticker-tap, .text-tap, .voice-play-btn, .reply-trigger, .follow-trigger, .stand-trigger, .stand-panel, .org-name-link, .bookmark-trigger, .delete-post-trigger, .community-interest-trigger, .inspired-trigger, .rm-toggle, .inspired-source-link, .message-trigger, .friend-trigger, .share-trigger, .happening-pill, a, button, input, textarea';
 
 document.addEventListener('click', (e)=>{
   const trigger = e.target.closest('.own-replies-trigger');
@@ -8425,6 +8459,7 @@ function renderOrgSheetState(){
   muteRow.classList.toggle('on', muted);
   muteRow.querySelector('.org-state').textContent = muted ? 'Muted' : '';
   if(typeof orgPageSync === 'function') orgPageSync();
+  if(typeof syncFollowPills === 'function') syncFollowPills();
 }
 document.getElementById('org-sheet-close').addEventListener('click', ()=> document.getElementById('org-sheet-overlay').classList.remove('show'));
 document.getElementById('org-sheet-overlay').addEventListener('click', (e)=>{ if(e.target.id === 'org-sheet-overlay') e.currentTarget.classList.remove('show'); });
@@ -8999,7 +9034,7 @@ function renderRantPost(post, userLiked, likeCount, inspirationLabels){
   div.innerHTML = `
     <div class="post-head">
       <span class="post-id">${headHtml}</span>
-      <span class="post-head-right"><span class="post-time">${formatRelativeTime(post.created_at)}</span></span>
+      <span class="post-head-right">${(isOrg && currentUserId && !myFollows[org.id] && !myOrgIds.has(org.id)) ? `<span class="org-follow-pill" role="button" data-org-id="${org.id}">Follow</span>` : ''}<span class="post-time">${formatRelativeTime(post.created_at)}</span></span>
     </div>
     ${isOrg && post.header ? `<div class="org-header">${escapeHtml(post.header)}</div>` : ''}
     ${doorTagHtml(post)}
@@ -9258,6 +9293,10 @@ function showStripPost(){
   const body = document.getElementById('strip-body');
   body.innerHTML = '';
   body.appendChild(renderRantPost(post, stripCtx.likedIds.has(post.id), stripCtx.likeCounts[post.id] || 0, stripCtx.inspirationLabels || {}));
+  const hasMedia = !!body.querySelector('.sticker-tap, .vid-poster, .voice-note');
+  const textLen = ((body.querySelector('.post-body') || {}).textContent || '').trim().length;
+  body.dataset.kind = hasMedia ? 'media' : 'text';
+  body.dataset.len = textLen <= 60 ? 's' : (textLen <= 220 ? 'm' : 'l');
   body.scrollTop = 0;
   stripMarkSeen(g.orgId, new Date(post.created_at).getTime());
 }
@@ -9335,6 +9374,28 @@ const ORGPAGE_SIZE = 20;
 let orgPageId = null, orgPageOffset = 0, orgPageLoading = false, orgPageCount = null, orgPageLastMuted = null;
 let orgPageCtx = { likedIds:new Set(), likeCounts:{}, inspirationLabels:{} };
 
+
+/* Follow straight from a card on the Organisations page. Same logic as the sheet's Follow row. */
+document.addEventListener('click', (e)=>{
+  const pill = e.target.closest('.org-follow-pill');
+  if(!pill) return;
+  e.stopPropagation();
+  const id = Number(pill.dataset.orgId);
+  if(!id || myFollows[id] || !currentUserId) return;
+  orgSheetId = id;
+  document.getElementById('org-sheet-follow').click();
+});
+// After any follow change, pills for organisations you now follow say so, then go away.
+function syncFollowPills(){
+  document.querySelectorAll('.org-follow-pill').forEach(el => {
+    const id = Number(el.dataset.orgId);
+    if(!(myFollows[id] || myOrgIds.has(id)) || el.classList.contains('done')) return;
+    el.classList.add('done');
+    el.textContent = 'Following';
+    setTimeout(()=>{ el.remove(); }, 1400);
+    orgsFeedLoadedAt = 0;   // the next visit to this page re-sorts the post under Following
+  });
+}
 function orgPageSubline(o){
   return myOrgIds.has(o.id) ? 'This is your organisation.' :
     /^meet story$/i.test(o.name) ? 'Real stories from real people.' :
