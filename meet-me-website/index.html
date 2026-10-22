@@ -1064,6 +1064,14 @@
   .org-list-badge.badge-arsenal{ color:#e8746c; border:1px solid #c9302c; }
   .org-list-badge.badge-spotify{ color:#4fd884; border:1px solid #1db954; }
   .org-list-name{ font-size:14px; color:var(--ivory); }
+  .org-list-main{ display:flex; flex-direction:column; min-width:0; }
+  .org-list-tag{ font-size:11.5px; color:var(--muted); font-style:italic; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .org-tagline{ font-size:12px; line-height:1.35; color:var(--muted); font-style:italic; margin:-5px 0 10px; }
+  .org-tagline-edit{ display:flex; align-items:center; gap:8px; margin:0 0 12px; flex-wrap:wrap; }
+  .org-tagline-input{ flex:1; min-width:0; background:var(--card); border:1px solid var(--card-border); border-radius:10px; padding:10px 12px; color:var(--ivory); font-size:14px; outline:none; }
+  .org-tagline-input:focus{ border-color:var(--gold-dim); }
+  .org-tagline-count{ font-size:11px; color:var(--muted-dim); }
+  .org-save-tagline{ font-size:12.5px; padding:8px 14px; border-radius:12px; border:1px solid var(--gold-dim); color:var(--gold-light); cursor:pointer; }
   .org-list-verified{ color:var(--gold-dim); font-size:11px; }
   #org-list-close{
     text-align:center; margin-top:16px;
@@ -2639,9 +2647,8 @@
         <div id="orgs-pull-indicator">↓ pull to refresh</div>
         <div class="orgs-head">
           <span class="orgs-head-title">Organisations</span>
-          <span class="orgs-head-btn" id="orgs-browse-btn">Browse</span>
+          <span class="orgs-head-btn" id="orgs-browse-btn" role="button" aria-label="Search or browse organisations">🔍 Search</span>
         </div>
-        <div id="orgs-search-bar" role="button" tabindex="0"><span>🔍</span><span>Search organisations</span></div>
         <div id="orgs-strip"></div>
         <div id="orgs-list"></div>
       </div>
@@ -2792,10 +2799,10 @@
   <div id="org-list-overlay">
     <div id="org-list-panel">
       <div id="org-list-title">Organisations</div>
-      <div id="org-list-sub">Newscasts, creators and groups that broadcast here. Follow or mute them.</div>
+      <div id="org-list-sub">Browse every organisation, or search by name. Follow or mute them.</div>
       <div id="org-list-search-wrap">
         <span id="org-list-search-icon">🔍</span>
-        <input id="org-list-search" type="search" placeholder="Search organisations" autocomplete="off" autocapitalize="none" enterkeyhint="search">
+        <input id="org-list-search" type="search" placeholder="Search or browse organisations" autocomplete="off" autocapitalize="none" enterkeyhint="search">
         <span id="org-list-search-clear" role="button" aria-label="Clear search">✕</span>
       </div>
       <div id="org-list-nomatch">No organisation with that name.</div>
@@ -8240,23 +8247,30 @@ let myFollows = {};            // organisation id -> { notify }
 let myMutedOrgIds = new Set();
 let orgsPromise = null;
 
+const ORG_TAGLINE_MAX = 48;
+function cleanTagline(s){ return String(s || '').replace(/\s+/g, ' ').trim().slice(0, ORG_TAGLINE_MAX); }
 function safeOrgColor(c){ return /^#[0-9a-fA-F]{6}$/.test(c || '') ? c : '#D4AF37'; }
 function orgInfo(id){
   const o = orgMap[id];
-  return o ? { id:o.id, name:o.name, type:o.type, color:safeOrgColor(o.crest_color) } : { id, name:'Organisation', type:null, color:'#D4AF37' };
+  return o ? { id:o.id, name:o.name, type:o.type, color:safeOrgColor(o.crest_color), tagline:cleanTagline(o.tagline) } : { id, name:'Organisation', type:null, color:'#D4AF37', tagline:'' };
 }
 // Newscast posts must carry a header; Meet Story works the same way.
 function orgNeedsHeader(o){ return !!o && (o.type === 'newscast' || /^meet story$/i.test(String(o.name || '').trim())); }
 function orgTypeLabel(t){ return t === 'newscast' ? 'Newscast' : t === 'creator' ? 'Creator' : t === 'official' ? 'Official' : ''; }
 function fmtOrgDate(ms){ return new Date(ms).toLocaleDateString(undefined, { day:'numeric', month:'long', year:'numeric' }); }
 
+async function fetchOrgRows(){
+  let r = await sb.from('organizations').select('id, name, crest_color, type, tagline');
+  if(r.error){ r = await sb.from('organizations').select('id, name, crest_color, type'); }   // column not added yet: carry on without taglines
+  return r;
+}
 function ensureOrgs(force){
   if(force) orgsPromise = null;
   if(orgsPromise) return orgsPromise;
   const p = (async ()=>{
     try{
       const [o, mine, f, m] = await Promise.all([
-        sb.from('organizations').select('id, name, crest_color, type'),
+        fetchOrgRows(),
         currentUserId ? sb.rpc('my_organizations') : Promise.resolve({ data: [] }),
         currentUserId ? sb.from('follows').select('organization_id, notify').eq('user_id', currentUserId) : Promise.resolve({ data: [] }),
         currentUserId ? sb.from('org_mutes').select('organization_id').eq('user_id', currentUserId) : Promise.resolve({ data: [] })
@@ -8436,6 +8450,7 @@ function openOrgSheet(id){
     document.getElementById('org-sheet-title').innerHTML =
       `<span class="org-dot" style="--oc:${o.color}"></span>${escapeHtml(o.name)}<span class="org-tag" style="--oc:${o.color}">${orgTypeLabel(o.type)}</span>`;
     document.getElementById('org-sheet-sub').textContent =
+      o.tagline ? o.tagline :
       myOrgIds.has(id) ? 'This is your organisation.' :
       /^meet story$/i.test(o.name) ? 'Real stories from real people.' :
       o.type === 'newscast' ? 'Shares news and reports.' :
@@ -8539,6 +8554,7 @@ function ownOrgBlockHtml(o, count){
   return `<div class="org-own" data-org-id="${o.id}">
     <div class="org-own-name"><span class="org-dot" style="--oc:${c}"></span>${escapeHtml(o.name)}<span class="org-tag" style="--oc:${c}">${orgTypeLabel(o.type)}</span></div>
     <div class="org-own-meta">${countLine}</div>
+    <div class="org-tagline-edit"><input class="org-tagline-input" maxlength="${ORG_TAGLINE_MAX}" value="${escapeHtml(cleanTagline(o.tagline))}" placeholder="What is your organisation about?" autocomplete="off"><span class="org-tagline-count">${cleanTagline(o.tagline).length}/${ORG_TAGLINE_MAX}</span><span class="org-save-tagline" role="button">Save line</span></div>
     ${colourHtml}
     <div class="org-insights-btn" data-org-id="${o.id}">Insights</div>
   </div>`;
@@ -8568,14 +8584,14 @@ async function renderOrgList(quiet){
       const o = orgInfo(id);
       const btns = (myFollows[id] ? `<span class="org-mini-btn" data-act="unfollow" data-id="${id}">Unfollow</span>` : '')
         + (myMutedOrgIds.has(id) ? `<span class="org-mini-btn" data-act="unmute" data-id="${id}" style="margin-left:${myFollows[id] ? 6 : 'auto'}px">Unmute</span>` : '');
-      return `<div class="org-list-row"><span class="org-dot" style="--oc:${o.color}"></span><span class="org-list-name">${escapeHtml(o.name)}</span>${btns}</div>`;
+      return `<div class="org-list-row" data-tag="${escapeHtml(o.tagline)}"><span class="org-dot" style="--oc:${o.color}"></span><span class="org-list-main"><span class="org-list-name">${escapeHtml(o.name)}</span>${o.tagline ? `<span class="org-list-tag">${escapeHtml(o.tagline)}</span>` : ''}</span>${btns}</div>`;
     }).join('');
   }
   const discover = Object.values(orgMap).filter(o => !myOrgIds.has(o.id) && !myFollows[o.id] && !myMutedOrgIds.has(o.id));
   html += '<div class="org-follow-title">Discover</div>';
   html += discover.length
     ? discover.map(o => { const i = orgInfo(o.id);
-        return `<div class="org-list-row"><span class="org-dot" style="--oc:${i.color}"></span><span class="org-list-name">${escapeHtml(i.name)}</span><span class="org-mini-btn" data-act="follow" data-id="${i.id}">Follow</span></div>`; }).join('')
+        return `<div class="org-list-row" data-tag="${escapeHtml(i.tagline)}"><span class="org-dot" style="--oc:${i.color}"></span><span class="org-list-main"><span class="org-list-name">${escapeHtml(i.name)}</span>${i.tagline ? `<span class="org-list-tag">${escapeHtml(i.tagline)}</span>` : ''}</span><span class="org-mini-btn" data-act="follow" data-id="${i.id}">Follow</span></div>`; }).join('')
     : '<div class="stand-empty">No other organisations yet.</div>';
   html += `<div class="org-claim">
     <div class="org-claim-link">Have an invite code?</div>
@@ -8597,7 +8613,7 @@ function orgListApplySearch(){
   [...body.children].forEach(el => {
     if(el.classList.contains('org-follow-title')){ closeTitle(); curTitle = el; titleVisible = 0; return; }
     let name = null;
-    if(el.classList.contains('org-list-row')){ const n = el.querySelector('.org-list-name'); name = n ? n.textContent : ''; }
+    if(el.classList.contains('org-list-row')){ const n = el.querySelector('.org-list-name'); name = (n ? n.textContent : '') + ' ' + (el.dataset.tag || ''); }
     else if(el.classList.contains('org-own')){ const n = el.querySelector('.org-own-name'); name = n ? n.textContent : ''; }
     if(name !== null){
       hasRows = true;
@@ -8612,6 +8628,10 @@ function orgListApplySearch(){
   document.getElementById('org-list-nomatch').style.display = (q && hasRows && !any) ? 'block' : 'none';
 }
 document.getElementById('org-list-search').addEventListener('input', orgListApplySearch);
+document.getElementById('org-list-body').addEventListener('input', (e)=>{
+  const i = e.target.closest('.org-tagline-input');
+  if(i) i.closest('.org-tagline-edit').querySelector('.org-tagline-count').textContent = i.value.length + '/' + ORG_TAGLINE_MAX;
+});
 document.getElementById('org-list-search-clear').addEventListener('click', ()=>{
   const i = document.getElementById('org-list-search'); i.value = ''; orgListApplySearch(); i.focus();
 });
@@ -8649,6 +8669,22 @@ document.getElementById('org-list-body').addEventListener('click', async (e)=>{
     sw.classList.add('picked');
     const btn = sw.closest('.org-own').querySelector('.org-save-color');
     btn.style.display = sw.classList.contains('current') ? 'none' : 'block';
+    return;
+  }
+  const saveTag = e.target.closest('.org-save-tagline');
+  if(saveTag){
+    const block = saveTag.closest('.org-own');
+    const id = Number(block.dataset.orgId);
+    const val = cleanTagline(block.querySelector('.org-tagline-input').value);
+    const { error } = await sb.rpc('set_org_tagline', { p_org_id: id, p_tagline: val });
+    if(error){ console.error(error); showNavToast(orgErrorMessage(error) || "That didn't go through. Try again."); return; }
+    if(orgMap[id]) orgMap[id].tagline = val;
+    document.querySelectorAll(`.post[data-org-id="${id}"]`).forEach(card => {
+      const old = card.querySelector(':scope > .org-tagline'); if(old) old.remove();
+      if(val){ const d = document.createElement('div'); d.className = 'org-tagline'; d.textContent = val; const h = card.querySelector('.post-head'); if(h) h.after(d); }
+    });
+    showNavToast(val ? 'Saved.' : 'Line removed.');
+    renderOrgList(true);
     return;
   }
   const save = e.target.closest('.org-save-color');
@@ -9036,6 +9072,7 @@ function renderRantPost(post, userLiked, likeCount, inspirationLabels){
       <span class="post-id">${headHtml}</span>
       <span class="post-head-right">${(isOrg && currentUserId && !myFollows[org.id] && !myOrgIds.has(org.id)) ? `<span class="org-follow-pill" role="button" data-org-id="${org.id}">Follow</span>` : ''}<span class="post-time">${formatRelativeTime(post.created_at)}</span></span>
     </div>
+    ${isOrg && org.tagline ? `<div class="org-tagline">${escapeHtml(org.tagline)}</div>` : ''}
     ${isOrg && post.header ? `<div class="org-header">${escapeHtml(post.header)}</div>` : ''}
     ${doorTagHtml(post)}
     ${inspiredLine}
@@ -9397,6 +9434,7 @@ function syncFollowPills(){
   });
 }
 function orgPageSubline(o){
+  if(o.tagline) return o.tagline;
   return myOrgIds.has(o.id) ? 'This is your organisation.' :
     /^meet story$/i.test(o.name) ? 'Real stories from real people.' :
     o.type === 'newscast' ? 'Shares news and reports.' :
@@ -9571,7 +9609,7 @@ async function renderOrgsFeed(){
     addPosts(followed);
     if(others.length){ section('Discover'); addPosts(others); }
   } else if(rows.length){
-    note('<b>Follow organisations to shape this page.</b>Tap an organisation\'s name, or use Browse, and their posts will come first.');
+    note('<b>Follow organisations to shape this page.</b>Tap an organisation\'s name, or use Search, and their posts will come first.');
     section('From organisations');
     addPosts(rows);
   }
@@ -9661,8 +9699,6 @@ document.getElementById('orgs-new-banner').addEventListener('click', async (e)=>
 })();
 
 document.getElementById('orgs-browse-btn').addEventListener('click', ()=> openOrgList(false));
-document.getElementById('orgs-search-bar').addEventListener('click', ()=> openOrgList(true));
-document.getElementById('orgs-search-bar').addEventListener('keydown', e=>{ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); openOrgList(true); } });
 document.getElementById('orgs-feed').addEventListener('click', async (e)=>{
   if(e.target.closest('#orgs-open-rant')){ await goToScreen('twin'); return; }
   const likeBtn = e.target.closest('.like-btn');
