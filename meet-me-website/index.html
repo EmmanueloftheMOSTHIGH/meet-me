@@ -361,6 +361,53 @@
   @keyframes orgsPillIn{ from{ opacity:0; transform:translateY(-8px); } to{ opacity:1; transform:none; } }
   #orgs-pull-indicator{ position:absolute; left:0; right:0; top:0; z-index:5; text-align:center; padding-top:10px; font-size:11px; letter-spacing:0.06em; text-transform:uppercase; color:var(--muted-dim); opacity:0; pointer-events:none; transition:opacity 0.15s ease; }
 
+  /* ===== Organisations strip (orgs that posted in the last 24h) + full-screen viewer ===== */
+  #orgs-strip{ display:flex; gap:14px; overflow-x:auto; padding:6px 2px 2px; margin:0 -2px; flex-shrink:0; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+  #orgs-strip::-webkit-scrollbar{ display:none; }
+  #orgs-strip.empty{ overflow:visible; padding:0 2px; }
+  .strip-empty{ font-size:12px; color:var(--muted-dim); }
+  .strip-item{ position:relative; flex:0 0 auto; width:58px; text-align:center; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+  .strip-ring{
+    width:52px; height:52px; margin:0 auto; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    font-family:'Fraunces',serif; font-size:20px; font-weight:500; color:var(--oc,#D4AF37);
+    background:color-mix(in srgb, var(--oc,#D4AF37) 14%, var(--bg));
+    border:1.5px solid color-mix(in srgb, var(--oc,#D4AF37) 35%, transparent);
+    opacity:0.55; transition:transform 0.12s ease;
+  }
+  .strip-item.unseen .strip-ring{ border-color:var(--oc,#D4AF37); opacity:1; box-shadow:0 0 0 3px color-mix(in srgb, var(--oc,#D4AF37) 14%, transparent); }
+  .strip-item:active .strip-ring{ transform:scale(0.94); }
+  .strip-fd{ position:absolute; top:0; right:5px; width:10px; height:10px; border-radius:50%; background:var(--oc,#D4AF37); border:2px solid var(--bg); animation:orgBlink 1.5s ease-in-out 5; }
+  .strip-label{ font-size:11px; color:var(--muted); margin-top:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .strip-item.unseen .strip-label{ color:var(--ivory); }
+  @media (prefers-reduced-motion: reduce){ .strip-fd{ animation:none; } }
+
+  #strip-viewer{
+    position:absolute; inset:0; z-index:77; background:var(--bg); display:flex; flex-direction:column;
+    opacity:0; pointer-events:none; transform:translateY(14px); transition:opacity 0.22s ease, transform 0.22s ease;
+  }
+  #strip-viewer.show{ opacity:1; pointer-events:auto; transform:none; }
+  #strip-edge{ position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--oc,#D4AF37); }
+  #strip-bars{ display:flex; gap:4px; padding:calc(env(safe-area-inset-top,0px) + 16px) 18px 0 20px; flex-shrink:0; }
+  #strip-bars i{ flex:1; height:2px; border-radius:2px; background:color-mix(in srgb, var(--ivory) 16%, transparent); }
+  #strip-bars i.done, #strip-bars i.now{ background:var(--oc,#D4AF37); }
+  #strip-head{ display:flex; align-items:center; gap:8px; padding:14px 18px 0 20px; flex-shrink:0; }
+  .strip-dot{ width:9px; height:9px; border-radius:50%; flex:none; background:var(--oc,#D4AF37); box-shadow:0 0 7px var(--oc,#D4AF37); }
+  #strip-name{ font-size:15px; font-weight:600; color:var(--ivory); }
+  #strip-tag{ font-size:9.5px; font-weight:600; padding:1px 7px; border-radius:999px; color:var(--gold-text); border:1px solid color-mix(in srgb, var(--gold) 60%, transparent); }
+  #strip-tag:empty{ display:none; }
+  #strip-time{ margin-left:auto; font-size:11px; color:var(--muted-dim); }
+  #strip-close{ width:32px; height:32px; margin-right:-6px; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:18px; cursor:pointer; }
+  #strip-body{ flex:1; min-height:0; overflow-y:auto; display:flex; flex-direction:column; padding:18px 26px 8px 28px; -webkit-overflow-scrolling:touch; }
+  #strip-body::-webkit-scrollbar{ width:0; }
+  #strip-body > .post{ margin:auto 0; background:transparent; border:none; box-shadow:none; padding:0; }
+  #strip-body .post::before{ display:none; }
+  #strip-body .post-head, #strip-body .post-insight{ display:none; }
+  #strip-body .org-header{ font-size:26px; line-height:1.2; margin:0 0 12px; }
+  #strip-body .post-body{ font-size:17px; line-height:1.6; }
+  #strip-body .post-foot{ margin-top:18px; }
+  #strip-foot{ flex-shrink:0; margin:0 20px; text-align:center; font-size:12px; color:var(--muted); cursor:pointer; padding:12px 0 calc(env(safe-area-inset-bottom,0px) + 16px); border-top:1px solid var(--card-border); }
+  @media (prefers-reduced-motion: reduce){ #strip-viewer{ transition:none; transform:none; } }
+
   #feed-pull-indicator{
     position:absolute; left:0; right:0; top:0; z-index:5;
     text-align:center; padding-top:10px;
@@ -2527,6 +2574,7 @@
           <span class="orgs-head-btn" id="orgs-browse-btn">Browse</span>
         </div>
         <div id="orgs-search-bar" role="button" tabindex="0"><span>🔍</span><span>Search organisations</span></div>
+        <div id="orgs-strip"></div>
         <div id="orgs-list"></div>
       </div>
     </div>
@@ -2709,6 +2757,20 @@
       <div id="org-insights-body"></div>
       <div id="org-insights-close">close</div>
     </div>
+  </div>
+
+  <div id="strip-viewer" role="dialog" aria-label="New from organisations">
+    <div id="strip-edge"></div>
+    <div id="strip-bars"></div>
+    <div id="strip-head">
+      <span class="strip-dot"></span>
+      <span id="strip-name"></span>
+      <span id="strip-tag"></span>
+      <span id="strip-time"></span>
+      <span id="strip-close" role="button" aria-label="Close">✕</span>
+    </div>
+    <div id="strip-body"></div>
+    <div id="strip-foot" role="button"><span id="strip-open"></span></div>
   </div>
 
   <div id="org-sheet-overlay">
@@ -8790,7 +8852,10 @@ async function fillOrgPostInsights(){
   ids.forEach(id => document.querySelectorAll(`.post-insight[data-insight-for="${id}"]`).forEach(el => {
     const r = by[id];
     if(!r){ el.remove(); return; }
-    el.textContent = `${pl(Number(r.likes), 'like')} · ${pl(Number(r.stands), 'stand')} · ${pl(Number(r.views), 'view')} · ${inspiredBy[id] || 0} inspired`;
+    const parts = [[Number(r.likes), 'like'], [Number(r.stands), 'stand'], [Number(r.views), 'view']].filter(x => x[0] > 0).map(x => pl(x[0], x[1]));
+    if(inspiredBy[id]) parts.push(inspiredBy[id] + ' inspired');
+    if(!parts.length){ el.remove(); return; }
+    el.textContent = parts.join(' · ');
   }));
 }
 
@@ -9027,6 +9092,183 @@ function loadOrgsFeed(force){
   return orgsFeedLoading;
 }
 
+/* ============================================================
+   ORGANISATIONS STRIP — orgs that posted in the last 24 hours, newest first.
+   Tap a logo to read their fresh posts full-screen. Nothing new is stored on the server:
+   "seen" lives on this phone only, and a post leaves the strip after 24 hours (it stays in the feed).
+   ============================================================ */
+const STRIP_MS = 24 * 60 * 60 * 1000;
+const STRIP_SEEN_KEY = 'mm_strip_seen';
+let stripOrder = [];      // groups in the order shown: { orgId, posts (oldest -> newest), latest }
+let stripGroups = [];
+let stripCtx = { likedIds:new Set(), likeCounts:{}, inspirationLabels:{} };
+let stripPos = { g:0, i:0 };
+
+function stripSeenMap(){ try{ return JSON.parse(localStorage.getItem(STRIP_SEEN_KEY) || '{}') || {}; }catch(e){ return {}; } }
+function stripMarkSeen(orgId, ts){
+  try{
+    const m = stripSeenMap();
+    if(!(m[orgId] >= ts)) m[orgId] = ts;
+    const cutoff = Date.now() - 3 * STRIP_MS;
+    Object.keys(m).forEach(k => { if(m[k] < cutoff) delete m[k]; });
+    localStorage.setItem(STRIP_SEEN_KEY, JSON.stringify(m));
+  }catch(e){}
+}
+function stripShortName(name){
+  const n = String(name || '').trim();
+  return n.replace(/^meet\s+/i, '').trim() || n;
+}
+function stripIsFounder(id){ return /^meet founder$/i.test(String(orgInfo(id).name || '').trim()); }
+function stripViewerOpen(){ const v = document.getElementById('strip-viewer'); return !!v && v.classList.contains('show'); }
+
+function renderOrgsStrip(rows, ctx){
+  if(stripViewerOpen()) return;          // never reshuffle the strip under someone who is reading it
+  stripCtx = ctx || stripCtx;
+  const now = Date.now();
+  const by = {};
+  (rows || []).forEach(p => {
+    if(now - new Date(p.created_at).getTime() > STRIP_MS) return;
+    const id = p.organization_id;
+    if(!(myFollows[id] || myOrgIds.has(id) || stripIsFounder(id))) return;   // followed, your own, and Meet Founder
+    (by[id] = by[id] || []).push(p);
+  });
+  stripGroups = Object.keys(by).map(k => {
+    const posts = by[k].slice().sort((a, b) => new Date(a.created_at) - new Date(b.created_at)).slice(-8);
+    return { orgId: posts[0].organization_id, posts, latest: new Date(posts[posts.length - 1].created_at).getTime() };
+  });
+  paintOrgsStrip();
+}
+
+function paintOrgsStrip(){
+  const box = document.getElementById('orgs-strip');
+  if(!box) return;
+  const seen = stripSeenMap();
+  const isNew = g => g.latest > (seen[g.orgId] || 0);
+  stripOrder = stripGroups.slice().sort((a, b) => {
+    const fa = stripIsFounder(a.orgId) ? 1 : 0, fb = stripIsFounder(b.orgId) ? 1 : 0;
+    if(fa !== fb) return fb - fa;                        // Meet Founder first, so the strip is never a mystery
+    const ua = isNew(a) ? 1 : 0, ub = isNew(b) ? 1 : 0;
+    if(ua !== ub) return ub - ua;                        // unseen before seen
+    return b.latest - a.latest;
+  });
+  if(!stripOrder.length){
+    box.className = 'empty';
+    box.innerHTML = '<div class="strip-empty">Nothing new in the last 24 hours</div>';
+    return;
+  }
+  box.className = '';
+  box.innerHTML = stripOrder.map((g, gi) => {
+    const o = orgInfo(g.orgId);
+    const unseen = isNew(g);
+    const short = stripShortName(o.name);
+    return `<div class="strip-item${unseen ? ' unseen' : ''}" data-gi="${gi}" style="--oc:${o.color}" role="button" tabindex="0" aria-label="${escapeHtml(o.name)}${unseen ? ', new' : ''}">`
+      + `<div class="strip-ring"><span>${escapeHtml(short.charAt(0).toUpperCase())}</span></div>`
+      + (unseen ? '<i class="strip-fd"></i>' : '')
+      + `<div class="strip-label">${escapeHtml(short)}</div></div>`;
+  }).join('');
+}
+
+/* ---------- full-screen viewer ---------- */
+function openStrip(gi){
+  const g = stripOrder[gi];
+  if(!g) return;
+  const seenTs = stripSeenMap()[g.orgId] || 0;
+  let i = g.posts.findIndex(p => new Date(p.created_at).getTime() > seenTs);   // start at the first post you haven't read
+  if(i < 0) i = 0;
+  stripPos = { g:gi, i };
+  document.getElementById('strip-viewer').classList.add('show');
+  showStripPost();
+  if(typeof updateComposeVisibility === 'function') updateComposeVisibility();
+}
+function closeStrip(){
+  document.getElementById('strip-viewer').classList.remove('show');
+  document.getElementById('strip-body').innerHTML = '';
+  paintOrgsStrip();
+  if(typeof updateComposeVisibility === 'function') updateComposeVisibility();
+}
+function showStripPost(){
+  const g = stripOrder[stripPos.g];
+  if(!g) return;
+  const post = g.posts[stripPos.i];
+  const o = orgInfo(g.orgId);
+  const v = document.getElementById('strip-viewer');
+  v.style.setProperty('--oc', o.color);
+  document.getElementById('strip-bars').innerHTML = g.posts.map((_, k) => `<i class="${k < stripPos.i ? 'done' : (k === stripPos.i ? 'now' : '')}"></i>`).join('');
+  document.getElementById('strip-name').textContent = o.name;
+  document.getElementById('strip-tag').textContent = orgTypeLabel(o.type);
+  document.getElementById('strip-time').textContent = formatRelativeTime(post.created_at);
+  document.getElementById('strip-open').textContent = 'Open ' + o.name;
+  const body = document.getElementById('strip-body');
+  body.innerHTML = '';
+  body.appendChild(renderRantPost(post, stripCtx.likedIds.has(post.id), stripCtx.likeCounts[post.id] || 0, stripCtx.inspirationLabels || {}));
+  body.scrollTop = 0;
+  stripMarkSeen(g.orgId, new Date(post.created_at).getTime());
+}
+function stripNext(){
+  const g = stripOrder[stripPos.g];
+  if(!g) return closeStrip();
+  if(stripPos.i < g.posts.length - 1){ stripPos.i++; showStripPost(); return; }
+  if(stripPos.g < stripOrder.length - 1){ openStrip(stripPos.g + 1); return; }   // on to the next organisation
+  closeStrip();
+}
+function stripPrev(){
+  if(stripPos.i > 0){ stripPos.i--; showStripPost(); return; }
+  if(stripPos.g > 0){
+    const pg = stripOrder[stripPos.g - 1];
+    stripPos = { g:stripPos.g - 1, i:pg.posts.length - 1 };
+    showStripPost();
+  }
+}
+
+document.getElementById('orgs-strip').addEventListener('click', (e)=>{
+  const it = e.target.closest('.strip-item');
+  if(it) openStrip(Number(it.dataset.gi));
+});
+document.getElementById('orgs-strip').addEventListener('keydown', (e)=>{
+  if(e.key !== 'Enter' && e.key !== ' ') return;
+  const it = e.target.closest('.strip-item');
+  if(it){ e.preventDefault(); openStrip(Number(it.dataset.gi)); }
+});
+document.getElementById('strip-close').addEventListener('click', closeStrip);
+document.getElementById('strip-foot').addEventListener('click', ()=>{
+  const g = stripOrder[stripPos.g];
+  if(g) openOrgSheet(g.orgId);
+});
+document.getElementById('strip-body').addEventListener('click', async (e)=>{
+  const likeBtn = e.target.closest('.like-btn');
+  if(likeBtn){
+    e.stopPropagation();
+    const id = likeBtn.dataset.postId;
+    if(id){
+      await toggleLike(id, likeBtn);
+      const post = (stripOrder[stripPos.g] || {}).posts && stripOrder[stripPos.g].posts[stripPos.i];
+      if(post && String(post.id) === String(id)){
+        if(likeBtn.classList.contains('liked')) stripCtx.likedIds.add(post.id); else stripCtx.likedIds.delete(post.id);
+      }
+    }
+    return;
+  }
+  // buttons, links, stickers and players handle themselves; only a tap on the reading area turns the page
+  if(e.target.closest('.post-foot, .post-action, a, .org-link-card, .sticker-tap, .org-name-link, audio, video, input, button')) return;
+  const rect = document.getElementById('strip-body').getBoundingClientRect();
+  if((e.clientX - rect.left) < rect.width * 0.35) stripPrev(); else stripNext();
+});
+(function setupStripSwipe(){
+  const v = document.getElementById('strip-viewer');
+  let sx = 0, sy = 0;
+  v.addEventListener('touchstart', (e)=>{ sx = e.touches[0].clientX; sy = e.touches[0].clientY; }, { passive:true });
+  v.addEventListener('touchend', (e)=>{
+    const dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy;
+    if(Math.abs(dy) < 70 || Math.abs(dy) < Math.abs(dx) * 1.5) return;
+    const body = document.getElementById('strip-body');
+    if(dy > 0){ if(body.scrollTop <= 0) closeStrip(); }                                    // swipe down: close
+    else if(body.scrollTop + body.clientHeight >= body.scrollHeight - 2){                  // swipe up: the organisation's sheet
+      const g = stripOrder[stripPos.g];
+      if(g) openOrgSheet(g.orgId);
+    }
+  }, { passive:true });
+})();
+
 async function renderOrgsFeed(){
   const list = document.getElementById('orgs-list');
   const { data: rawPosts, error } = await sb
@@ -9063,6 +9305,7 @@ async function renderOrgsFeed(){
     fetchInspirationLabels(rows)
   ]);
 
+  renderOrgsStrip(rows, { likedIds, likeCounts, inspirationLabels });
   const frag = document.createDocumentFragment();
   const section = (text) => { const d = document.createElement('div'); d.className = 'orgs-section'; d.textContent = text; frag.appendChild(d); };
   const note = (html) => { const d = document.createElement('div'); d.className = 'orgs-note'; d.innerHTML = html; frag.appendChild(d); };
@@ -12751,7 +12994,7 @@ function updateComposeVisibility(){
   const isWatching = document.getElementById('watch-screen')?.classList.contains('show');
   const isSharing = document.getElementById('share-card-overlay')?.classList.contains('show');
   const isOrgsScreen = document.getElementById('screen-orgs')?.classList.contains('active');
-  const hide = (isChatScreen && !isCommunitiesTab) || isRoom || isChatThread || isCommunityThread || isProfile || isPostReplies || isWatching || isSharing || (isOrgsScreen && !myOrgIds.size);
+  const hide = (isChatScreen && !isCommunitiesTab) || isRoom || isChatThread || isCommunityThread || isProfile || isPostReplies || isWatching || isSharing || (isOrgsScreen && !myOrgIds.size) || !!document.getElementById('strip-viewer')?.classList.contains('show');
   composeBtn.style.display = hide ? 'none' : 'flex';
   composeBtn.textContent = isCommunitiesTab ? '👥' : '+';
 }
