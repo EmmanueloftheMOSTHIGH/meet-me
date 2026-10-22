@@ -408,6 +408,40 @@
   #strip-foot{ flex-shrink:0; margin:0 20px; text-align:center; font-size:12px; color:var(--muted); cursor:pointer; padding:12px 0 calc(env(safe-area-inset-bottom,0px) + 16px); border-top:1px solid var(--card-border); }
   @media (prefers-reduced-motion: reduce){ #strip-viewer{ transition:none; transform:none; } }
 
+  /* ===== Organisation home page ===== */
+  #org-page{
+    position:absolute; inset:0; z-index:76; background:var(--bg); display:flex; flex-direction:column;
+    opacity:0; pointer-events:none; transform:translateX(18px); transition:opacity 0.22s ease, transform 0.22s ease;
+  }
+  #org-page.show{ opacity:1; pointer-events:auto; transform:none; }
+  #orgpage-top{ display:flex; align-items:center; justify-content:space-between; padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 6px; flex-shrink:0; }
+  .orgpage-btn{ width:38px; height:38px; display:flex; align-items:center; justify-content:center; color:var(--ivory); font-size:20px; cursor:pointer; border-radius:50%; }
+  #orgpage-scroll{ flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; padding-bottom:48px; }
+  #orgpage-scroll::-webkit-scrollbar{ width:0; }
+  #orgpage-banner{ height:84px; background:color-mix(in srgb, var(--oc,#D4AF37) 24%, var(--bg)); border-top:1px solid color-mix(in srgb, var(--oc,#D4AF37) 30%, transparent); border-bottom:1px solid color-mix(in srgb, var(--oc,#D4AF37) 30%, transparent); }
+  #orgpage-id{ padding:0 20px 14px; }
+  .orgpage-row{ display:flex; align-items:flex-end; justify-content:space-between; margin-top:-34px; }
+  #orgpage-logo{
+    width:68px; height:68px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    font-family:'Fraunces',serif; font-size:28px; font-weight:500; color:var(--bg); background:var(--oc,#D4AF37); border:3px solid var(--bg);
+  }
+  .orgpage-follow{ font-size:13px; font-weight:600; padding:7px 20px; border-radius:999px; cursor:pointer; color:var(--gold-text); border:1px solid var(--gold-dim); margin-bottom:4px; }
+  .orgpage-follow.on{ color:var(--muted); border-color:var(--card-border); font-weight:500; }
+  .orgpage-follow:active{ opacity:0.8; }
+  .orgpage-own{ font-size:12px; color:var(--muted-dim); margin-bottom:8px; }
+  .orgpage-nameline{ display:flex; align-items:center; gap:8px; margin-top:10px; }
+  #orgpage-name{ font-family:'Fraunces',serif; font-size:23px; color:var(--ivory); }
+  #orgpage-tag{ font-size:9.5px; font-weight:600; padding:1px 7px; border-radius:999px; color:var(--gold-text); border:1px solid color-mix(in srgb, var(--gold) 60%, transparent); }
+  #orgpage-tag:empty{ display:none; }
+  #orgpage-sub{ font-size:13.5px; line-height:1.5; color:var(--muted); margin-top:4px; }
+  #orgpage-meta{ display:flex; align-items:center; gap:16px; font-size:12px; color:var(--muted-dim); margin-top:14px; padding-top:12px; border-top:1px solid var(--card-border); }
+  .orgpage-act{ cursor:pointer; color:var(--muted); }
+  .orgpage-act.on{ color:var(--gold-light); }
+  #orgpage-posts{ display:flex; flex-direction:column; gap:14px; padding:4px 16px 0; }
+  .orgpage-empty{ font-size:13px; color:var(--muted-dim); text-align:center; padding:28px 0; }
+  #orgpage-more{ display:none; text-align:center; font-size:12.5px; color:var(--muted); padding:18px 0 6px; cursor:pointer; }
+  @media (prefers-reduced-motion: reduce){ #org-page{ transition:none; transform:none; } }
+
   #feed-pull-indicator{
     position:absolute; left:0; right:0; top:0; z-index:5;
     text-align:center; padding-top:10px;
@@ -2756,6 +2790,27 @@
       <div id="org-insights-sub">The last 7 days. Only you can see this.</div>
       <div id="org-insights-body"></div>
       <div id="org-insights-close">close</div>
+    </div>
+  </div>
+
+  <div id="org-page" role="dialog" aria-label="Organisation">
+    <div id="orgpage-top">
+      <span class="orgpage-btn" id="orgpage-back" role="button" aria-label="Back">←</span>
+      <span class="orgpage-btn" id="orgpage-more-btn" role="button" aria-label="More">⋯</span>
+    </div>
+    <div id="orgpage-scroll">
+      <div id="orgpage-banner"></div>
+      <div id="orgpage-id">
+        <div class="orgpage-row">
+          <div id="orgpage-logo"></div>
+          <div id="orgpage-main-action"></div>
+        </div>
+        <div class="orgpage-nameline"><span id="orgpage-name"></span><span id="orgpage-tag"></span></div>
+        <div id="orgpage-sub"></div>
+        <div id="orgpage-meta"></div>
+      </div>
+      <div id="orgpage-posts"></div>
+      <div id="orgpage-more">Show older posts</div>
     </div>
   </div>
 
@@ -8369,6 +8424,7 @@ function renderOrgSheetState(){
   notifyRow.classList.toggle('on', !!(f && f.notify));
   muteRow.classList.toggle('on', muted);
   muteRow.querySelector('.org-state').textContent = muted ? 'Muted' : '';
+  if(typeof orgPageSync === 'function') orgPageSync();
 }
 document.getElementById('org-sheet-close').addEventListener('click', ()=> document.getElementById('org-sheet-overlay').classList.remove('show'));
 document.getElementById('org-sheet-overlay').addEventListener('click', (e)=>{ if(e.target.id === 'org-sheet-overlay') e.currentTarget.classList.remove('show'); });
@@ -8420,7 +8476,8 @@ document.addEventListener('click', (e)=>{
   const link = e.target.closest('.org-name-link');
   if(!link) return;
   e.stopPropagation();
-  openOrgSheet(Number(link.dataset.orgId));
+  if(link.closest('#org-page')) return;      // already on this organisation's page
+  openOrgPage(Number(link.dataset.orgId));
 });
 
 /* ---------- Profile > Organisations: owner settings + follows/mutes ---------- */
@@ -8834,6 +8891,7 @@ function addOrgPostInsight(div, post){
   clearTimeout(insightTimer);
   insightTimer = setTimeout(fillOrgPostInsights, 250);
 }
+const ORG_INSIGHT_MIN_VIEWS = 50;   // the numbers line under an organisation post appears at about 50 views
 async function fillOrgPostInsights(){
   const ids = [...insightQueue].slice(0, 100);
   insightQueue.clear();
@@ -8852,10 +8910,9 @@ async function fillOrgPostInsights(){
   ids.forEach(id => document.querySelectorAll(`.post-insight[data-insight-for="${id}"]`).forEach(el => {
     const r = by[id];
     if(!r){ el.remove(); return; }
-    const parts = [[Number(r.likes), 'like'], [Number(r.stands), 'stand'], [Number(r.views), 'view']].filter(x => x[0] > 0).map(x => pl(x[0], x[1]));
-    if(inspiredBy[id]) parts.push(inspiredBy[id] + ' inspired');
-    if(!parts.length){ el.remove(); return; }
-    el.textContent = parts.join(' · ');
+    // owners only see a post's numbers once it has real reach; below that the line would just say "1 like"
+    if(Number(r.views) < ORG_INSIGHT_MIN_VIEWS){ el.remove(); return; }
+    el.textContent = `${pl(Number(r.likes), 'like')} · ${pl(Number(r.stands), 'stand')} · ${pl(Number(r.views), 'view')} · ${inspiredBy[id] || 0} inspired`;
   }));
 }
 
@@ -9232,7 +9289,7 @@ document.getElementById('orgs-strip').addEventListener('keydown', (e)=>{
 document.getElementById('strip-close').addEventListener('click', closeStrip);
 document.getElementById('strip-foot').addEventListener('click', ()=>{
   const g = stripOrder[stripPos.g];
-  if(g) openOrgSheet(g.orgId);
+  if(g) openOrgPage(g.orgId);
 });
 document.getElementById('strip-body').addEventListener('click', async (e)=>{
   const likeBtn = e.target.closest('.like-btn');
@@ -9264,10 +9321,147 @@ document.getElementById('strip-body').addEventListener('click', async (e)=>{
     if(dy > 0){ if(body.scrollTop <= 0) closeStrip(); }                                    // swipe down: close
     else if(body.scrollTop + body.clientHeight >= body.scrollHeight - 2){                  // swipe up: the organisation's sheet
       const g = stripOrder[stripPos.g];
-      if(g) openOrgSheet(g.orgId);
+      if(g) openOrgPage(g.orgId);
     }
   }, { passive:true });
 })();
+
+/* ============================================================
+   ORGANISATION HOME PAGE — tap an organisation's name (or "Open <name>" in the strip viewer).
+   Colour banner, logo, follow / notify / mute, and every post the organisation has made.
+   Follow, notify and mute reuse the sheet's own logic, so there is one source of truth.
+   ============================================================ */
+const ORGPAGE_SIZE = 20;
+let orgPageId = null, orgPageOffset = 0, orgPageLoading = false, orgPageCount = null, orgPageLastMuted = null;
+let orgPageCtx = { likedIds:new Set(), likeCounts:{}, inspirationLabels:{} };
+
+function orgPageSubline(o){
+  return myOrgIds.has(o.id) ? 'This is your organisation.' :
+    /^meet story$/i.test(o.name) ? 'Real stories from real people.' :
+    o.type === 'newscast' ? 'Shares news and reports.' :
+    o.type === 'creator' ? 'Shares their own work.' : 'Posts from the Meet Me team.';
+}
+async function openOrgPage(id){
+  await ensureOrgs();
+  if(typeof stripViewerOpen === 'function' && stripViewerOpen()) closeStrip();
+  orgPageId = id;
+  orgPageCount = null;
+  const o = orgInfo(id);
+  const page = document.getElementById('org-page');
+  page.style.setProperty('--oc', o.color);
+  document.getElementById('orgpage-logo').textContent = stripShortName(o.name).charAt(0).toUpperCase();
+  document.getElementById('orgpage-name').textContent = o.name;
+  document.getElementById('orgpage-tag').textContent = orgTypeLabel(o.type);
+  document.getElementById('orgpage-sub').textContent = orgPageSubline(o);
+  orgPageLastMuted = myMutedOrgIds.has(id);
+  paintOrgPageActions();
+  document.getElementById('orgpage-posts').innerHTML = '<div class="orgpage-empty">…</div>';
+  document.getElementById('orgpage-more').style.display = 'none';
+  document.getElementById('orgpage-scroll').scrollTop = 0;
+  page.classList.add('show');
+  if(typeof updateComposeVisibility === 'function') updateComposeVisibility();
+  loadOrgPagePosts(true);
+}
+function closeOrgPage(){
+  document.getElementById('org-page').classList.remove('show');
+  orgPageId = null;
+  document.getElementById('orgpage-posts').innerHTML = '';
+  if(typeof updateComposeVisibility === 'function') updateComposeVisibility();
+  // a follow, unfollow or mute made here changes what the Organisations page should show
+  if(orgsFollowDirty){ orgsFollowDirty = false; orgsFeedLoadedAt = 0; if(currentScreenKey === 'orgs') loadOrgsFeed(true); }
+}
+function paintOrgPageActions(){
+  const id = orgPageId;
+  if(id === null || id === undefined) return;
+  const mine = myOrgIds.has(id), f = myFollows[id], muted = myMutedOrgIds.has(id);
+  document.getElementById('orgpage-main-action').innerHTML = mine
+    ? '<span class="orgpage-own">Your organisation</span>'
+    : `<span class="orgpage-follow${f ? ' on' : ''}" role="button">${f ? 'Following' : 'Follow'}</span>`;
+  const bits = [];
+  if(orgPageCount !== null) bits.push(`<span>${orgPageCount} post${orgPageCount === 1 ? '' : 's'}</span>`);
+  if(!mine && f) bits.push(`<span class="orgpage-act${f.notify ? ' on' : ''}" data-act="notify" role="button">${f.notify ? 'Notifications on' : 'Notify me'}</span>`);
+  if(!mine) bits.push(`<span class="orgpage-act${muted ? ' on' : ''}" data-act="mute" role="button">${muted ? 'Muted' : 'Mute'}</span>`);
+  document.getElementById('orgpage-meta').innerHTML = bits.join('');
+}
+// called whenever the sheet logic changes follow / notify / mute state
+function orgPageSync(){
+  if(orgPageId === null || !document.getElementById('org-page').classList.contains('show')) return;
+  paintOrgPageActions();
+  const muted = myMutedOrgIds.has(orgPageId);
+  if(muted !== orgPageLastMuted){ orgPageLastMuted = muted; loadOrgPagePosts(true); }   // muting clears this org's cards from the DOM, so draw them again
+}
+async function loadOrgPagePosts(reset){
+  if(orgPageLoading && !reset) return;
+  const id = orgPageId;
+  if(id === null || id === undefined) return;
+  orgPageLoading = true;
+  const box = document.getElementById('orgpage-posts');
+  const more = document.getElementById('orgpage-more');
+  try{
+    if(reset) orgPageOffset = 0;
+    const { data: rows, error } = await sb
+      .from('posts')
+      .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), users!posts_user_id_fkey(meet_number), communities(name, icon)')
+      .eq('post_type', 'rant')
+      .eq('organization_id', id)
+      .is('community_id', null)
+      .order('created_at', { ascending: false })
+      .range(orgPageOffset, orgPageOffset + ORGPAGE_SIZE - 1);
+    if(id !== orgPageId) return;
+    if(error){
+      console.error('Error loading organisation page:', error);
+      if(reset) box.innerHTML = '<div class="orgpage-empty">Couldn\'t load posts. Close this page and open it again.</div>';
+      return;
+    }
+    const posts = rows || [];
+    const [likedIds, likeCounts, inspirationLabels] = await Promise.all([
+      (async ()=>{
+        const ids = posts.map(p => p.id);
+        if(!currentUserId || !ids.length) return new Set();
+        const { data: likeRows } = await sb.from('likes').select('post_id').eq('user_id', currentUserId).in('post_id', ids);
+        return new Set((likeRows || []).map(l => l.post_id));
+      })(),
+      fetchLikeCounts(posts.map(p => p.id)),
+      fetchInspirationLabels(posts)
+    ]);
+    if(id !== orgPageId) return;
+    if(reset){
+      orgPageCtx = { likedIds, likeCounts, inspirationLabels };
+      box.innerHTML = '';
+    } else {
+      likedIds.forEach(x => orgPageCtx.likedIds.add(x));
+      Object.assign(orgPageCtx.likeCounts, likeCounts);
+      Object.assign(orgPageCtx.inspirationLabels, inspirationLabels);
+    }
+    posts.forEach(p => box.appendChild(renderRantPost(p, likedIds.has(p.id), likeCounts[p.id] || 0, inspirationLabels)));
+    orgPageOffset += posts.length;
+    if(reset && !posts.length) box.innerHTML = '<div class="orgpage-empty">No posts yet.</div>';
+    more.style.display = posts.length === ORGPAGE_SIZE ? 'block' : 'none';
+    if(reset){
+      const { count } = await sb.from('posts').select('id', { count:'exact', head:true }).eq('post_type', 'rant').eq('organization_id', id).is('community_id', null);
+      if(id === orgPageId && typeof count === 'number'){ orgPageCount = count; paintOrgPageActions(); }
+    }
+  } finally {
+    orgPageLoading = false;
+  }
+}
+
+document.getElementById('orgpage-back').addEventListener('click', closeOrgPage);
+document.getElementById('orgpage-more-btn').addEventListener('click', ()=>{ if(orgPageId !== null) openOrgSheet(orgPageId); });
+document.getElementById('orgpage-more').addEventListener('click', ()=> loadOrgPagePosts(false));
+document.getElementById('orgpage-id').addEventListener('click', (e)=>{
+  const id = orgPageId;
+  if(id === null || id === undefined) return;
+  if(e.target.closest('.orgpage-follow')){ orgSheetId = id; document.getElementById('org-sheet-follow').click(); return; }
+  const act = e.target.closest('.orgpage-act');
+  if(!act) return;
+  orgSheetId = id;
+  document.getElementById(act.dataset.act === 'notify' ? 'org-sheet-notify' : 'org-sheet-mute').click();
+});
+document.getElementById('orgpage-posts').addEventListener('click', async (e)=>{
+  const likeBtn = e.target.closest('.like-btn');
+  if(likeBtn){ e.stopPropagation(); const pid = likeBtn.dataset.postId; if(pid) await toggleLike(pid, likeBtn); }
+});
 
 async function renderOrgsFeed(){
   const list = document.getElementById('orgs-list');
@@ -12994,7 +13188,7 @@ function updateComposeVisibility(){
   const isWatching = document.getElementById('watch-screen')?.classList.contains('show');
   const isSharing = document.getElementById('share-card-overlay')?.classList.contains('show');
   const isOrgsScreen = document.getElementById('screen-orgs')?.classList.contains('active');
-  const hide = (isChatScreen && !isCommunitiesTab) || isRoom || isChatThread || isCommunityThread || isProfile || isPostReplies || isWatching || isSharing || (isOrgsScreen && !myOrgIds.size) || !!document.getElementById('strip-viewer')?.classList.contains('show');
+  const hide = (isChatScreen && !isCommunitiesTab) || isRoom || isChatThread || isCommunityThread || isProfile || isPostReplies || isWatching || isSharing || (isOrgsScreen && !myOrgIds.size) || !!document.getElementById('strip-viewer')?.classList.contains('show') || !!document.getElementById('org-page')?.classList.contains('show');
   composeBtn.style.display = hide ? 'none' : 'flex';
   composeBtn.textContent = isCommunitiesTab ? '👥' : '+';
 }
