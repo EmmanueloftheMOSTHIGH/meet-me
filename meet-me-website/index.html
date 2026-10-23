@@ -536,6 +536,18 @@
   .orgpage-follow:active{ opacity:0.8; }
   .orgpage-manage{ font-size:13px; font-weight:600; padding:7px 20px; border-radius:999px; cursor:pointer; color:var(--gold-text); border:1px solid var(--gold-dim); margin-bottom:4px; }
   .orgpage-manage:active{ opacity:0.8; }
+  .orgpage-actions{ display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+  .orgpage-actions .orgpage-follow, .orgpage-actions .orgpage-manage{ margin-bottom:0; }
+  .orgpage-member{ font-size:13px; font-weight:600; padding:7px 16px; border-radius:999px; cursor:pointer; color:var(--bg); background:var(--gold-light, #D4AF37); border:1px solid var(--gold-dim); }
+  .orgpage-member:active{ opacity:0.8; }
+  #orgpage-logo{ overflow:hidden; background-size:cover; background-position:center; }
+  #orgpage-logo.has-img{ color:transparent; }
+  .orgpage-addtag{ color:var(--gold-text); cursor:pointer; font-style:italic; }
+  .orgpage-yours{ color:var(--gold-text); font-weight:600; }
+  .org-logo-edit{ display:flex; align-items:center; gap:12px; margin:0 0 14px; }
+  .org-logo-prev{ width:56px; height:56px; border-radius:50%; background:var(--oc,#D4AF37) center/cover no-repeat; color:var(--bg); display:flex; align-items:center; justify-content:center; font-family:'Fraunces',serif; font-size:22px; flex-shrink:0; border:2px solid var(--card-border); }
+  .org-logo-btn{ font-size:12.5px; padding:8px 14px; border-radius:12px; border:1px solid var(--gold-dim); color:var(--gold-light); cursor:pointer; }
+  .org-logo-rm{ font-size:12px; color:var(--muted-dim); cursor:pointer; }
   /* ---- Manage: one place to run your organisation ---- */
   #org-manage{ position:absolute; inset:0; z-index:77; background:var(--bg); display:flex; flex-direction:column; opacity:0; pointer-events:none; transform:translateX(18px); transition:opacity 0.22s ease, transform 0.22s ease; }
   #org-manage.show{ opacity:1; pointer-events:auto; transform:none; }
@@ -8409,7 +8421,7 @@ function cleanTagline(s){ return String(s || '').replace(/\s+/g, ' ').trim().sli
 function safeOrgColor(c){ return /^#[0-9a-fA-F]{6}$/.test(c || '') ? c : '#D4AF37'; }
 function orgInfo(id){
   const o = orgMap[id];
-  return o ? { id:o.id, name:o.name, type:o.type, color:safeOrgColor(o.crest_color), tagline:cleanTagline(o.tagline) } : { id, name:'Organisation', type:null, color:'#D4AF37', tagline:'' };
+  return o ? { id:o.id, name:o.name, type:o.type, color:safeOrgColor(o.crest_color), tagline:cleanTagline(o.tagline), logo:o.logo_url || '' } : { id, name:'Organisation', type:null, color:'#D4AF37', tagline:'', logo:'' };
 }
 // Newscast posts must carry a header; Meet Story works the same way.
 function orgNeedsHeader(o){ return !!o && (o.type === 'newscast' || /^meet story$/i.test(String(o.name || '').trim())); }
@@ -8417,7 +8429,8 @@ function orgTypeLabel(t){ return t === 'newscast' ? 'Newscast' : t === 'creator'
 function fmtOrgDate(ms){ return new Date(ms).toLocaleDateString(undefined, { day:'numeric', month:'long', year:'numeric' }); }
 
 async function fetchOrgRows(){
-  let r = await sb.from('organizations').select('id, name, crest_color, type, tagline');
+  let r = await sb.from('organizations').select('id, name, crest_color, type, tagline, logo_url');
+  if(r.error){ r = await sb.from('organizations').select('id, name, crest_color, type, tagline'); }
   if(r.error){ r = await sb.from('organizations').select('id, name, crest_color, type'); }   // column not added yet: carry on without taglines
   return r;
 }
@@ -8608,7 +8621,6 @@ function openOrgSheet(id){
       `<span class="org-dot" style="--oc:${o.color}"></span>${escapeHtml(o.name)}<span class="org-tag" style="--oc:${o.color}">${orgTypeLabel(o.type)}</span>`;
     document.getElementById('org-sheet-sub').textContent =
       o.tagline ? o.tagline :
-      myOrgIds.has(id) ? 'This is your organisation.' :
       /^meet story$/i.test(o.name) ? 'Real stories from real people.' :
       o.type === 'newscast' ? 'Shares news and reports.' :
       o.type === 'creator' ? 'Shares their own work.' : 'Posts from the Meet Me team.';
@@ -8737,6 +8749,49 @@ function orgColorState(o){
   if(now < next) return { mode:'locked', msg:`Colour is locked until ${fmtOrgDate(next)}.` };
   return { mode:'free', msg:'Your colour lock has ended. You can pick a new colour.' };
 }
+function orgLogoEditHtml(o){
+  const inner = o.logo_url ? '' : escapeHtml(stripShortName(o.name).charAt(0).toUpperCase());
+  const bg = o.logo_url ? ` style="background-image:url('${String(o.logo_url).replace(/'/g, '%27')}')"` : '';
+  return `<div class="org-logo-edit"><div class="org-logo-prev"${bg}>${inner}</div><span class="org-logo-btn" role="button">${o.logo_url ? 'Change logo' : 'Add logo'}</span>${o.logo_url ? '<span class="org-logo-rm" role="button">Remove</span>' : ''}<input type="file" class="org-logo-file" accept="image/*" style="display:none"></div>`;
+}
+// Square-crop and shrink the picked image to 256px, so logos stay small and load fast.
+async function orgLogoBlob(file){
+  const bmp = await createImageBitmap(file);
+  const side = Math.min(bmp.width, bmp.height), N = 256;
+  const c = document.createElement('canvas'); c.width = N; c.height = N;
+  c.getContext('2d').drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, N, N);
+  return await new Promise(r => c.toBlob(r, 'image/jpeg', 0.85));
+}
+async function saveOrgLogo(id, blob){
+  let url = null;
+  if(blob){
+    const path = `${id}/${Date.now()}.jpg`;
+    const up = await sb.storage.from('org-logos').upload(path, blob, { contentType:'image/jpeg', cacheControl:'31536000' });
+    if(up.error){ console.error('Logo upload failed:', up.error); showNavToast("Couldn't upload that. Try again."); return false; }
+    url = sb.storage.from('org-logos').getPublicUrl(path).data.publicUrl;
+  }
+  const { error } = await sb.rpc('set_org_logo', { p_org_id: id, p_url: url });
+  if(error){ console.error(error); showNavToast(orgErrorMessage(error) || "That didn't go through. Try again."); return false; }
+  if(orgMap[id]) orgMap[id].logo_url = url;
+  const mo = (myOrgs || []).find(x => x.id === id); if(mo) mo.logo_url = url;
+  showNavToast(url ? 'Logo saved.' : 'Logo removed.');
+  if(orgPageId === id) paintOrgPageLogo(orgInfo(id));
+  return true;
+}
+document.addEventListener('click', (e)=>{
+  const btn = e.target.closest('.org-logo-btn'), rm = e.target.closest('.org-logo-rm');
+  if(btn){ const f = btn.closest('.org-logo-edit').querySelector('.org-logo-file'); f.value = ''; f.click(); return; }
+  if(rm){ const id = Number(rm.closest('.org-own').dataset.orgId); saveOrgLogo(id, null).then(ok => { if(ok) renderManage(); }); }
+});
+document.addEventListener('change', async (e)=>{
+  const inp = e.target.closest && e.target.closest('.org-logo-file');
+  if(!inp || !inp.files[0]) return;
+  const id = Number(inp.closest('.org-own').dataset.orgId);
+  try{
+    const blob = await orgLogoBlob(inp.files[0]);
+    if(blob && await saveOrgLogo(id, blob)) renderManage();
+  }catch(err){ console.error(err); showNavToast("That image didn't work. Try another."); }
+});
 function orgIdentityEditHtml(o){
   const c = safeOrgColor(o.crest_color);
   const st = orgColorState(o);
@@ -9647,10 +9702,22 @@ function syncFollowPills(){
 }
 function orgPageSubline(o){
   if(o.tagline) return o.tagline;
-  return myOrgIds.has(o.id) ? 'This is your organisation.' :
-    /^meet story$/i.test(o.name) ? 'Real stories from real people.' :
+  if(myOrgIds.has(o.id)) return '';   // your own page: no filler line; "Your organisation" shows beside the post count, and the tagline is set in Manage
+  return /^meet story$/i.test(o.name) ? 'Real stories from real people.' :
     o.type === 'newscast' ? 'Shares news and reports.' :
     o.type === 'creator' ? 'Shares their own work.' : 'Posts from the Meet Me team.';
+}
+function paintOrgPageLogo(o){
+  const el = document.getElementById('orgpage-logo');
+  if(o.logo){ el.classList.add('has-img'); el.style.backgroundImage = `url("${String(o.logo).replace(/"/g, '%22')}")`; el.textContent = ''; }
+  else { el.classList.remove('has-img'); el.style.backgroundImage = ''; el.textContent = stripShortName(o.name).charAt(0).toUpperCase(); }
+}
+function paintOrgPageSub(o){
+  const sub = document.getElementById('orgpage-sub');
+  const line = orgPageSubline(o);
+  if(line){ sub.textContent = line; sub.style.display = ''; }
+  else if(myOrgIds.has(o.id)){ sub.innerHTML = '<span class="orgpage-addtag" role="button">Add a line about your organisation</span>'; sub.style.display = ''; }
+  else { sub.textContent = ''; sub.style.display = 'none'; }
 }
 async function openOrgPage(id){
   await ensureOrgs();
@@ -9660,10 +9727,10 @@ async function openOrgPage(id){
   const o = orgInfo(id);
   const page = document.getElementById('org-page');
   page.style.setProperty('--oc', o.color);
-  document.getElementById('orgpage-logo').textContent = stripShortName(o.name).charAt(0).toUpperCase();
+  paintOrgPageLogo(o);
   document.getElementById('orgpage-name').textContent = o.name;
   document.getElementById('orgpage-tag').textContent = orgTypeLabel(o.type);
-  document.getElementById('orgpage-sub').textContent = orgPageSubline(o);
+  paintOrgPageSub(o);
   orgPageLastMuted = myMutedOrgIds.has(id);
   paintOrgPageActions();
   document.getElementById('orgpage-posts').innerHTML = '<div class="orgpage-empty">…</div>';
@@ -9709,8 +9776,8 @@ function renderManage(){
       <div class="mg-btn" id="manage-view-page" role="button">View your page</div>
     </div>
     <div class="mg-sec"><div class="mg-h">Identity</div>
-      <div class="mg-note">The line under your name, and your colour.</div>
-      <div class="org-own" data-org-id="${o.id}">${orgIdentityEditHtml(o)}</div>
+      <div class="mg-note">Your logo, the line under your name, and your colour.</div>
+      <div class="org-own" data-org-id="${o.id}">${orgLogoEditHtml(o)}${orgIdentityEditHtml(o)}</div>
     </div>
     <div class="mg-sec"><div class="mg-h">Capacity</div><div id="manage-cap"></div></div>
     <div class="mg-sec"><div class="mg-h">Posts</div>
@@ -9791,9 +9858,10 @@ function paintOrgPageActions(){
   if(id === null || id === undefined) return;
   const mine = myOrgIds.has(id), f = myFollows[id], muted = myMutedOrgIds.has(id);
   document.getElementById('orgpage-main-action').innerHTML = mine
-    ? '<span class="orgpage-manage" role="button">Manage</span>'
-    : `<span class="orgpage-follow${f ? ' on' : ''}" role="button">${f ? 'Following' : 'Follow'}</span>`;
+    ? '<div class="orgpage-actions"><span class="orgpage-manage" role="button">Manage</span></div>'
+    : `<div class="orgpage-actions"><span class="orgpage-follow${f ? ' on' : ''}" role="button">${f ? 'Following' : 'Follow'}</span>${f ? '<span class="orgpage-member" role="button">Membership</span>' : ''}</div>`;
   const bits = [];
+  if(mine) bits.push('<span class="orgpage-yours">Your organisation</span>');
   if(orgPageCount !== null) bits.push(`<span>${orgPageCount} post${orgPageCount === 1 ? '' : 's'}</span>`);
   if(!mine && f) bits.push(`<span class="orgpage-act${f.notify ? ' on' : ''}" data-act="notify" role="button">${f.notify ? 'Notifications on' : 'Notify me'}</span>`);
   if(!mine) bits.push(`<span class="orgpage-act${muted ? ' on' : ''}" data-act="mute" role="button">${muted ? 'Muted' : 'Mute'}</span>`);
@@ -9868,7 +9936,8 @@ document.getElementById('orgpage-more').addEventListener('click', ()=> loadOrgPa
 document.getElementById('orgpage-id').addEventListener('click', (e)=>{
   const id = orgPageId;
   if(id === null || id === undefined) return;
-  if(e.target.closest('.orgpage-manage')){ openManage(id); return; }
+  if(e.target.closest('.orgpage-manage, .orgpage-addtag')){ openManage(id); return; }
+  if(e.target.closest('.orgpage-member')){ showNavToast('Membership is coming soon.'); return; }
   if(e.target.closest('.orgpage-follow')){ orgSheetId = id; document.getElementById('org-sheet-follow').click(); return; }
   const act = e.target.closest('.orgpage-act');
   if(!act) return;
