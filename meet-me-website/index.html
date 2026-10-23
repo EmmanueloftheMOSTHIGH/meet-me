@@ -9924,13 +9924,11 @@ async function renderOrgsFeed(){
   const note = (html) => { const d = document.createElement('div'); d.className = 'orgs-note'; d.innerHTML = html; frag.appendChild(d); };
   const addPosts = (arr) => arr.forEach(post => frag.appendChild(renderRantPost(post, likedIds.has(post.id), likeCounts[post.id] || 0, inspirationLabels)));
 
-  if(followed.length){
-    section('Following');
-    addPosts(followed);
-    if(others.length){ section('Discover'); addPosts(others); }
-  } else if(rows.length){
-    note('<b>Follow organisations to shape this page.</b>Tap an organisation\'s name, or use Search, and their posts will come first.');
-    section('From organisations');
+  // One chronological feed of every organisation's posts. Following does not decide what appears here;
+  // it only shapes the strip at the top.
+  if(rows.length){
+    if(!followed.length) note('<b>Follow organisations to fill your strip.</b>Tap an organisation\'s name, or use Search.');
+    section('Latest');
     addPosts(rows);
   }
 
