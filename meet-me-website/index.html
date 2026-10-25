@@ -430,7 +430,7 @@
   .strip-item.unseen .strip-ring{ border-color:var(--oc,#D4AF37); opacity:1; box-shadow:0 0 0 3px color-mix(in srgb, var(--oc,#D4AF37) 14%, transparent); }
   .strip-item:active .strip-ring{ transform:scale(0.94); }
   /* an organisation with a logo shows the logo itself in its ring (all themes) */
-  #root .strip-ring.has-logo{ background-size:cover; background-position:center; background-repeat:no-repeat; color:transparent; opacity:0.8; }
+  #root .strip-item .strip-ring.has-logo{ background-size:cover !important; background-position:center !important; background-repeat:no-repeat !important; color:transparent; opacity:0.85; }
   #root .strip-item.unseen .strip-ring.has-logo{ opacity:1; }
   /* On the light themes the strip was washed out (pale colour on pale paper): stronger ring, darker letter, seen state still clearly visible. */
   #root[data-theme="white"] .strip-ring, #root[data-theme="aurora-light"] .strip-ring{
