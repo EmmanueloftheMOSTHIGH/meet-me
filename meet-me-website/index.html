@@ -8797,13 +8797,16 @@ function orgLogoEditHtml(o){
   const tap = o.logo_url ? ` logo-tap" data-logo="${String(o.logo_url).replace(/"/g, '%22')}` : '';
   return `<div class="org-logo-edit"><div class="org-logo-prev${tap}"${bg}>${inner}</div><span class="org-logo-btn" role="button">${o.logo_url ? 'Change logo' : 'Add logo'}</span>${o.logo_url ? '<span class="org-logo-rm" role="button">Remove</span>' : ''}<input type="file" class="org-logo-file" accept="image/*" style="display:none"></div>`;
 }
-// Square-crop and shrink the picked image to at most 640px, so logos stay small but still look sharp full-screen.
+// Square-crop and shrink the picked image to at most 800px, so logos stay small but still look sharp full-screen.
 async function orgLogoBlob(file){
   const bmp = await createImageBitmap(file);
-  const side = Math.min(bmp.width, bmp.height), N = Math.min(640, side);
+  const side = Math.min(bmp.width, bmp.height), N = Math.min(800, side);   // never enlarge a small image
   const c = document.createElement('canvas'); c.width = N; c.height = N;
-  c.getContext('2d').drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, N, N);
-  return await new Promise(r => c.toBlob(r, 'image/jpeg', 0.85));
+  const ctx = c.getContext('2d');
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, N, N);
+  ctx.drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, N, N);
+  return await new Promise(r => c.toBlob(r, 'image/jpeg', 0.93));
 }
 async function saveOrgLogo(id, blob){
   let url = null;
