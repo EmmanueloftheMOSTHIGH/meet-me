@@ -429,6 +429,9 @@
   }
   .strip-item.unseen .strip-ring{ border-color:var(--oc,#D4AF37); opacity:1; box-shadow:0 0 0 3px color-mix(in srgb, var(--oc,#D4AF37) 14%, transparent); }
   .strip-item:active .strip-ring{ transform:scale(0.94); }
+  /* an organisation with a logo shows the logo itself in its ring (all themes) */
+  #root .strip-ring.has-logo{ background-size:cover; background-position:center; background-repeat:no-repeat; color:transparent; opacity:0.8; }
+  #root .strip-item.unseen .strip-ring.has-logo{ opacity:1; }
   /* On the light themes the strip was washed out (pale colour on pale paper): stronger ring, darker letter, seen state still clearly visible. */
   #root[data-theme="white"] .strip-ring, #root[data-theme="aurora-light"] .strip-ring{
     color:color-mix(in srgb, var(--oc,#D4AF37) 62%, var(--ivory));
@@ -9591,7 +9594,9 @@ function paintOrgsStrip(){
     const unseen = isNew(g);
     const short = stripShortName(o.name);
     return `<div class="strip-item${unseen ? ' unseen' : ''}" data-gi="${gi}" style="--oc:${o.color}" role="button" tabindex="0" aria-label="${escapeHtml(o.name)}${unseen ? ', new' : ''}">`
-      + `<div class="strip-ring"><span>${escapeHtml(short.charAt(0).toUpperCase())}</span></div>`
+      + (o.logo
+          ? `<div class="strip-ring has-logo" style="background-image:url('${String(o.logo).replace(/'/g, '%27')}')"></div>`
+          : `<div class="strip-ring"><span>${escapeHtml(short.charAt(0).toUpperCase())}</span></div>`)
       + (unseen ? '<i class="strip-fd"></i>' : '')
       + `<div class="strip-label">${escapeHtml(short)}</div></div>`;
   }).join('');
