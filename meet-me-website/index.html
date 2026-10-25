@@ -1517,6 +1517,23 @@
     color:var(--ivory); white-space:pre-wrap; word-wrap:break-word;
   }
   .text-tap{ cursor:pointer; }
+  /* full-screen logo viewer (tap an organisation logo) */
+  #logo-viewer-overlay{
+    position:absolute; inset:0; z-index:230;
+    background:rgba(5,5,6,0.96);
+    display:flex; align-items:center; justify-content:center;
+    opacity:0; pointer-events:none; transition:opacity 0.25s ease;
+  }
+  #logo-viewer-overlay.show{ opacity:1; pointer-events:auto; }
+  #logo-viewer-close{
+    position:absolute; top:max(18px, env(safe-area-inset-top)); right:18px;
+    width:34px; height:34px; border-radius:50%;
+    background:var(--bg-elevated); border:1px solid var(--card-border);
+    display:flex; align-items:center; justify-content:center;
+    font-size:16px; color:var(--ivory); cursor:pointer; z-index:1;
+  }
+  #logo-viewer-img{ width:min(88vw, 78vh); height:min(88vw, 78vh); object-fit:contain; border-radius:18px; background:#000; }
+  .logo-tap{ cursor:pointer; -webkit-tap-highlight-color:transparent; }
   .yourposts-style-back{
     width:32px; height:32px; border-radius:50%;
     background:var(--bg-elevated); border:1px solid var(--card-border);
@@ -3763,6 +3780,11 @@
     <div id="sticker-viewer-close" title="Close">✕</div>
     <div id="sticker-viewer-mute" title="Sound on / off">🔊</div>
     <div id="sticker-viewer-media-wrap"></div>
+  </div>
+
+  <div id="logo-viewer-overlay">
+    <div id="logo-viewer-close" title="Close">✕</div>
+    <img id="logo-viewer-img" alt="Logo">
   </div>
 
   <div id="text-viewer-overlay">
@@ -7690,6 +7712,23 @@ document.addEventListener('click', (e)=>{
   if(e.target === textViewerOverlay || e.target.closest('#text-viewer-close')) closeTextViewer();
 });
 
+/* Full-screen organisation logo: tap a logo (org page or Manage) to see it large. */
+const logoViewerOverlay = document.getElementById('logo-viewer-overlay');
+const logoViewerImg = document.getElementById('logo-viewer-img');
+function openLogoViewer(url){
+  if(!url) return;
+  logoViewerImg.src = url;
+  logoViewerOverlay.classList.add('show');
+}
+function closeLogoViewer(){
+  logoViewerOverlay.classList.remove('show');
+}
+document.addEventListener('click', (e)=>{
+  const t = e.target.closest('.logo-tap');
+  if(t && t.dataset.logo){ e.stopPropagation(); openLogoViewer(t.dataset.logo); return; }
+  if(e.target === logoViewerOverlay || e.target === logoViewerImg || e.target.closest('#logo-viewer-close')) closeLogoViewer();
+});
+
 
 document.addEventListener('click', (e)=>{
   const playBtn = e.target.closest('.voice-play-btn');
@@ -8752,12 +8791,13 @@ function orgColorState(o){
 function orgLogoEditHtml(o){
   const inner = o.logo_url ? '' : escapeHtml(stripShortName(o.name).charAt(0).toUpperCase());
   const bg = o.logo_url ? ` style="background-image:url('${String(o.logo_url).replace(/'/g, '%27')}')"` : '';
-  return `<div class="org-logo-edit"><div class="org-logo-prev"${bg}>${inner}</div><span class="org-logo-btn" role="button">${o.logo_url ? 'Change logo' : 'Add logo'}</span>${o.logo_url ? '<span class="org-logo-rm" role="button">Remove</span>' : ''}<input type="file" class="org-logo-file" accept="image/*" style="display:none"></div>`;
+  const tap = o.logo_url ? ` logo-tap" data-logo="${String(o.logo_url).replace(/"/g, '%22')}` : '';
+  return `<div class="org-logo-edit"><div class="org-logo-prev${tap}"${bg}>${inner}</div><span class="org-logo-btn" role="button">${o.logo_url ? 'Change logo' : 'Add logo'}</span>${o.logo_url ? '<span class="org-logo-rm" role="button">Remove</span>' : ''}<input type="file" class="org-logo-file" accept="image/*" style="display:none"></div>`;
 }
-// Square-crop and shrink the picked image to 256px, so logos stay small and load fast.
+// Square-crop and shrink the picked image to at most 640px, so logos stay small but still look sharp full-screen.
 async function orgLogoBlob(file){
   const bmp = await createImageBitmap(file);
-  const side = Math.min(bmp.width, bmp.height), N = 256;
+  const side = Math.min(bmp.width, bmp.height), N = Math.min(640, side);
   const c = document.createElement('canvas'); c.width = N; c.height = N;
   c.getContext('2d').drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, N, N);
   return await new Promise(r => c.toBlob(r, 'image/jpeg', 0.85));
@@ -9709,8 +9749,8 @@ function orgPageSubline(o){
 }
 function paintOrgPageLogo(o){
   const el = document.getElementById('orgpage-logo');
-  if(o.logo){ el.classList.add('has-img'); el.style.backgroundImage = `url("${String(o.logo).replace(/"/g, '%22')}")`; el.textContent = ''; }
-  else { el.classList.remove('has-img'); el.style.backgroundImage = ''; el.textContent = stripShortName(o.name).charAt(0).toUpperCase(); }
+  if(o.logo){ el.classList.add('has-img', 'logo-tap'); el.dataset.logo = o.logo; el.style.backgroundImage = `url("${String(o.logo).replace(/"/g, '%22')}")`; el.textContent = ''; }
+  else { el.classList.remove('has-img', 'logo-tap'); delete el.dataset.logo; el.style.backgroundImage = ''; el.textContent = stripShortName(o.name).charAt(0).toUpperCase(); }
 }
 function paintOrgPageSub(o){
   const sub = document.getElementById('orgpage-sub');
@@ -15094,7 +15134,7 @@ document.getElementById('install-close').addEventListener('click', ()=>{
 });
 
 const BACK_LAYERS = [
-  ['sticker-viewer-overlay','sticker-viewer-close'], ['text-viewer-overlay','text-viewer-close'],
+  ['sticker-viewer-overlay','sticker-viewer-close'], ['logo-viewer-overlay','logo-viewer-close'], ['text-viewer-overlay','text-viewer-close'],
   ['post-replies-sheet','post-replies-close'], ['action-sheet',null],
   ['sticker-picker-overlay','sticker-picker-close'], ['share-card-overlay','share-card-close'],
   ['compose-overlay','compose-overlay-close'], ['create-happening-overlay','happening-create-close'],
