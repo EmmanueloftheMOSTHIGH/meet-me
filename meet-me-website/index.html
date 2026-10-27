@@ -1470,6 +1470,10 @@
   /* Video stickers in feeds: autoplay silent loop while on screen (poster picture shows first; golden play button only if the video is missing). */
   .vid-poster{ position:relative; display:block; background:#0b0b0b; border-radius:8px; overflow:hidden; }
   .vid-poster img{ width:100%; height:100%; object-fit:contain; display:block; }
+  /* Organisation feed cards: pictures and video posters fill the card width, softly rounded, no black bars */
+  .org-card img.sticker-tap{ width:100% !important; height:auto !important; max-height:360px; object-fit:cover !important; border-radius:16px; }
+  .org-card .vid-poster{ width:100% !important; height:auto !important; aspect-ratio:4/5; max-height:380px; border-radius:16px; }
+  .org-card .vid-poster img, .org-card .vid-poster video{ object-fit:cover !important; }
   .vid-play{ position:absolute; left:50%; top:50%; width:44px; height:44px; margin:-22px 0 0 -22px; border-radius:50%;
     background:#d4a857; box-shadow:0 0 14px rgba(212,168,87,0.45); display:flex; align-items:center; justify-content:center; pointer-events:none; }
   .vid-play::before{ content:''; margin-left:3px; border-style:solid; border-width:8px 0 8px 13px; border-color:transparent transparent transparent #0c0c0e; }
@@ -2727,7 +2731,7 @@
   <div id="phone-screen">
 
 <div id="root">
-<script>try{ var _t = (new Date().getDay() === 0) ? (localStorage.getItem('mm_theme_aurora') === 'light' ? 'aurora-light' : 'aurora') : localStorage.getItem('mm_theme'); if(_t === 'aurora' || _t === 'aurora-light'){ document.getElementById('root').setAttribute('data-theme', _t); var _m0 = document.querySelector('meta[name="theme-color"]'); if(_m0) _m0.setAttribute('content', _t === 'aurora' ? '#0a0e14' : '#f1f8f5'); _t = null; } if(_t === 'dark' || _t === 'white' || _t === 'light'){ document.getElementById('root').setAttribute('data-theme', _t); var _m = document.querySelector('meta[name="theme-color"]'); if(_m) _m.setAttribute('content', {dark:'#0c0c0e', white:'#faf7f0', light:'#d9a94a'}[_t]); } }catch(e){}</script>
+<script>try{ var _lt = !!(window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches); var _sv = localStorage.getItem('mm_theme'), _sa = localStorage.getItem('mm_theme_aurora'); var _t = (new Date().getDay() === 0) ? ((_sa ? _sa === 'light' : _lt) ? 'aurora-light' : 'aurora') : (_sv || (_lt ? 'white' : 'dark')); if(_t === 'aurora' || _t === 'aurora-light'){ document.getElementById('root').setAttribute('data-theme', _t); var _m0 = document.querySelector('meta[name="theme-color"]'); if(_m0) _m0.setAttribute('content', _t === 'aurora' ? '#0a0e14' : '#f1f8f5'); _t = null; } if(_t === 'dark' || _t === 'white' || _t === 'light'){ document.getElementById('root').setAttribute('data-theme', _t); var _m = document.querySelector('meta[name="theme-color"]'); if(_m) _m.setAttribute('content', {dark:'#0c0c0e', white:'#faf7f0', light:'#d9a94a'}[_t]); } }catch(e){}</script>
 
   <div id="splash">
     <div id="veil-tl" class="veil-piece"></div>
@@ -3928,7 +3932,8 @@ function syncStatusBarColor(theme){
   document.head.appendChild(meta);
 }
 
-function auroraTheme(){ try{ return localStorage.getItem('mm_theme_aurora') === 'light' ? 'aurora-light' : 'aurora'; }catch(e){ return 'aurora'; } }
+function systemPrefersLight(){ try{ return !!(window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches); }catch(e){ return false; } }
+function auroraTheme(){ try{ const v = localStorage.getItem('mm_theme_aurora'); return (v ? v === 'light' : systemPrefersLight()) ? 'aurora-light' : 'aurora'; }catch(e){ return 'aurora'; } }
 function auroraLabel(t){ return t === 'aurora-light' ? 'Aurora Light (Sunday)' : 'Aurora (Sunday)'; }
 function cycleTheme(){
   if(isAuroraSunday()){   // Sundays are Aurora; the toggle flips between its dark and light looks
@@ -3959,6 +3964,24 @@ if(isAuroraSunday()){
   if(profileThemeValue) profileThemeValue.textContent = auroraLabel(_a);
   syncStatusBarColor(_a);
 }
+
+// Follow the phone's light/dark setting until the user picks a theme themselves (tapping the toggle saves their choice).
+try{
+  const _mq = window.matchMedia('(prefers-color-scheme: light)');
+  const _onSys = ()=>{
+    try{
+      if(isAuroraSunday()){
+        if(localStorage.getItem('mm_theme_aurora')) return;
+        const a = auroraTheme(); rootEl.setAttribute('data-theme', a);
+        if(profileThemeValue) profileThemeValue.textContent = auroraLabel(a); syncStatusBarColor(a); return;
+      }
+      if(localStorage.getItem('mm_theme')) return;
+      const t = _mq.matches ? 'white' : 'dark';
+      rootEl.setAttribute('data-theme', t); profileThemeValue.textContent = THEME_LABELS[t]; syncStatusBarColor(t);
+    }catch(e){}
+  };
+  if(_mq.addEventListener) _mq.addEventListener('change', _onSys); else if(_mq.addListener) _mq.addListener(_onSys);
+}catch(e){}
 
 /* ============================================================
    NOTIFICATIONS PANEL
@@ -7341,9 +7364,8 @@ function stickerMediaTag(url, size, withSound){
 const MAX_POST_PICS = 4;
 function stickerUrlList(v){ return (v || '').split('|').map(x => x.trim()).filter(Boolean); }
 function postPicsHtml(urls, size){
-  const cell = `min(${size}px, 44vw)`;
-  return `<div style="display:grid; grid-template-columns:repeat(2, ${cell}); gap:6px; margin-bottom:8px;">`
-    + urls.map(u => `<img class="sticker-tap" data-sticker-url="${escapeHtml(u)}" src="${escapeHtml(u)}" loading="lazy" decoding="async" onerror="stickerImgRetry(this)" style="width:100%; aspect-ratio:1; object-fit:contain; display:block; background:var(--card); border:1px solid var(--card-border); border-radius:8px;">`).join('')
+  return `<div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:6px; margin-bottom:8px;">`
+    + urls.map(u => `<img class="sticker-tap" data-sticker-url="${escapeHtml(u)}" src="${escapeHtml(u)}" loading="lazy" decoding="async" onerror="stickerImgRetry(this)" style="width:100%; aspect-ratio:1; object-fit:cover; display:block; background:var(--card); border:1px solid var(--card-border); border-radius:14px;">`).join('')
     + `</div>`;
 }
 
@@ -10852,8 +10874,10 @@ document.getElementById('moment-ann-clear-btn').addEventListener('click', async 
 /* ============================================================
    LIKES & REPLIES
    ============================================================ */
+let lastOwnLikeAt = 0;   // the live count refresh stays out of the way right after your own tap
 async function toggleLike(postId, likeBtnEl){
   if(!currentUserId) return console.error('No user');
+  lastOwnLikeAt = Date.now();
 
   // Flip the heart instantly -- the old version waited on the full round
   // trip below (a select, then an insert/delete, then sometimes a second
@@ -10907,6 +10931,44 @@ async function toggleLike(postId, likeBtnEl){
       if(countEl && prevCount !== null) countEl.textContent = prevCount;
     }
   }
+}
+
+/* ============================================================
+   LIVE LIKE COUNTS -- other people's likes show up without a refresh.
+   Realtime on the `likes` table does the quick update; a light poll
+   plus a refresh when the app comes back to the front covers the case
+   where realtime is off or the phone slept. Only counts that are
+   actually on screen get re-read (one batched query).
+   ============================================================ */
+let liveLikesChannel = null, liveLikesTimer = null, liveLikesPoll = null;
+function scheduleLiveLikesRefresh(delay){
+  clearTimeout(liveLikesTimer);
+  liveLikesTimer = setTimeout(refreshVisibleLikeCounts, delay == null ? 700 : delay);
+}
+async function refreshVisibleLikeCounts(){
+  if(document.hidden) return;
+  if(Date.now() - lastOwnLikeAt < 2500){ scheduleLiveLikesRefresh(2600); return; }   // let your own tap settle first
+  const btns = Array.from(document.querySelectorAll('.like-btn[data-post-id]')).filter(b => b.querySelector('.like-count'));
+  if(!btns.length) return;
+  const ids = Array.from(new Set(btns.map(b => b.dataset.postId))).slice(0, 80);
+  const counts = await fetchLikeCounts(ids);
+  if(Date.now() - lastOwnLikeAt < 2500) return;   // you tapped while we were fetching
+  btns.forEach(b => {
+    if(!ids.includes(b.dataset.postId)) return;
+    const el = b.querySelector('.like-count');
+    const n = counts[b.dataset.postId] || 0;
+    if(el && el.textContent !== String(n)) el.textContent = n;
+  });
+}
+function startLiveLikes(){
+  if(liveLikesChannel) return;
+  try{
+    liveLikesChannel = sb.channel('likes-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'likes' }, () => scheduleLiveLikesRefresh())
+      .subscribe();
+  }catch(e){ console.error('Live likes unavailable:', e); }
+  if(!liveLikesPoll) liveLikesPoll = setInterval(() => { if(!document.hidden) scheduleLiveLikesRefresh(0); }, 25000);
+  document.addEventListener('visibilitychange', () => { if(!document.hidden) scheduleLiveLikesRefresh(0); });
 }
 
 async function saveReply(postId, receiverId, content, stickerUrl){
@@ -15249,6 +15311,7 @@ document.addEventListener('DOMContentLoaded', async function(){
   startGameBannerWatcher();
   await refreshNotifDot();
   startNotifRealtime();
+  startLiveLikes();
   await registerServiceWorker();
   clearShownPushes();
   await refreshPushRowLabel();
