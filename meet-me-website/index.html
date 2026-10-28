@@ -14228,6 +14228,35 @@ function urlBase64ToUint8Array(base64String){
 
 let swRegistration = null;
 
+// Keeps a long-open app from running an OLD copy of itself after a new deploy.
+// The phone can keep the app alive in memory for days; the page then never re-downloads, so it keeps the
+// old styling (e.g. narrow organisation pictures). Each time the app comes back to the front we ask the
+// server (one tiny HEAD request, at most every 2 minutes) whether index.html has changed since this page
+// opened, and if so reload -- but never while someone has typed text in a box.
+let _appEtag = null;
+let _appCheckAt = 0;
+async function _fetchAppEtag(){
+  try{
+    const r = await fetch(location.href.split('#')[0], { method:'HEAD', cache:'no-store' });
+    return r.headers.get('etag') || r.headers.get('last-modified') || null;
+  }catch(e){ return null; }
+}
+async function checkForNewAppVersion(){
+  if(Date.now() - _appCheckAt < 120000) return;
+  _appCheckAt = Date.now();
+  const tag = await _fetchAppEtag();
+  if(!tag) return;
+  if(_appEtag === null){ _appEtag = tag; return; }
+  if(tag === _appEtag) return;
+  const a = document.activeElement;
+  if(a && (a.tagName === 'TEXTAREA' || a.tagName === 'INPUT') && a.value){ _appCheckAt = 0; return; }
+  location.reload();
+}
+(function(){
+  _fetchAppEtag().then(t => { if(_appEtag === null) _appEtag = t; });
+  document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState === 'visible') checkForNewAppVersion(); });
+})();
+
 async function registerServiceWorker(){
   if(!('serviceWorker' in navigator)) return null;
   try{
