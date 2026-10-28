@@ -7358,7 +7358,21 @@ function stickerMediaTag(url, size, withSound){
     // Tap to play: only the small still picture loads in the feed. The video loads when the viewer opens.
     return `<span class="sticker-tap vid-poster" data-sticker-url="${escapeHtml(url)}" data-sticker-video="true"${withSound ? ' data-sticker-sound="true"' : ''} style="width:${size}px; height:${size}px;"><img src="${escapeHtml(videoPosterUrl(url))}" alt="" loading="lazy" onerror="this.style.display='none'"><video class="vid-auto" data-src="${escapeHtml(url)}" muted loop playsinline preload="none" style="position:absolute; inset:0; width:100%; height:100%; object-fit:contain; pointer-events:none;"></video><span class="vid-play${size < 90 ? ' sm' : ''}" style="display:none"></span></span>`;
   }
-  return `<img class="sticker-tap" data-sticker-url="${escapeHtml(url)}" src="${escapeHtml(url)}" loading="lazy" decoding="async" onerror="stickerImgRetry(this)" style="width:${size}px; height:${size}px; object-fit:contain; display:block;">`;
+  return `<img class="sticker-tap" data-sticker-url="${escapeHtml(url)}" src="${escapeHtml(url)}" loading="lazy" decoding="async" onerror="stickerImgRetry(this)" onload="fitStickerImg(this)" data-box="${size}" style="width:${size}px; height:${size}px; object-fit:contain; display:block;">`;
+}
+
+// The picture sits inside a square box (object-fit:contain), so a portrait or wide picture leaves empty strips
+// beside it and rounding the box corners did nothing you could see. Once the picture has loaded, shrink the box
+// to the picture's own shape (same overall size, nothing cropped) so the rounded corners land on the picture.
+function fitStickerImg(img){
+  try{
+    const box = parseFloat(img.dataset.box);
+    const nw = img.naturalWidth, nh = img.naturalHeight;
+    if(!box || !nw || !nh) return;
+    const k = Math.min(box / nw, box / nh);
+    img.style.width = Math.round(nw * k) + 'px';
+    img.style.height = Math.round(nh * k) + 'px';
+  }catch(e){}
 }
 
 // A post can carry up to 4 PICTURES (never videos). They are stored in the same sticker_url column, joined with "|".
