@@ -3815,10 +3815,36 @@
   if(!nativeFetch) return;
   var glow = document.getElementById('net-glow'), txt = document.getElementById('net-glow-text');
   var pending = 0, slow = false, failed = false, offline = (navigator.onLine === false), slowT = null, failT = null;
+  // The connection message only shows while a VIDEO is stuck waiting for the network (a video that is
+  // loading, buffering or failed). Everything else just carries on quietly.
+  var stuckVideos = [], recheckT = null;
+  function videoStuck(){
+    stuckVideos = stuckVideos.filter(function(v){ return v.isConnected; });
+    return stuckVideos.length > 0;
+  }
+  ['waiting','stalled','error'].forEach(function(ev){
+    document.addEventListener(ev, function(e){
+      var v = e.target;
+      if(!v || v.tagName !== 'VIDEO') return;
+      if(stuckVideos.indexOf(v) < 0) stuckVideos.push(v);
+      paint();
+    }, true);
+  });
+  ['playing','canplay','canplaythrough','loadeddata','ended','pause','emptied'].forEach(function(ev){
+    document.addEventListener(ev, function(e){
+      var v = e.target;
+      if(!v || v.tagName !== 'VIDEO') return;
+      var i = stuckVideos.indexOf(v);
+      if(i >= 0){ stuckVideos.splice(i, 1); paint(); }
+    }, true);
+  });
   function paint(){
     if(!glow) return;
     var msg = offline ? 'No connection. Waiting for the network' : failed ? 'Connection is weak. Still trying' : slow ? 'Slow connection' : '';
-    if(msg){ txt.textContent = msg; glow.classList.add('show'); } else { glow.classList.remove('show'); }
+    if(msg && videoStuck()){
+      txt.textContent = msg; glow.classList.add('show');
+      if(!recheckT) recheckT = setTimeout(function(){ recheckT = null; paint(); }, 1000);   // hides itself if the video is closed
+    } else { glow.classList.remove('show'); }
   }
   function isData(u){ return /\/(rest|auth|functions)\/v1\//.test(u); }
   window.fetch = function(input, init){
