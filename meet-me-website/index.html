@@ -1472,7 +1472,8 @@
   .vid-poster{ position:relative; display:block; background:#0b0b0b; border-radius:8px; overflow:hidden; }
   .vid-poster img{ width:100%; height:100%; object-fit:contain; display:block; }
   /* Organisation feed cards: pictures and video posters fill the card width, softly rounded, no black bars */
-  .org-card img.sticker-tap{ width:100% !important; height:auto !important; max-height:360px; object-fit:cover !important; border-radius:16px; }
+  /* Show the whole picture, never crop it (verse images are text). Full card width, natural height; only extremely tall pictures are capped, and then shrink to fit instead of being cut. */
+  .org-card img.sticker-tap{ width:100% !important; height:auto !important; max-height:75vh; object-fit:contain !important; border-radius:16px; }
   .org-card .vid-poster{ width:100% !important; height:auto !important; aspect-ratio:4/5; max-height:380px; border-radius:16px; }
   .org-card .vid-poster img, .org-card .vid-poster video{ object-fit:cover !important; }
   .vid-play{ position:absolute; left:50%; top:50%; width:44px; height:44px; margin:-22px 0 0 -22px; border-radius:50%;
@@ -11092,15 +11093,15 @@ function actorName(n){
   return n.actor?.meet_number || 'Someone';
 }
 const NOTIF_TEXT = {
-  like: (n)=> `${actorName(n)} liked your post.`,
-  reply: (n)=> `${actorName(n)} replied to your post.`,
+  like: (n)=> `${actorName(n)} liked your ${notifPostWord(n)}.`,
+  reply: (n)=> `${actorName(n)} replied to your ${notifPostWord(n)}.`,
   reply_back: (n)=> `${n._story ? ('Meet ' + n._story) : actorName(n)} wrote back.`,
   friend_request: (n)=> `${n._founder ? 'Meet Founder' : actorName(n)} sent you a friend request.`,
   friend_accept: (n)=> `${actorName(n)} accepted your friend request. Chat is open.`,
   room_ready: ()=> 'The Room is ready — someone relatable is waiting.',
   secure_nudge: ()=> 'Create an account to keep your posts, friends, and Room access — even on a new device.',
   system: (n)=> n.message ? escapeHtml(n.message) : 'Meet Me has an update for you.',
-  inspired: (n)=> `${actorName(n)} was inspired by your post.`,
+  inspired: (n)=> `${actorName(n)} was inspired by your ${notifPostWord(n)}.`,
   community_invite: (n)=> `${actorName(n)} invited you to a community.`,
   org_post: (n)=> n.message ? escapeHtml(n.message) : 'An organisation you follow posted.',
   community_post: (n)=> n.message ? escapeHtml(n.message) : 'New post in a community.',
@@ -11302,50 +11303,78 @@ const NOTIF_NAV = {
   community_message: async (n)=>{ notifOverlay.classList.remove('show'); await goToScreen('chat'); await openCommunityThread(n.reference_id, n.message || 'Community'); }
 };
 
-async function loadNotifications(){
-  if(!currentUserId) return;
+// The bell opens instantly: the last list is kept here and painted straight away, then refreshed behind it.
+let notifCache = null;
+
+// Which of your identities a post belonged to, so "liked your post" can say whose post it was.
+// An organisation is named; a post under your own Meet number is just "personal" (the number itself is never shown).
+function notifPostWord(n){
+  const post = n._post;
+  if(!post) return 'post';
+  if(post.organization_id && !post.community_id) return escapeHtml(orgInfo(post.organization_id).name) + ' post';
+  if(post.community_id) return 'post in ' + escapeHtml((post.communities && post.communities.name) || 'a community');
+  if(post.as_founder) return 'Meet Founder post';
+  if(post.story_number) return 'Spill story';
+  return 'personal post';
+}
+
+async function fetchNotifications(){
+  if(!currentUserId) return null;
   const { data: notifs, error } = await sb
     .from('notifications')
     .select('*, actor:actor_id(meet_number)')
     .eq('user_id', currentUserId)
     .order('created_at', { ascending: false })
     .limit(30);
-  if(error){ console.error('Error loading notifications:', error); return; }
+  if(error){ console.error('Error loading notifications:', error); return null; }
 
-  // Friend requests sent "as Meet Founder" are flagged on the request itself.
   const frIds = notifs.filter(n => n.type === 'friend_request' && n.reference_id).map(n => n.reference_id);
-  if(frIds.length){
-    const { data: frRows } = await sb.from('friend_requests').select('id, as_founder').in('id', frIds);
-    const founderIds = new Set((frRows || []).filter(r => r.as_founder).map(r => r.id));
-    notifs.forEach(n => { if(n.type === 'friend_request' && founderIds.has(n.reference_id)) n._founder = true; });
-  }
-  // Answers to a curated story's replies read as coming from the reserved number.
   const rbIds = [...new Set(notifs.filter(n => n.type === 'reply_back' && n.reference_id).map(n => n.reference_id))];
-  if(rbIds.length){
-    const { data: rbPosts } = await sb.from('posts').select('id, story_number').in('id', rbIds).not('story_number', 'is', null);
-    const storyById = {};
-    (rbPosts || []).forEach(p => { storyById[p.id] = p.story_number; });
-    notifs.forEach(n => { if(n.type === 'reply_back' && storyById[n.reference_id]) n._story = storyById[n.reference_id]; });
-  }
-
-  // Reply notifications carry no text of their own: look up the message itself so the bell can show it.
   const replyPostIds = [...new Set(notifs.filter(n => (n.type === 'reply' || n.type === 'reply_back') && n.reference_id).map(n => n.reference_id))];
-  if(replyPostIds.length){
-    const { data: replyRows } = await sb.from('replies')
+  const postIds = [...new Set(notifs.filter(n => (n.type === 'like' || n.type === 'reply' || n.type === 'inspired') && n.reference_id).map(n => n.reference_id))];
+  const none = Promise.resolve({ data: [] });
+
+  // All the follow-up lookups run side by side (they used to run one after another, which is what made the bell slow).
+  const [frRes, rbRes, replyRes, postRes] = await Promise.all([
+    frIds.length ? sb.from('friend_requests').select('id, as_founder').in('id', frIds) : none,
+    rbIds.length ? sb.from('posts').select('id, story_number').in('id', rbIds).not('story_number', 'is', null) : none,
+    replyPostIds.length ? sb.from('replies')
       .select('post_id, sender_id, content, sticker_url, created_at')
       .eq('receiver_id', currentUserId).in('post_id', replyPostIds)
-      .order('created_at', { ascending: false }).limit(300);
-    notifs.forEach(n => {
-      if(n.type !== 'reply' && n.type !== 'reply_back') return;
-      const at = Date.parse(n.created_at) + 5000;
-      const row = (replyRows || []).find(r => String(r.post_id) === String(n.reference_id) && r.sender_id === n.actor_id && Date.parse(r.created_at) <= at);
-      if(!row) return;
-      n._otherId = row.sender_id;
-      const txt = row.sticker_url && !row.content ? '🏷 sent a sticker' : String(row.content || '').trim();
-      n._snippet = txt.length > 90 ? txt.slice(0, 87) + '...' : txt;
-    });
-  }
+      .order('created_at', { ascending: false }).limit(300) : none,
+    postIds.length ? sb.from('posts').select('id, organization_id, community_id, as_founder, story_number, communities(name)').in('id', postIds) : none,
+    ensureOrgs().catch(()=>{})
+  ]);
 
+  // Friend requests sent "as Meet Founder" are flagged on the request itself.
+  const founderIds = new Set((frRes.data || []).filter(r => r.as_founder).map(r => r.id));
+  notifs.forEach(n => { if(n.type === 'friend_request' && founderIds.has(n.reference_id)) n._founder = true; });
+
+  // Answers to a curated story's replies read as coming from the reserved number.
+  const storyById = {};
+  (rbRes.data || []).forEach(p => { storyById[p.id] = p.story_number; });
+  notifs.forEach(n => { if(n.type === 'reply_back' && storyById[n.reference_id]) n._story = storyById[n.reference_id]; });
+
+  // Likes, replies and "inspired" say which of your posts they were about.
+  const postById = {};
+  (postRes.data || []).forEach(p => { postById[p.id] = p; });
+  notifs.forEach(n => { if(postById[n.reference_id]) n._post = postById[n.reference_id]; });
+
+  // Reply notifications carry no text of their own: look up the message itself so the bell can show it.
+  const replyRows = replyRes.data || [];
+  notifs.forEach(n => {
+    if(n.type !== 'reply' && n.type !== 'reply_back') return;
+    const at = Date.parse(n.created_at) + 5000;
+    const row = replyRows.find(r => String(r.post_id) === String(n.reference_id) && r.sender_id === n.actor_id && Date.parse(r.created_at) <= at);
+    if(!row) return;
+    n._otherId = row.sender_id;
+    const txt = row.sticker_url && !row.content ? '🏷 sent a sticker' : String(row.content || '').trim();
+    n._snippet = txt.length > 90 ? txt.slice(0, 87) + '...' : txt;
+  });
+  return notifs;
+}
+
+function renderNotifications(notifs){
   const list = document.getElementById('notif-list');
   list.innerHTML = '';
   if(!notifs.length){
@@ -11369,6 +11398,25 @@ async function loadNotifications(){
     }
     list.appendChild(item);
   });
+}
+
+// Quietly fetch in the background (no "seen" marking) so the list is already there when the bell is tapped.
+async function prefetchNotifications(){
+  try{ const f = await fetchNotifications(); if(f) notifCache = f; }catch(e){}
+}
+
+async function loadNotifications(){
+  if(!currentUserId) return;
+  const list = document.getElementById('notif-list');
+  if(notifCache) renderNotifications(notifCache);
+  else list.innerHTML = '<div style="text-align:center;padding:20px;font-size:12px;color:var(--muted-dim);">Loading…</div>';
+  const fresh = await fetchNotifications();
+  if(!fresh){
+    if(!notifCache) list.innerHTML = '<div style="text-align:center;padding:20px;font-size:12px;color:var(--muted-dim);">Could not load. Close and try again.</div>';
+    return;
+  }
+  notifCache = fresh;
+  if(notifOverlay.classList.contains('show')) renderNotifications(fresh);
   await markAllNotificationsSeen();
 }
 
@@ -11410,7 +11458,7 @@ function startNotifRealtime(){
   if(!currentUserId || notifChannel) return;
   notifChannel = sb.channel('notifs-' + currentUserId)
     .on('postgres_changes', { event:'INSERT', schema:'public', table:'notifications', filter:'user_id=eq.' + currentUserId }, ()=>{
-      if(notifOverlay.classList.contains('show')) loadNotifications(); else notifDot.classList.remove('hide');
+      if(notifOverlay.classList.contains('show')) loadNotifications(); else { notifDot.classList.remove('hide'); prefetchNotifications(); }
     })
     .subscribe();
 }
@@ -15380,6 +15428,7 @@ document.addEventListener('DOMContentLoaded', async function(){
   setupSpillSwipes();
   startGameBannerWatcher();
   await refreshNotifDot();
+  prefetchNotifications();      // fire-and-forget -- the bell opens with the list already loaded
   startNotifRealtime();
   startLiveLikes();
   await registerServiceWorker();
