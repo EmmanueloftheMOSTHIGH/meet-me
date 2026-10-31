@@ -788,6 +788,14 @@
     border-radius:6px; padding:1px 6px; margin-left:8px; vertical-align:middle;
   }
   .org-name-link{ cursor:pointer; }
+  /* org card header: time never wraps; a long org name wraps on its own and the type pill stays beside it */
+  .post.org-card .post-head{ align-items:flex-start; gap:10px; }
+  .post.org-card .post-head .post-id{ display:flex; align-items:center; flex:1 1 auto; min-width:0; }
+  .post.org-card .post-head .post-id .org-dot{ margin-right:7px; flex:0 0 auto; }
+  .post.org-card .post-head .post-id .org-name-link{ min-width:0; overflow-wrap:anywhere; line-height:1.3; }
+  .post.org-card .post-head .post-id .org-tag{ flex:0 0 auto; margin-left:8px; white-space:nowrap; }
+  .post.org-card .post-head .post-head-right{ flex:0 0 auto; align-self:center; }
+  .post.org-card .post-head .post-time{ white-space:nowrap; }
   /* Organisation card = a normal rant card plus one thin accent line on the left.
      That line is the only colour; everything else stays as quiet as a human rant. */
   .post.org-card{ position:relative; }
