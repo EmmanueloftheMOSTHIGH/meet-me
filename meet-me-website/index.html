@@ -2776,7 +2776,7 @@
         <div id="logo"><span></span><span></span><span></span><span></span></div>
       </div>
       <div id="wordmark">Meet Me</div>
-      <div id="screen-label-text">Organisations</div>
+      <div id="screen-label-text">Rant</div>
       <div id="search-btn" role="button" aria-label="Search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="15.5" y1="15.5" x2="21" y2="21"/></svg></div>
       <div id="notif-btn">
         <span id="notif-icon">🔔</span>
@@ -2785,7 +2785,7 @@
       <div id="theme-toggle"><span id="theme-toggle-dot"></span></div>
     </header>
 
-    <div class="screen" id="screen-twin">
+    <div class="screen active" id="screen-twin">
       <div id="twin-toggle">
         <div class="twin-btn active" data-mode="rant">Rant</div>
         <div class="twin-btn spill-mode" data-mode="spill">Spill</div>
@@ -2816,7 +2816,7 @@
       </div>
     </div>
 
-    <div class="screen active" id="screen-orgs">
+    <div class="screen" id="screen-orgs">
       <div id="orgs-feed">
         <div id="orgs-new-wrap"><div id="orgs-new-banner">↑ new posts</div></div>
         <div id="orgs-pull-indicator">↓ pull to refresh</div>
@@ -2955,8 +2955,8 @@
 <div id="compose-btn">+</div>
 
     <div id="bottom-nav">
-      <div class="nav-item active" data-screen="orgs"><span class="nav-icon">◇</span><span class="nav-item-label">Orgs</span></div>
-      <div class="nav-item" data-screen="twin"><span class="nav-icon">◐</span><span class="nav-item-label">Rant / Spill</span></div>
+      <div class="nav-item" data-screen="orgs"><span class="nav-icon">◇</span><span class="nav-item-label">Orgs</span></div>
+      <div class="nav-item active" data-screen="twin"><span class="nav-icon">◐</span><span class="nav-item-label">Rant / Spill</span></div>
       <div class="nav-item" data-screen="chat"><span class="nav-icon">◈</span><span class="nav-item-label">Chat</span></div>
       <div class="nav-item" data-screen="profile"><span class="nav-icon">◉</span><span class="nav-item-label">Profile</span></div>
     </div>
@@ -5062,7 +5062,7 @@ setTimeout(enterApp, 8000);
 const screens = { orgs:'screen-orgs', twin:'screen-twin', chat:'screen-chat', profile:'screen-profile' };
 const labels = { orgs:'Organisations', twin:'Rant', chat:'Chat', profile:'Profile' };
 let currentTwinMode = 'rant';
-let currentScreenKey = 'orgs';
+let currentScreenKey = 'twin';
 let currentChatCommMode = 'chat';
 
 async function goToScreen(key){
@@ -5092,7 +5092,7 @@ document.querySelectorAll('#bottom-nav .nav-item').forEach(item=>{
 // Quick return: put the saved tab on screen right away (data loads behind it).
 (function(){
   const s = window.__mmResume;
-  if(!s || !s.screen || !screens[s.screen] || s.screen === 'orgs') return;
+  if(!s || !s.screen || !screens[s.screen] || s.screen === 'twin') return;
   document.querySelectorAll('#bottom-nav .nav-item').forEach(i=>i.classList.toggle('active', i.dataset.screen === s.screen));
   document.querySelectorAll('.screen').forEach(sc=>sc.classList.remove('active'));
   document.getElementById(screens[s.screen]).classList.add('active');
@@ -14619,8 +14619,8 @@ async function restoreAppState(){
     const commBtn = document.querySelector('#chat-comm-toggle .twin-btn[data-ccmode="communities"]');
     if(commBtn) commBtn.click();
   }
-  if(s.screen && screens[s.screen] && s.screen !== 'orgs'){
-    await goToScreen(s.screen);
+  if(s.screen && screens[s.screen]){
+    if(s.screen !== 'twin') await goToScreen(s.screen);
     if(s.screen === 'twin' && s.twin === 'spill') await setTwinMode('spill');
   }
 }
@@ -15398,7 +15398,7 @@ function handleBackPress(){
     return true;
   }
   if(currentScreenKey === 'twin' && currentTwinMode === 'spill'){ setTwinMode('rant'); return true; }
-  if(currentScreenKey !== 'orgs'){ goToScreen('orgs'); return true; }
+  if(currentScreenKey !== 'twin'){ goToScreen('twin'); return true; }
   return false;
 }
 
@@ -15453,7 +15453,7 @@ document.addEventListener('DOMContentLoaded', async function(){
   refreshChatUnread();          // fire-and-forget -- the badge appears when it lands
   startChatUnreadWatch();
   if(currentScreenKey === 'twin' && currentTwinMode === 'rant') startFeedRealtime(); // opens on Rant unless restored elsewhere
-  if(currentScreenKey === 'orgs') startOrgsRealtime();    // Organisations is the landing page
+  if(currentScreenKey === 'orgs') startOrgsRealtime();    // only when restored onto Organisations
   setupBackNavigation();
   setupComposeButton();
   setupSpillSwipes();
