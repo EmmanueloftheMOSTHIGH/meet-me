@@ -9458,7 +9458,7 @@ function renderRantPost(post, userLiked, likeCount, inspirationLabels){
   const headHtml = isCommunity
     ? escapeHtml(displayName) + ' <span class="org-badge">community</span>'
     : isStory
-      ? `<span>${escapeHtml(displayName)}</span><span class="story-tag">shared with us</span>`
+      ? `<span>${escapeHtml(displayName)}</span>`
     : isFounder
       ? '<span class="org-crest-dot crest-founder" style="margin-right:7px;"></span>Meet Founder'
     : isOrg
@@ -10490,7 +10490,7 @@ async function renderSpills(spills){
     card.dataset.isOwn = (isOwn || isOwnStory) ? 'true' : 'false';
     card.innerHTML = `
       ${spillLockHtml()}
-      <div class="spill-card-id">${isStory ? `<span>${escapeHtml(displayName)}</span><span class="story-tag">shared with us</span>` : isFounder ? `<span class="org-crest-dot crest-founder" style="margin-right:7px;"></span><span>${escapeHtml(displayName)}</span>` : `<span class="user-link" data-user-id="${spill.user_id}">${escapeHtml(displayName)}</span>`}</div>
+      <div class="spill-card-id">${isStory ? `<span>${escapeHtml(displayName)}</span>` : isFounder ? `<span class="org-crest-dot crest-founder" style="margin-right:7px;"></span><span>${escapeHtml(displayName)}</span>` : `<span class="user-link" data-user-id="${spill.user_id}">${escapeHtml(displayName)}</span>`}<span class="story-tag">shared with us</span></div>
       <div class="spill-card-scroll">
         ${doorTagHtml(spill)}
         ${inspiredLine}
