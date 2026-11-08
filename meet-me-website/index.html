@@ -1330,6 +1330,8 @@
     align-items:flex-start;
   }
   .notif-item-icon{ font-size:14px; color:var(--gold-dim); flex-shrink:0; margin-top:1px; }
+  .notif-item-icon[data-space="rant"]{ color:#d4a857; }
+  .notif-item-icon[data-space="spill"]{ color:#9a7fd6; }
   .notif-item-body{ flex:1; }
   .notif-item-text{ font-size:13px; color:var(--ivory); line-height:1.45; }
   .notif-item-time{ font-size:10.5px; color:var(--muted-dim); margin-top:3px; }
@@ -4478,7 +4480,7 @@ async function loadYourReplies(){
 const YW_EMOTIONS = {
   hope:  { label:'Hope',  color:'#d4a857', words:['hope','hopeful','believe','faith','grateful','thankful','thank god','thank you','blessed','blessing','pray','prayer','praying','better','strength','strong','healing','heal','will be fine','will be okay','it is well','peace','joy','happy','proud','grace','tomorrow','God','Jesus','amen','🙏','❤','🙌','✨'] },
   laugh: { label:'Laugh', color:'#ecd58f', words:['lol','lmao','haha','hahaha','funny','laugh','laughing','jokes','joke','comedy','hilarious','abeg','😂','🤣','😆','😹'] },
-  vex:   { label:'Vex',   color:'#d9704a', words:['vex','vexed','vexing','vexes','vexation','angry','anger','annoyed','annoying','hate','fed up','furious','rage','mad','wahala','frustrated','frustrating','disrespect','unfair','irritated','sick of','tired of','enough is enough','😡','🤬','😤'] },
+  vex:   { label:'Vex',   color:'#d9704a', words:['vex','vexed','vexing','vexes','vexation','angry','anger','annoyed','annoying','hate','fed up','furious','rage','mad','wahala','frustrated','frustrating','disrespect','unfair','irritated','sick of','tired of','enough is enough','upset','pissed','pissed off','irritating','irritate','annoy','rubbish','nonsense','stupid','useless','disgusting','ridiculous','fuming','livid','betrayed','disappointed','disappointing','frustration','can\'t stand','cannot stand','sick and tired','bad belle','dey vex','i vex','don vex','vex me','wickedness','😡','🤬','😤','😠'] },
   heavy: { label:'Heavy', color:'#7f8fc9', words:['sad','cry','crying','cried','lonely','alone','depressed','depression','hurt','hurting','pain','empty','heavy','lost','afraid','scared','anxious','anxiety','stress','stressed','overwhelmed','tired','exhausted','broken','worthless','hopeless','miss','missing','grief','😢','😭','💔','😞','😔'] },
   mixed: { label:'Mixed', color:'#6f6f6f', words:[] }
 };
@@ -5183,6 +5185,18 @@ function initSpill(){
   layoutSpillCards();
 }
 
+// After a load-more: add dots for the new cards without resetting the position.
+function spillAddDots(){
+  const progress = document.getElementById('spill-progress');
+  const cards = document.querySelectorAll('.spill-card');
+  while(progress.children.length < cards.length){
+    const dot = document.createElement('div');
+    dot.className = 'dot';
+    progress.appendChild(dot);
+  }
+  layoutSpillCards();
+}
+
 function layoutSpillCards(){
   const cards = document.querySelectorAll('.spill-card');
   cards.forEach((c,i)=>{
@@ -5193,11 +5207,20 @@ function layoutSpillCards(){
     else { c.style.transform = 'translateX(24px) scale(0.92)'; c.style.opacity = '0'; c.style.zIndex = 1; c.style.pointerEvents = 'none'; }
   });
   const dots = document.querySelectorAll('#spill-progress .dot');
-  dots.forEach((d,i)=>{ d.classList.remove('current','seen'); if(i < spillIndex) d.classList.add('seen'); if(i === spillIndex) d.classList.add('current'); });
+  // dots show one batch of 15 at a time, so they never grow past a slide
+  const dotGroup = Math.floor(spillIndex / SPILL_BATCH);
+  dots.forEach((d,i)=>{
+    d.classList.remove('current','seen');
+    d.style.display = (Math.floor(i / SPILL_BATCH) === dotGroup) ? '' : 'none';
+    if(i < spillIndex) d.classList.add('seen'); if(i === spillIndex) d.classList.add('current');
+  });
   try{ vidRefresh(); }catch(e){}   // only the top card's video may play
   const hint = document.getElementById('spill-hint');
   const total = cards.length;
+  // fetch the next 15 a few cards before the end
+  if(total > 0 && spillHasMore && !spillLoadingMore && spillIndex >= total - 4) loadMoreSpills();
   if(total === 0){ hint.textContent = ''; }
+  else if(spillIndex >= total-1 && spillHasMore){ hint.textContent = 'loading more…'; }
   else if(spillIndex >= total-1){ hint.textContent = "that's all, for now"; }
   else if(spillIndex > 0){ hint.textContent = 'swipe left or right'; }
   else{ hint.textContent = 'swipe left'; }
@@ -10426,22 +10449,54 @@ async function saveSpill(content, audio, inspiredByPostId, stickerUrl, doorQuest
   if(inspiredByPostId) await notifyInspiredBy(inspiredByPostId);
 }
 
-async function loadSpills(){
+// Spill loads in batches of 15. The next batch is fetched quietly a few cards
+// before the end (cursor = created_at of the last card), so there is no wall.
+const SPILL_BATCH = 15;
+let spillCursor = null, spillHasMore = false, spillLoadingMore = false;
+
+async function loadSpills(beforeIso){
   // Newest first, for everyone: your own Spills sit in time order with the
   // rest instead of being pushed to the front. Curated stories are included.
-  const { data, error } = await sb
+  let q = sb
     .from('posts')
     .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, inspired_by_post_id, door_question_id, as_founder, story_number, users!posts_user_id_fkey(meet_number)')
     .eq('post_type', 'spill')
     .order('created_at', { ascending: false })
-    .limit(30);
+    .limit(SPILL_BATCH);
+  if(beforeIso) q = q.lt('created_at', beforeIso);
+  const { data, error } = await q;
   if(error){ console.error('Error loading spills:', error); return []; }
   return data || [];
 }
 
-async function renderSpills(spills){
+async function loadMoreSpills(){
+  if(spillLoadingMore || !spillHasMore || !spillCursor) return;
+  spillLoadingMore = true;
+  try{
+    const more = await loadSpills(spillCursor);
+    const have = new Set(Array.from(document.querySelectorAll('.spill-card[data-post-id]')).map(c => c.dataset.postId));
+    const fresh = more.filter(sp => !have.has(String(sp.id)));
+    spillHasMore = more.length >= SPILL_BATCH;
+    if(more.length) spillCursor = more[more.length - 1].created_at;
+    if(fresh.length){
+      cachedSpills = (cachedSpills || []).concat(fresh);
+      await renderSpills(fresh, true);
+    } else {
+      layoutSpillCards();
+    }
+  }catch(e){ console.error('Loading more Spills failed:', e); }
+  spillLoadingMore = false;
+}
+
+async function renderSpills(spills, append){
   const stack = document.getElementById('spill-stack');
   if(!stack) return;
+  if(!append){
+    // a fresh render: remember where the next batch starts
+    spillCursor = (spills && spills.length) ? spills[spills.length - 1].created_at : null;
+    spillHasMore = !!(spills && spills.length >= SPILL_BATCH);
+    spillLoadingMore = false;
+  }
 
   if(!spills || spills.length === 0){
     stack.innerHTML = '';
@@ -10471,8 +10526,10 @@ async function renderSpills(spills){
   // stack sitting empty for the full duration of the two awaits just
   // above, every single time Spill is opened -- that was the real
   // "blank before it loads" bug, not just a first-visit thing.
-  stack.innerHTML = '';
-  if(isNewAccount()) stack.appendChild(tutorialCardEl('spill'));
+  if(!append){
+    stack.innerHTML = '';
+    if(isNewAccount()) stack.appendChild(tutorialCardEl('spill'));
+  }
   spills.forEach(spill => {
     const isStory = !!spill.story_number;   // a curated story under a reserved number
     const isOwn = spill.user_id === currentUserId && !isStory;
@@ -10505,7 +10562,8 @@ async function renderSpills(spills){
     stack.appendChild(card);
   });
 
-  initSpill();
+  if(append) spillAddDots();
+  else initSpill();
 }
 
 /* ============================================================
@@ -11142,6 +11200,36 @@ const NOTIF_TEXT = {
 // Brief, self-dismissing message for "inspired by" navigation failures
 // (deleted/unavailable post) -- the only feedback surface this flow had
 // before was silence, which read as the button doing nothing at all.
+// Sunday after 7pm: a gentle, private nudge to look at "Your week". It says nothing
+// about the mood itself (that is worked out on the phone only), and shows once per week.
+function maybeShowWeekNudge(){
+  try{
+    const now = new Date();
+    if(now.getDay() !== 0 || now.getHours() < 19) return;
+    const key = 'mm_week_nudge';
+    const week = localDayStr(now);
+    if(localStorage.getItem(key) === week) return;
+    localStorage.setItem(key, week);
+    let card = document.getElementById('week-nudge');
+    if(!card){
+      card = document.createElement('div');
+      card.id = 'week-nudge';
+      card.style.cssText = 'position:fixed; left:50%; bottom:90px; transform:translateX(-50%); max-width:86%; background:var(--card,#17171b); color:var(--ivory,#f0e6d2); border:1px solid var(--gold-dim,rgba(212,168,87,0.5)); padding:12px 18px; border-radius:20px; font-size:13px; z-index:9999; opacity:0; transition:opacity .3s; cursor:pointer; text-align:center; line-height:1.45;';
+      card.innerHTML = 'Your week is ready. <span style="color:var(--gold-light,#e8c97a);">Only you can see it.</span>';
+      card.addEventListener('click', ()=>{
+        card.style.opacity = '0'; card.style.pointerEvents = 'none';
+        const row = document.getElementById('profile-yourweek-row');
+        if(row) row.click();
+      });
+      document.body.appendChild(card);
+    }
+    card.style.pointerEvents = 'auto';
+    requestAnimationFrame(()=>{ card.style.opacity = '1'; });
+    clearTimeout(card._hideTimer);
+    card._hideTimer = setTimeout(()=>{ card.style.opacity = '0'; card.style.pointerEvents = 'none'; }, 9000);
+  }catch(e){}
+}
+
 function showNavToast(message){
   let toast = document.getElementById('nav-toast');
   if(!toast){
@@ -11344,9 +11432,11 @@ function notifPostWord(n){
   if(!post) return 'post';
   if(post.organization_id && !post.community_id) return escapeHtml(orgInfo(post.organization_id).name) + ' post';
   if(post.community_id) return 'post in ' + escapeHtml((post.communities && post.communities.name) || 'a community');
-  if(post.as_founder) return 'Meet Founder post';
-  if(post.story_number) return 'Spill story';
-  return 'personal post';
+  // Rant and Spill are different spaces, so the wording says which one the post was in.
+  const space = post.post_type === 'spill' ? 'Spill' : post.post_type === 'rant' ? 'Rant' : '';
+  if(post.as_founder) return 'Meet Founder ' + (space || 'post');
+  if(post.story_number) return space ? (space + ' story') : 'story';
+  return space || 'personal post';
 }
 
 async function fetchNotifications(){
@@ -11373,7 +11463,7 @@ async function fetchNotifications(){
       .select('post_id, sender_id, content, sticker_url, created_at')
       .eq('receiver_id', currentUserId).in('post_id', replyPostIds)
       .order('created_at', { ascending: false }).limit(300) : none,
-    postIds.length ? sb.from('posts').select('id, organization_id, community_id, as_founder, story_number, communities(name)').in('id', postIds) : none,
+    postIds.length ? sb.from('posts').select('id, post_type, organization_id, community_id, as_founder, story_number, communities(name)').in('id', postIds) : none,
     ensureOrgs().catch(()=>{})
   ]);
 
@@ -11418,7 +11508,7 @@ function renderNotifications(notifs){
     const canNavigate = !!NOTIF_NAV[n.type];
     if(canNavigate) item.style.cursor = 'pointer';
     item.innerHTML = `
-      <div class="notif-item-icon">${n.type === 'like' ? '♥' : n.type === 'inspired' ? '↻' : n.type === 'system' ? '✦' : n.type === 'org_post' ? '◈' : (n.type === 'community_post' || n.type === 'community_message') ? '◍' : '◐'}</div>
+      <div class="notif-item-icon"${n._post && n._post.post_type && !n._post.organization_id && !n._post.community_id ? ' data-space="' + n._post.post_type + '"' : ''}>${n.type === 'like' ? '♥' : n.type === 'inspired' ? '↻' : n.type === 'system' ? '✦' : n.type === 'org_post' ? '◈' : (n.type === 'community_post' || n.type === 'community_message') ? '◍' : '◐'}</div>
       <div class="notif-item-body">
         <div class="notif-item-text">${NOTIF_TEXT[n.type] ? NOTIF_TEXT[n.type](n) : 'Update.'}</div>
         ${n._snippet ? `<div class="notif-item-snippet">“${escapeHtml(n._snippet)}”</div>` : ''}
@@ -13651,7 +13741,7 @@ function roundRect(ctx, x, y, w, h, r){
 // Link that opens one post inside the app (Rant, Spill or Organisations).
 function postShareUrl(id){
   if(!id) return null;
-  const base = /^https?:$/.test(location.protocol) ? location.origin : 'https://meet-me-beta-six.vercel.app';
+  const base = /^https?:$/.test(location.protocol) ? location.origin : 'https://meet-me-beta-three.vercel.app';
   return base + '/?post=' + encodeURIComponent(id);
 }
 let currentShareUrl = null;
@@ -15458,6 +15548,7 @@ document.addEventListener('DOMContentLoaded', async function(){
   setupComposeButton();
   setupSpillSwipes();
   startGameBannerWatcher();
+  setTimeout(maybeShowWeekNudge, 2500);
   await refreshNotifDot();
   prefetchNotifications();      // fire-and-forget -- the bell opens with the list already loaded
   startNotifRealtime();
