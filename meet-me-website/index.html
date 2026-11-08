@@ -2289,6 +2289,21 @@
 }
 #compose-overlay.compose-full #compose-textarea{ flex:1 1 auto; min-height:30vh; max-height:none; font-size:16px; line-height:1.65; }
 
+/* ---- Ask a question lives at the top; Post stays above the keyboard (added) ---- */
+#compose-question-row{ margin:-4px 0 12px; }
+#compose-question-btn{ transition:background .15s ease, color .15s ease; }
+#compose-overlay.compose-full #compose-dock{
+  position:sticky; bottom:0; z-index:2; margin-top:auto;
+  display:flex; flex-wrap:wrap; align-items:center; gap:8px 10px;
+  background:var(--bg-elevated); padding:10px 0 env(safe-area-inset-bottom, 0px);
+  border-top:1px solid var(--card-border);
+}
+#compose-overlay.compose-full #compose-dock #compose-org-row,
+#compose-overlay.compose-full #compose-dock #compose-founder-row{ margin:0; flex:1 1 100%; }
+#compose-overlay.compose-full #compose-dock #compose-submit-btn{ flex:1 1 0; margin:0; min-width:0; }
+#compose-overlay.compose-full #compose-dock #compose-overlay-close{ flex:0 0 auto; padding:8px 6px; }
+#compose-overlay.compose-full #compose-textarea{ min-height:96px; margin-bottom:10px; }
+#compose-overlay.compose-full #compose-voice-row{ margin:0 0 10px; }
 .spill-card-share{ font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted-dim); cursor:pointer; }
 
 /* ============ COMMUNITY THREAD OVERLAY ============ */
@@ -3334,9 +3349,9 @@
         <div class="compose-title" id="compose-title">What's true right now?</div>
         <div id="compose-expand-btn" role="button" tabindex="0" title="Write full screen" aria-label="Write full screen">⤢</div>
       </div>
+      <div id="compose-question-row"><div id="compose-question-btn" role="button" aria-pressed="false">? Ask a question</div><div id="compose-question-hint">People can answer you in public.</div></div>
       <textarea id="compose-textarea" placeholder="Say it plainly."></textarea>
       <div id="compose-count"></div>
-      <div id="compose-question-row"><div id="compose-question-btn" role="button" aria-pressed="false">? Ask a question</div><div id="compose-question-hint">People can answer you in public.</div></div>
       <div id="compose-org-header-wrap">
         <input id="compose-org-header" type="text" maxlength="60" placeholder="Header" autocomplete="off">
         <span id="compose-org-header-count">0/60</span>
@@ -3364,6 +3379,7 @@
         </div>
         <div id="happening-autocomplete"></div>
       </div>
+      <div id="compose-dock">
       <div id="compose-org-row">
         <div id="compose-org-pill"><span class="org-dot"></span><span id="compose-org-pill-label">Posting as you</span></div>
       </div>
@@ -3373,6 +3389,7 @@
 
       <div class="account-btn primary" id="compose-submit-btn">Post</div>
       <div class="account-close" id="compose-overlay-close">cancel</div>
+      </div>
     </div>
   </div>
 
@@ -12606,6 +12623,7 @@ function composeCountUpdate(){
 function composeSetFull(on){
   const ov = document.getElementById('compose-overlay'), btn = document.getElementById('compose-expand-btn');
   ov.classList.toggle('compose-full', !!on);
+  composeFitToKeyboard();
   btn.textContent = on ? '⤡' : '⤢';
   const label = on ? 'Back to small' : 'Write full screen';
   btn.title = label; btn.setAttribute('aria-label', label);
@@ -12642,6 +12660,20 @@ document.getElementById('compose-expand-btn').addEventListener('click', ()=>{
 document.getElementById('compose-expand-btn').addEventListener('keydown', e=>{
   if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); e.target.click(); }
 });
+
+/* keep the full-screen composer inside the part of the screen the keyboard leaves free, so Post is never covered */
+function composeFitToKeyboard(){
+  const ov = document.getElementById('compose-overlay');
+  const vv = window.visualViewport;
+  if(!vv || !ov.classList.contains('compose-full') || !ov.classList.contains('show')){ ov.style.top = ''; ov.style.bottom = ''; return; }
+  const kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+  if(kb > 80){ ov.style.top = Math.round(vv.offsetTop) + 'px'; ov.style.bottom = kb + 'px'; }
+  else { ov.style.top = ''; ov.style.bottom = ''; }
+}
+if(window.visualViewport){
+  window.visualViewport.addEventListener('resize', composeFitToKeyboard);
+  window.visualViewport.addEventListener('scroll', composeFitToKeyboard);
+}
 
 function openComposeOverlay(){
   const title = document.getElementById('compose-title');
@@ -12694,6 +12726,7 @@ function openComposeOverlay(){
 function closeComposeOverlay(){
   document.getElementById('compose-overlay').classList.remove('show');
   composeSetFull(false);
+  composeFitToKeyboard();
   composeOrgReset();
   composeFounderSetup(false);
   composeQuestionSetup(false);
