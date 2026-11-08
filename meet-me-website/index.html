@@ -2239,6 +2239,36 @@
   overflow-wrap:anywhere; word-break:break-word; white-space:pre-wrap; min-width:0; max-width:100%;
 }
 
+.post-body, .yp-post-body, .spill-card-body, .org-header, .stand-text, .op-body, .anon-post-text, #text-viewer-body, .post-reply-text{
+  -webkit-user-select:text; user-select:text; -webkit-touch-callout:default;
+}
+
+/* ---- Spill questions: tag, quoted question on an answer, action buttons, compose toggle, answers page ---- */
+.q-tag{ margin:0 0 12px; padding:2px 0 2px 11px; border-left:2px solid var(--gold); }
+.q-tag-head{ font-size:9.5px; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; color:var(--gold-text); }
+.q-quote{ margin:0 0 12px; padding:4px 0 4px 11px; border-left:2px solid var(--gold-dim); cursor:pointer; }
+.q-quote-head{ font-size:9.5px; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; color:var(--gold-text); }
+.q-quote-text{ margin-top:4px; font-size:13px; line-height:1.4; color:var(--muted); display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+.post-action.q-answer-btn{ color:var(--gold-text); font-weight:600; }
+.post-action.q-answers-open{ color:var(--muted); }
+.q-sheet-link{ font-size:13px; color:#4a3826; text-decoration:underline; cursor:pointer; }
+#compose-question-row{ display:none; align-items:center; gap:10px; margin:-6px 0 14px; }
+#compose-question-row.show{ display:flex; }
+#compose-question-btn{
+  height:38px; padding:0 14px; border-radius:19px; background:var(--card); border:1px solid var(--card-border);
+  display:flex; align-items:center; justify-content:center; color:var(--gold-dim); font-size:12.5px; cursor:pointer; flex-shrink:0; white-space:nowrap;
+}
+#compose-question-btn.on{ background:var(--gold-dim); border-color:var(--gold-dim); color:var(--ivory); }
+#compose-question-hint{ font-size:11.5px; color:var(--muted-dim); flex:1; }
+#answers-overlay{
+  position:absolute; inset:0; background:var(--bg); z-index:79;
+  opacity:0; pointer-events:none; transition:opacity 0.3s ease; display:flex; flex-direction:column;
+}
+#answers-overlay.show{ opacity:1; pointer-events:auto; }
+#answers-feed{ flex:1; overflow-y:auto; padding:12px 16px 20px; display:flex; flex-direction:column; gap:10px; scrollbar-width:thin; }
+#answers-feed .q-main{ border-left:2px solid var(--gold); }
+.answers-count{ font-size:10.5px; letter-spacing:0.12em; text-transform:uppercase; color:var(--muted-dim); margin:6px 2px 0; }
+
 /* ---- roomy compose: grows as you type, can go full screen (added) ---- */
 #compose-textarea{ box-sizing:border-box; max-height:42vh; overflow-y:auto; overflow-wrap:anywhere; -webkit-overflow-scrolling:touch; }
 .compose-title-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px; }
@@ -2697,7 +2727,7 @@
 
   /* ================= FULL-PAGE OVERLAYS: stay to the right of the sidebar ================= */
   #root > #yourposts-overlay, #root > #search-overlay, #root > #user-profile-overlay, #root > #bookmarks-overlay,
-  #root > #yourreplies-overlay, #root > #orgposts-overlay, #root > #yourweek-overlay, #root > #happening-view-overlay,
+  #root > #yourreplies-overlay, #root > #orgposts-overlay, #root > #yourweek-overlay, #root > #happening-view-overlay, #root > #answers-overlay,
   #root > #anon-overlay, #root > #game-overlay, #root > #room-overlay,
   #root > #chat-thread-overlay, #root > #community-thread-overlay{ left:var(--mm-sb); }
   /* chat conversation opens as the right-hand pane while you're on Chat */
@@ -2706,7 +2736,7 @@
 
   /* keep reading width comfortable inside those pages (borders still run edge to edge) */
   #yourposts-overlay > *, #search-overlay > *, #user-profile-overlay > *, #bookmarks-overlay > *, #yourreplies-overlay > *,
-  #orgposts-overlay > *, #yourweek-overlay > *, #happening-view-overlay > *, #anon-overlay > *, #game-overlay > *,
+  #orgposts-overlay > *, #yourweek-overlay > *, #happening-view-overlay > *, #answers-overlay > *, #anon-overlay > *, #game-overlay > *,
   #chat-thread-overlay > *, #community-thread-overlay > *{
     padding-left:max(18px, calc((100% - var(--mm-read)) / 2)); padding-right:max(18px, calc((100% - var(--mm-read)) / 2)); }
   #main:has(#screen-chat.active) ~ #chat-thread-overlay > *,
@@ -3306,6 +3336,7 @@
       </div>
       <textarea id="compose-textarea" placeholder="Say it plainly."></textarea>
       <div id="compose-count"></div>
+      <div id="compose-question-row"><div id="compose-question-btn" role="button" aria-pressed="false">? Ask a question</div><div id="compose-question-hint">People can answer you in public.</div></div>
       <div id="compose-org-header-wrap">
         <input id="compose-org-header" type="text" maxlength="60" placeholder="Header" autocomplete="off">
         <span id="compose-org-header-count">0/60</span>
@@ -3394,6 +3425,17 @@
       </div>
     </div>
     <div id="happening-view-feed"></div>
+  </div>
+
+  <div id="answers-overlay">
+    <div class="overlay-header">
+      <div id="answers-back" class="yourposts-style-back">‹</div>
+      <div>
+        <div id="answers-title" style="font-family:'Fraunces',serif; font-size:16px; color:var(--ivory);">Question</div>
+        <div id="answers-subtitle" style="font-size:11px; color:var(--muted-dim);">—</div>
+      </div>
+    </div>
+    <div id="answers-feed"></div>
   </div>
 
   <div id="share-card-overlay" class="account-overlay">
@@ -3727,6 +3769,10 @@
         <span id="post-replies-close" style="cursor:pointer;">✕</span>
       </div>
       <div id="post-replies-body">
+        <div id="post-replies-answers-section" style="display:none;">
+          <div class="post-replies-subhead">Answers</div>
+          <div id="post-replies-answers-list"></div>
+        </div>
         <div id="post-replies-likes-section">
           <div class="post-replies-subhead">Likes</div>
           <div id="post-replies-likes-list"></div>
@@ -5258,6 +5304,12 @@ function spillPrev(){
   if(spillIndex > 0){ spillIndex--; layoutSpillCards(); }
 }
 
+/* ---- TEXT SELECTION GUARD: selecting / copying text must never also turn a page, swipe screens, like or open a sheet ---- */
+let __selAtTouchStart = false;
+function __hasSel(){ try{ const t = window.getSelection(); return !!(t && !t.isCollapsed && String(t).length); }catch(_){ return false; } }
+['touchstart','mousedown'].forEach(ev => document.addEventListener(ev, ()=>{ __selAtTouchStart = __hasSel(); }, { capture:true, passive:true }));
+function selectingText(){ return __selAtTouchStart || __hasSel(); }
+
 function setupSpillSwipes(){
   const stack = document.getElementById('spill-stack');
   if (!stack || stack.dataset.swipesBound) return;
@@ -5266,7 +5318,8 @@ function setupSpillSwipes(){
   stack.addEventListener('touchstart', (e)=>{ touchStartX = e.touches[0].clientX; }, {passive:true});
   stack.addEventListener('touchend', (e)=>{
     if(spillLocked){ touchStartX = null; return; }   // locked: a swipe doesn't move the cards
-    if(e.target.closest('.post-action, .like-btn, .user-link, .sticker-tap, .spill-lock')) return; // don't page the stack when tapping an action, a name, a sticker or the lock
+    if(selectingText()){ touchStartX = null; return; }   // selecting text: dragging the handles must not turn the page
+    if(e.target.closest('.post-action, .like-btn, .user-link, .sticker-tap, .spill-lock, .q-open')) return; // don't page the stack when tapping an action, a name, a sticker or the lock
     if(touchStartX===null) return;
     const dx = e.changedTouches[0].clientX - touchStartX;
     if(dx < -40){ spillNext(); }
@@ -5277,9 +5330,9 @@ function setupSpillSwipes(){
     if(e.target.closest('.spill-lock')){ e.stopPropagation(); toggleSpillLock(); return; }
     const likeBtn = e.target.closest('.like-btn');
     if(likeBtn){ e.stopPropagation(); toggleLike(likeBtn.dataset.postId, likeBtn); return; }
-    if(e.target.closest('.post-action, .user-link, .sticker-tap')) return; // reply/friend/message/share/name/sticker handle themselves
+    if(e.target.closest('.post-action, .user-link, .sticker-tap, .q-open')) return; // reply/friend/message/share/name/sticker/question handle themselves
     if(e.target.closest('.spill-card[data-is-own="true"]')) return; // own card: let it open the replies/likes sheet, don't also page the stack
-    if(spillLocked) return;   // locked: a tap doesn't page the cards
+    if(spillLocked || selectingText()) return;   // locked, or selecting text: a tap doesn't page the cards
     const rect = stack.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const goPrev = x < rect.width / 2;
@@ -5357,6 +5410,7 @@ function toggleSpillLock(){
   twinScreen.addEventListener('touchend', (e)=>{
     if(!tracking) return;
     tracking = false;
+    if(selectingText()) return;   // selecting text, not swiping between Rant and Spill
     const t = e.changedTouches[0];
     const dx = t.clientX - sx, dy = t.clientY - sy;
     if(Date.now() - st > MAX_MS) return;
@@ -5735,7 +5789,7 @@ document.getElementById('action-sheet-block').addEventListener('click', async ()
    ============================================================ */
 const postRepliesSheet = document.getElementById('post-replies-sheet');
 const OWN_POST_SELECTOR = '.post[data-post-id], .spill-card[data-post-id], .yp-post[data-post-id]';
-const POST_INTERACTIVE_SELECTOR = '.org-dot, .spill-lock, .org-follow-pill, .post-action, .like-btn, .user-link, .sticker-tap, .text-tap, .voice-play-btn, .reply-trigger, .follow-trigger, .stand-trigger, .stand-panel, .org-name-link, .bookmark-trigger, .delete-post-trigger, .community-interest-trigger, .inspired-trigger, .rm-toggle, .inspired-source-link, .message-trigger, .friend-trigger, .share-trigger, .happening-pill, a, button, input, textarea';
+const POST_INTERACTIVE_SELECTOR = '.q-open, .org-dot, .spill-lock, .org-follow-pill, .post-action, .like-btn, .user-link, .sticker-tap, .text-tap, .voice-play-btn, .reply-trigger, .follow-trigger, .stand-trigger, .stand-panel, .org-name-link, .bookmark-trigger, .delete-post-trigger, .community-interest-trigger, .inspired-trigger, .rm-toggle, .inspired-source-link, .message-trigger, .friend-trigger, .share-trigger, .happening-pill, a, button, input, textarea';
 
 document.addEventListener('click', (e)=>{
   const trigger = e.target.closest('.own-replies-trigger');
@@ -5746,7 +5800,7 @@ document.addEventListener('click', (e)=>{
   }
   if(e.target.closest(POST_INTERACTIVE_SELECTOR)) return;
   const postEl = e.target.closest(OWN_POST_SELECTOR);
-  if(postEl && postEl.dataset.isOwn === 'true'){
+  if(postEl && postEl.dataset.isOwn === 'true' && !selectingText()){
     const pid = postEl.dataset.postId, full = !!postEl.closest('#yourposts-overlay');
     deferSingleTap(()=> openPostRepliesSheet(pid, full));   // waits a beat so a double-tap (like) doesn't also open the sheet
   }
@@ -5783,6 +5837,7 @@ function showLikeBurst(x, y){
 
 document.addEventListener('click', (e)=>{
   // Any post, anywhere: double-tap the picture, text or empty space of the post. Buttons, names, links, the lock etc. are ignored.
+  if(selectingText()){ dtLast = null; return; }   // adjusting a text selection: never a like
   const media = e.target.closest('.sticker-tap, .vid-poster, video');
   if(!media && e.target.closest(POST_INTERACTIVE_SELECTOR)){ dtLast = null; return; }
   const postEl = e.target.closest(OWN_POST_SELECTOR);
@@ -5846,6 +5901,7 @@ async function openPostRepliesSheet(postId, fullScreen){
   repliesListEl.innerHTML = '<span class="post-replies-empty">Loading…</span>';
   postRepliesSheet.classList.add('show');
   updateComposeVisibility();
+  loadSheetAnswers(postId);
 
   // Meet 8 reading replies on a curated story: those are addressed to / sent from the hidden story account.
   currentThreadStoryOwnerId = null; currentThreadStoryNumber = null; threadMeId = currentUserId;
@@ -7341,6 +7397,14 @@ async function deletePostRow(postId){
 }
 
 document.addEventListener('click', async (e)=>{
+  const copyBtn = e.target.closest('.copy-text-trigger');
+  if(copyBtn){
+    e.stopPropagation();
+    const ok = await copyText(copyBtn.dataset.content || '');
+    const wrap = copyBtn.closest('.post-more'); if(wrap) wrap.classList.remove('open');
+    showNavToast(ok ? 'Text copied.' : 'Couldn\'t copy that.');
+    return;
+  }
   const deleteBtn = e.target.closest('.delete-post-trigger');
   if(deleteBtn){
     e.stopPropagation();
@@ -7371,7 +7435,9 @@ document.addEventListener('click', async (e)=>{
     startX = e.touches[0].clientX; startY = e.touches[0].clientY;
     cancel();
     timer = setTimeout(async ()=>{
-      timer = null; fired = true;
+      timer = null;
+      if(selectingText()) return;   // they are selecting / copying text: don't open the delete prompt
+      fired = true;
       if(navigator.vibrate) navigator.vibrate(30);
       if(!(await askConfirm({ title:'Delete this post as admin?', message:'This can\'t be undone.', okText:'Delete post', cancelText:'Keep it', danger:true, icon:'trash', preview: postPreviewText(postEl) }))) return;
       const res = await deletePostRow(postEl.dataset.postId);
@@ -7388,7 +7454,7 @@ document.addEventListener('click', async (e)=>{
   document.addEventListener('touchend', cancel);
   document.addEventListener('touchcancel', cancel);
   // no text-selection menu / ghost tap after a long press
-  document.addEventListener('contextmenu', (e)=>{ if(isAdmin && e.target.closest(FEED_POST_SELECTOR)) e.preventDefault(); });
+  document.addEventListener('contextmenu', (e)=>{ if(isAdmin && e.target.closest(FEED_POST_SELECTOR) && !e.target.closest('.post-body, .spill-card-body, .yp-post-body, .org-header')) e.preventDefault(); });
   document.addEventListener('click', (e)=>{ if(fired){ fired = false; e.stopPropagation(); e.preventDefault(); } }, true);
 })();
 
@@ -7926,7 +7992,8 @@ function postActionsHtml(postId, authorId, content, stickerUrl, audioUrl, durati
   const isOwn = authorId && currentUserId && authorId === currentUserId;
   const deleteHtml = isOwn ? `<span class="post-action delete-post-trigger" data-post-id="${postId}">Delete</span>` : '';
   // Share + delete live behind one "⋯" button so the action row stays quiet.
-  const moreItems = shareHtml + deleteHtml;
+  const copyHtml = content ? `<span class="post-action copy-text-trigger" data-content="${escapeHtml(content)}">Copy text</span>` : '';
+  const moreItems = shareHtml + copyHtml + deleteHtml;
   const moreHtml = moreItems
     ? `<span class="post-more"><span class="post-action post-more-btn" role="button" aria-label="More" aria-haspopup="true">⋯</span><span class="post-more-menu">${moreItems}</span></span>`
     : '';
@@ -8283,6 +8350,201 @@ document.addEventListener('click', (e)=>{
     navigateToPost(sourceLink.dataset.sourceId);
   }
 });
+
+/* ============================================================
+   SPILL QUESTIONS -- ask in Spill; an answer is a Spill post of its own.
+   posts.is_question (bool) marks a question. posts.answer_to_post_id points an answer at its question.
+   Answers show under the question AND in the main Spill stack (question quoted above them).
+   Private replies are untouched: they still go only to the person who wrote the post.
+   ============================================================ */
+let currentAnswerToPostId = null;
+let currentComposeAsQuestion = false;
+let answersViewQid = null;
+const questionCache = {};   // question id -> { id, user_id, content, label }
+
+function questionLabelOf(p){
+  return p.story_number ? ('Meet ' + p.story_number) : p.as_founder ? 'Meet Founder' : (p.users?.meet_number || ('Meet ' + String(p.user_id || '').slice(0,6)));
+}
+async function fetchQuestionsFor(posts){
+  (posts || []).filter(p => p.is_question).forEach(p => { questionCache[p.id] = { id:p.id, user_id:p.user_id, content:p.content || '', label:questionLabelOf(p) }; });
+  const ids = [...new Set((posts || []).filter(p => p.answer_to_post_id && !questionCache[p.answer_to_post_id]).map(p => p.answer_to_post_id))];
+  if(!ids.length) return;
+  const { data, error } = await sb.from('posts').select('id, user_id, content, as_founder, story_number, users!posts_user_id_fkey(meet_number)').in('id', ids);
+  if(error){ console.error('Loading questions failed (non-fatal):', error); return; }
+  (data || []).forEach(q => { questionCache[q.id] = { id:q.id, user_id:q.user_id, content:q.content || '', label:questionLabelOf(q) }; });
+}
+async function fetchAnswerCounts(ids){
+  const counts = {};
+  if(!ids || !ids.length) return counts;
+  const { data, error } = await sb.from('posts').select('answer_to_post_id').in('answer_to_post_id', ids);
+  if(error){ console.error('Loading answer counts failed (non-fatal):', error); return counts; }
+  (data || []).forEach(r => { counts[r.answer_to_post_id] = (counts[r.answer_to_post_id] || 0) + 1; });
+  return counts;
+}
+function questionTagHtml(post){
+  return post.is_question ? '<div class="q-tag"><div class="q-tag-head">Question</div></div>' : '';
+}
+function answerQuoteHtml(post){
+  const q = post.answer_to_post_id && questionCache[post.answer_to_post_id];
+  if(!q) return '';
+  return `<div class="q-quote q-open" data-qid="${q.id}"><div class="q-quote-head">Answering ${escapeHtml(q.label)}</div><div class="q-quote-text">${escapeHtml(q.content)}</div></div>`;
+}
+function questionActionsHtml(post, isOwn, n, name){
+  const answer = isOwn ? '' : `<span class="post-action q-answer-btn" data-qid="${post.id}" data-name="${escapeHtml(name)}" role="button">Answer</span>`;
+  const count = `<span class="post-action q-answers-open q-open" data-qid="${post.id}" role="button">${n === 1 ? '1 answer' : n + ' answers'}</span>`;
+  return answer + count;
+}
+
+/* ---- compose: the "Ask a question" switch (plain Spill only) and the answer composer ---- */
+function composeQuestionSetup(show){
+  const row = document.getElementById('compose-question-row');
+  row.classList.toggle('show', !!show);
+  currentComposeAsQuestion = false;
+  const btn = document.getElementById('compose-question-btn');
+  btn.classList.remove('on'); btn.setAttribute('aria-pressed', 'false');
+}
+function setComposeQuestion(on){
+  if(!document.getElementById('compose-question-row').classList.contains('show')) return;
+  currentComposeAsQuestion = !!on;
+  const btn = document.getElementById('compose-question-btn');
+  btn.classList.toggle('on', !!on); btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  document.getElementById('compose-title').textContent = on ? 'Ask Spill' : 'Spill something';
+  document.getElementById('compose-textarea').placeholder = on ? 'Ask something you really want to know.' : 'Something you would only say once, to no one in particular.';
+}
+document.getElementById('compose-question-btn').addEventListener('click', ()=> setComposeQuestion(!currentComposeAsQuestion));
+
+function openAnswerCompose(qid, name){
+  const q = questionCache[qid];
+  currentAnswerToPostId = qid;
+  currentInspiredByPostId = null; currentInspiredBySpace = null; currentPostAsCommunityId = null;
+  const textarea = document.getElementById('compose-textarea');
+  textarea.value = '';
+  discardRecording();
+  discardSticker();
+  discardHappening();
+  composeOrgSetup(false);
+  composeFounderSetup(false);
+  composeQuestionSetup(false);
+  document.getElementById('compose-title').textContent = `Answering ${(q && q.label) || name || 'a question'}`;
+  const snippet = q && q.content ? (q.content.length > 90 ? q.content.slice(0, 90) + '…' : q.content) : '';
+  textarea.placeholder = snippet ? `“${snippet}”` : 'Answer it in your own words.';
+  document.getElementById('compose-overlay').classList.add('show');
+  composeLongSetup();
+  setTimeout(()=>textarea.focus(), 100);
+}
+
+/* ---- notification to the asker ---- */
+async function notifyAnswer(qid){
+  try{
+    const { data } = await sb.from('posts').select('user_id').eq('id', qid);
+    const ownerId = data && data[0]?.user_id;
+    if(ownerId && ownerId !== currentUserId){
+      await createNotification(ownerId, 'answer', qid);
+      sendPushTo(ownerId, pushSenderName(), 'answered your question.', '/');
+    }
+  }catch(err){ console.error('notifyAnswer failed (non-fatal):', err); }
+}
+
+/* ---- the answers page: the question on top, every answer under it (oldest first) ---- */
+async function openAnswersView(qid){
+  answersViewQid = qid;
+  document.getElementById('answers-title').textContent = 'Question';
+  document.getElementById('answers-subtitle').textContent = 'Loading…';
+  document.getElementById('answers-feed').innerHTML = '';
+  document.getElementById('answers-overlay').classList.add('show');
+  await loadAnswersView(qid);
+}
+async function loadAnswersView(qid){
+  const feed = document.getElementById('answers-feed');
+  const cols = 'id, user_id, content, sticker_url, audio_url, duration_seconds, created_at, as_founder, story_number, users!posts_user_id_fkey(meet_number)';
+  const { data: q } = await sb.from('posts').select(cols).eq('id', qid).maybeSingle();
+  if(qid !== answersViewQid) return;   // closed or switched while loading
+  if(!q){
+    document.getElementById('answers-subtitle').textContent = 'This question is gone.';
+    feed.innerHTML = '';
+    return;
+  }
+  const { data: answers } = await sb.from('posts').select(cols).eq('answer_to_post_id', qid).order('created_at', { ascending: true });
+  if(qid !== answersViewQid) return;
+  const list = answers || [];
+  const all = [q, ...list];
+  let likedIds = new Set();
+  if(currentUserId){
+    const { data: likeRows } = await sb.from('likes').select('post_id').eq('user_id', currentUserId).in('post_id', all.map(p => p.id));
+    likedIds = new Set((likeRows || []).map(l => l.post_id));
+  }
+  const cardFor = (post, isQuestion)=>{
+    const isStory = !!post.story_number;
+    const isOwn = post.user_id === currentUserId && !isStory;
+    const isFounder = !!post.as_founder && !isStory;
+    const name = isStory ? ('Meet ' + post.story_number) : isFounder ? ('Meet Founder' + (isOwn ? ' (you)' : '')) : ((post.users?.meet_number || ('Meet ' + post.user_id.slice(0,6))) + (isOwn ? ' (you)' : ''));
+    const authorId = ((isStory && !isOwn) || (isFounder && !isOwn)) ? null : post.user_id;
+    const wrap = document.createElement('div');
+    wrap.className = 'yp-post' + (isQuestion ? ' q-main' : '');
+    wrap.dataset.postId = post.id;
+    wrap.dataset.isOwn = isOwn ? 'true' : 'false';
+    const who = isStory ? `<span>${escapeHtml(name)}</span>` : isFounder ? `<span class="org-crest-dot crest-founder" style="margin-right:7px;"></span><span>${escapeHtml(name)}</span>` : `<span class="user-link" data-user-id="${post.user_id}">${escapeHtml(name)}</span>`;
+    const actions = postActionsHtml(post.id, authorId, post.content, post.sticker_url, post.audio_url, post.duration_seconds, name, 'Spill', likedIds.has(post.id), undefined, undefined, null, false, null);
+    const answerBtn = (isQuestion && !isOwn) ? `<span class="post-action q-answer-btn" data-qid="${post.id}" data-name="${escapeHtml(name)}" role="button">Answer</span>` : '';
+    wrap.innerHTML = `
+      <div class="yp-post-space">${who}</div>
+      ${isQuestion ? '<div class="q-tag"><div class="q-tag-head">Question</div></div>' : ''}
+      ${postBodyHtml(post, 'yp-post-body', 150)}
+      <div class="yp-post-time">${formatRelativeTime(post.created_at)}</div>
+      <div class="post-foot">${answerBtn}${actions}</div>`;
+    return wrap;
+  };
+  const qLabel = questionLabelOf(q);
+  document.getElementById('answers-title').textContent = 'Question';
+  document.getElementById('answers-subtitle').textContent = `${qLabel} · ${list.length === 1 ? '1 answer' : list.length + ' answers'}`;
+  feed.innerHTML = '';
+  feed.appendChild(cardFor(q, true));
+  if(!list.length){
+    const none = document.createElement('div');
+    none.style.cssText = 'text-align:center;padding:26px;font-size:12px;color:var(--muted-dim);';
+    none.textContent = 'No answers yet. Be the first.';
+    feed.appendChild(none);
+  } else {
+    const head = document.createElement('div');
+    head.className = 'answers-count';
+    head.textContent = list.length === 1 ? 'Answer' : 'Answers';
+    feed.appendChild(head);
+    list.forEach(a => feed.appendChild(cardFor(a, false)));
+  }
+}
+document.getElementById('answers-feed').addEventListener('click', async (e)=>{
+  const likeBtn = e.target.closest('.like-btn');
+  if(likeBtn){ e.stopPropagation(); const postId = likeBtn.dataset.postId; if(postId) await toggleLike(postId, likeBtn); }
+});
+document.getElementById('answers-back').addEventListener('click', ()=>{
+  document.getElementById('answers-overlay').classList.remove('show');
+  answersViewQid = null;
+});
+
+/* ---- taps: Answer / "N answers" / the quoted question on an answer ---- */
+document.addEventListener('click', (e)=>{
+  const answerBtn = e.target.closest('.q-answer-btn');
+  if(answerBtn){ e.stopPropagation(); openAnswerCompose(answerBtn.dataset.qid, answerBtn.dataset.name); return; }
+  const open = e.target.closest('.q-open');
+  if(open){
+    e.stopPropagation();
+    if(open.closest('#post-replies-sheet')) closePostRepliesSheet();
+    openAnswersView(open.dataset.qid);
+  }
+});
+
+// The asker's "Your post" sheet: a separate Answers section above the likes and private replies.
+async function loadSheetAnswers(postId){
+  const section = document.getElementById('post-replies-answers-section');
+  const list = document.getElementById('post-replies-answers-list');
+  section.style.display = 'none'; list.innerHTML = '';
+  try{
+    const { count, error } = await sb.from('posts').select('id', { count:'exact', head:true }).eq('answer_to_post_id', postId);
+    if(error || !count || postId !== currentRepliesPostId) return;
+    list.innerHTML = `<span class="q-sheet-link q-open" data-qid="${postId}">${count === 1 ? '1 answer' : count + ' answers'} — read them ›</span>`;
+    section.style.display = '';
+  }catch(err){ /* questions not switched on yet, or offline: the section just stays hidden */ }
+}
 
 // The Door tag: posts written from the door carry door_question_id; look up
 // the question text once per id and keep it, so every feed can show it.
@@ -10436,17 +10698,21 @@ resetShiftAndPullHints();
    ============================================================ */
 let cachedSpills = null; // last successfully rendered list, painted instantly on reopen while a fresh copy loads
 
-async function saveSpill(content, audio, inspiredByPostId, stickerUrl, doorQuestionId, doorRouteScore, asFounder){
+async function saveSpill(content, audio, inspiredByPostId, stickerUrl, doorQuestionId, doorRouteScore, asFounder, opts){
   if(!currentUserId) return console.error('No user');
   const row = { user_id: currentUserId, content: content || null, post_type: 'spill' };
   if(asFounder && isMeet8) row.as_founder = true;   // the database trigger is what really enforces Meet 8 only
   if(audio){ row.audio_url = audio.url; row.duration_seconds = audio.duration; }
   if(inspiredByPostId) row.inspired_by_post_id = inspiredByPostId;
+  if(opts && opts.isQuestion) row.is_question = true;          // a Spill question
+  if(opts && opts.answerTo) row.answer_to_post_id = opts.answerTo;   // an answer to a Spill question
   if(stickerUrl) row.sticker_url = stickerUrl;
   if(doorQuestionId){ row.door_question_id = doorQuestionId; row.door_route_score = doorRouteScore; }
   const { error } = await sb.from('posts').insert(row);
   if(error){ console.error('Error saving spill:', error); composeDraftRestoreAfterFail(content); showNavToast('Your post didn\'t go through. Try again.'); return; }
   if(inspiredByPostId) await notifyInspiredBy(inspiredByPostId);
+  if(opts && opts.answerTo) await notifyAnswer(opts.answerTo);
+  return true;
 }
 
 // Spill loads in batches of 15. The next batch is fetched quietly a few cards
@@ -10457,14 +10723,18 @@ let spillCursor = null, spillHasMore = false, spillLoadingMore = false;
 async function loadSpills(beforeIso){
   // Newest first, for everyone: your own Spills sit in time order with the
   // rest instead of being pushed to the front. Curated stories are included.
-  let q = sb
-    .from('posts')
-    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, inspired_by_post_id, door_question_id, as_founder, story_number, users!posts_user_id_fkey(meet_number)')
-    .eq('post_type', 'spill')
-    .order('created_at', { ascending: false })
-    .limit(SPILL_BATCH);
-  if(beforeIso) q = q.lt('created_at', beforeIso);
-  const { data, error } = await q;
+  const baseCols = 'id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, inspired_by_post_id, door_question_id, as_founder, story_number';
+  const build = (cols)=>{
+    let q = sb.from('posts').select(cols + ', users!posts_user_id_fkey(meet_number)')
+      .eq('post_type', 'spill').order('created_at', { ascending: false }).limit(SPILL_BATCH);
+    if(beforeIso) q = q.lt('created_at', beforeIso);
+    return q;
+  };
+  let { data, error } = await build(baseCols + ', is_question, answer_to_post_id');
+  if(error){   // the questions migration has not been run yet: Spill must still load
+    console.error('Loading spills with questions failed, retrying without:', error);
+    ({ data, error } = await build(baseCols));
+  }
   if(error){ console.error('Error loading spills:', error); return []; }
   return data || [];
 }
@@ -10520,6 +10790,8 @@ async function renderSpills(spills, append){
     likedIds = new Set((likeRows || []).map(l => l.post_id));
   }
   const inspirationLabels = await fetchInspirationLabels(spills);
+  await fetchQuestionsFor(spills);
+  const answerCounts = await fetchAnswerCounts(spills.filter(sp => sp.is_question).map(sp => sp.id));
 
   // Only clear once everything needed to build the cards is actually
   // ready. Clearing any earlier than this (as it used to) leaves the
@@ -10550,6 +10822,7 @@ async function renderSpills(spills, append){
       <div class="spill-card-id">${isStory ? `<span>${escapeHtml(displayName)}</span>` : isFounder ? `<span class="org-crest-dot crest-founder" style="margin-right:7px;"></span><span>${escapeHtml(displayName)}</span>` : `<span class="user-link" data-user-id="${spill.user_id}">${escapeHtml(displayName)}</span>`}<span class="story-tag">shared with us</span></div>
       <div class="spill-card-scroll">
         ${doorTagHtml(spill)}
+        ${questionTagHtml(spill)}${answerQuoteHtml(spill)}
         ${inspiredLine}
         ${bodyHtml}
       </div>
@@ -10557,6 +10830,7 @@ async function renderSpills(spills, append){
       <div class="spill-card-time">${formatRelativeTime(spill.created_at)}</div>
       <div class="spill-card-actions" style="display:flex; gap:14px; margin-top:10px; flex-wrap:wrap;">
         ${postActionsHtml(spill.id, ((isStory && !isOwnStory) || (isFounder && !isOwn)) ? null : (isOwnStory ? currentUserId : spill.user_id), spill.content, spill.sticker_url, spill.audio_url, spill.duration_seconds, displayName, 'Spill', userLiked, undefined, undefined, null, false, (isStory && !isOwnStory) ? { ownerId: spill.user_id, number: spill.story_number } : null)}
+        ${spill.is_question ? questionActionsHtml(spill, isOwn || isOwnStory, answerCounts[spill.id] || 0, displayName) : ''}
       </div>
       </div>`;
     stack.appendChild(card);
@@ -11191,6 +11465,7 @@ const NOTIF_TEXT = {
   secure_nudge: ()=> 'Create an account to keep your posts, friends, and Room access — even on a new device.',
   system: (n)=> n.message ? escapeHtml(n.message) : 'Meet Me has an update for you.',
   inspired: (n)=> `${actorName(n)} was inspired by your ${notifPostWord(n)}.`,
+  answer: (n)=> `${actorName(n)} answered your question.`,
   community_invite: (n)=> `${actorName(n)} invited you to a community.`,
   org_post: (n)=> n.message ? escapeHtml(n.message) : 'An organisation you follow posted.',
   community_post: (n)=> n.message ? escapeHtml(n.message) : 'New post in a community.',
@@ -11417,6 +11692,7 @@ const NOTIF_NAV = {
   room_ready: async ()=>{ notifOverlay.classList.remove('show'); await goToScreen('chat'); },
   secure_nudge: ()=>{ notifOverlay.classList.remove('show'); openSecureOverlay(); },
   inspired: (n)=>{ notifOverlay.classList.remove('show'); return navigateToPost(n.reference_id); },
+  answer: (n)=>{ notifOverlay.classList.remove('show'); return navigateToPost(n.reference_id); },
   org_post: (n)=>{ notifOverlay.classList.remove('show'); return navigateToPost(n.reference_id); },
   community_post: (n)=>{ notifOverlay.classList.remove('show'); return navigateToPost(n.reference_id); },
   community_message: async (n)=>{ notifOverlay.classList.remove('show'); await goToScreen('chat'); await openCommunityThread(n.reference_id, n.message || 'Community'); }
@@ -11452,7 +11728,7 @@ async function fetchNotifications(){
   const frIds = notifs.filter(n => n.type === 'friend_request' && n.reference_id).map(n => n.reference_id);
   const rbIds = [...new Set(notifs.filter(n => n.type === 'reply_back' && n.reference_id).map(n => n.reference_id))];
   const replyPostIds = [...new Set(notifs.filter(n => (n.type === 'reply' || n.type === 'reply_back') && n.reference_id).map(n => n.reference_id))];
-  const postIds = [...new Set(notifs.filter(n => (n.type === 'like' || n.type === 'reply' || n.type === 'inspired') && n.reference_id).map(n => n.reference_id))];
+  const postIds = [...new Set(notifs.filter(n => (n.type === 'like' || n.type === 'reply' || n.type === 'inspired' || n.type === 'answer') && n.reference_id).map(n => n.reference_id))];
   const none = Promise.resolve({ data: [] });
 
   // All the follow-up lookups run side by side (they used to run one after another, which is what made the bell slow).
@@ -12289,7 +12565,7 @@ function setupComposeButton(){
 const COMPOSE_LIMITS = { spill: 8000, org: 5000, rant: 2000 };   // change these numbers to taste
 let composeLastDraftKey = null;
 function composeDraftKey(){
-  if(currentPostAsCommunityId || currentInspiredByPostId) return null;
+  if(currentPostAsCommunityId || currentInspiredByPostId || currentAnswerToPostId) return null;
   if(currentScreenKey === 'orgs') return 'org';
   if(currentScreenKey === 'twin' && currentTwinMode === 'spill') return 'spill';
   if(currentScreenKey === 'twin' && currentTwinMode === 'rant') return 'rant';
@@ -12298,6 +12574,7 @@ function composeDraftKey(){
 function composeLimit(){
   const k = composeDraftKey();
   if(k) return COMPOSE_LIMITS[k];
+  if(currentAnswerToPostId) return COMPOSE_LIMITS.spill;
   if(currentInspiredBySpace === 'Spill') return COMPOSE_LIMITS.spill;
   if(currentInspiredBySpace === 'Orgs') return COMPOSE_LIMITS.org;
   return COMPOSE_LIMITS.rant;
@@ -12344,10 +12621,16 @@ function composeLongSetup(){
     if(key && !ta.value){
       try{ const d = localStorage.getItem(composeDraftStore(key)); if(d) ta.value = d.slice(0, ta.maxLength); }catch(e){}
     }
-    composeSetFull(currentScreenKey === 'twin' && currentTwinMode === 'spill' && !currentPostAsCommunityId && !currentInspiredByPostId);
+    composeSetFull(currentScreenKey === 'twin' && currentTwinMode === 'spill' && !currentPostAsCommunityId && !currentInspiredByPostId && !currentAnswerToPostId);
     composeCountUpdate();
   }, 0);
 }
+document.getElementById('compose-textarea').addEventListener('paste', (e)=>{
+  try{
+    const ta = e.target, txt = (e.clipboardData || window.clipboardData).getData('text') || '';
+    if(ta.maxLength > 0 && txt.length > ta.maxLength - (ta.value.length - (ta.selectionEnd - ta.selectionStart))) showNavToast('Pasted text was cut at ' + ta.maxLength.toLocaleString() + ' characters.');
+  }catch(_){}
+});
 document.getElementById('compose-textarea').addEventListener('input', ()=>{
   composeAutosize(); composeCountUpdate();
   clearTimeout(composeDraftSave._t); composeDraftSave._t = setTimeout(composeDraftSave, 400);
@@ -12370,6 +12653,7 @@ function openComposeOverlay(){
   discardHappening();
   currentInspiredByPostId = null;
   currentInspiredBySpace = null;
+  currentAnswerToPostId = null;
 
   // Happenings are scoped to plain personal Rant posts only -- not
   // Spill, not community posts, not inspired-by reposts.
@@ -12401,6 +12685,7 @@ function openComposeOverlay(){
 
   // Meet 8 only: a "Meet Founder" choice on plain Rant and Spill posts (not communities, not the Organisations page).
   composeFounderSetup(currentScreenKey === 'twin' && (currentTwinMode === 'rant' || currentTwinMode === 'spill') && !currentPostAsCommunityId);
+  composeQuestionSetup(currentScreenKey === 'twin' && currentTwinMode === 'spill' && !currentPostAsCommunityId);   // "Ask a question" switch: plain Spill only
 
   document.getElementById('compose-overlay').classList.add('show');
   composeLongSetup();
@@ -12411,9 +12696,11 @@ function closeComposeOverlay(){
   composeSetFull(false);
   composeOrgReset();
   composeFounderSetup(false);
+  composeQuestionSetup(false);
   currentPostAsCommunityId = null;
   currentInspiredByPostId = null;
   currentInspiredBySpace = null;
+  currentAnswerToPostId = null;
   discardRecording();
   discardSticker();
   discardHappening();
@@ -13376,9 +13663,12 @@ document.getElementById('compose-submit-btn').addEventListener('click', async ()
   const postingAsCommunity = currentPostAsCommunityId; // same -- captured before it's cleared
   const inspiredByPostId = currentInspiredByPostId;
   const inspiredBySpace = currentInspiredBySpace;
+  const answerToId = currentAnswerToPostId;       // set when this post answers a Spill question
+  const asQuestion = currentComposeAsQuestion;    // set when this Spill post is a question
   const draftKeyAtSubmit = composeDraftKey();   // same -- read before closeComposeOverlay() clears the context
 
   if(!content && !blobToUpload && !stickerToUse) return; // need at least one of text, voice, or sticker
+  if(asQuestion && !content){ showNavToast('Write your question first.'); return; }
 
   let audio = null;
   if(blobToUpload){
@@ -13407,6 +13697,15 @@ document.getElementById('compose-submit-btn').addEventListener('click', async ()
   const refreshYourPostsIfOpen = async () => {
     if(yourpostsOverlay.classList.contains('show')) await loadYourPosts();
   };
+
+  if(answerToId){
+    const ok = await saveSpill(content, audio, null, stickerToUse, null, null, null, { answerTo: answerToId });
+    if(currentScreenKey === 'twin' && currentTwinMode === 'spill'){ const spills = await loadSpills(); cachedSpills = spills; renderSpills(spills); }
+    if(answersViewQid && document.getElementById('answers-overlay').classList.contains('show')) await loadAnswersView(answersViewQid);
+    await refreshYourPostsIfOpen();
+    if(ok) showNavToast('Answer posted.');
+    return;
+  }
 
   if(inspiredByPostId){
     if(inspiredBySpace === 'Rant'){ await saveRant(content, null, audio, inspiredByPostId, stickerToUse, null, null, null, null, founderToUse); if(currentScreenKey==='twin' && currentTwinMode==='rant') await loadFeed(); }
@@ -13438,7 +13737,7 @@ document.getElementById('compose-submit-btn').addEventListener('click', async ()
     return;
   }
   if(currentTwinMode === 'spill'){
-    await saveSpill(content, audio, null, stickerToUse, null, null, founderToUse);
+    await saveSpill(content, audio, null, stickerToUse, null, null, founderToUse, { isQuestion: asQuestion });
     const spills = await loadSpills();
     cachedSpills = spills;
     renderSpills(spills);
@@ -15461,7 +15760,7 @@ const BACK_LAYERS = [
   ['community-thread-overlay','community-thread-back'],
   ['happening-view-overlay','happening-view-back'], ['user-profile-overlay','user-profile-back'],
   ['bookmarks-overlay','bookmarks-back'], ['yourreplies-overlay','yourreplies-back'], ['yourweek-overlay','yourweek-back'], ['orgposts-overlay','orgposts-back'], ['org-page','orgpage-back'], ['strip-viewer','strip-close'], ['org-manage','manage-back'],
-  ['yourposts-overlay','yourposts-back'], ['search-overlay','search-back']
+  ['yourposts-overlay','yourposts-back'], ['search-overlay','search-back'], ['answers-overlay','answers-back']
 ];
 
 function topOpenLayer(){
