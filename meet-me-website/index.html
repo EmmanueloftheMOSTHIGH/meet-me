@@ -3361,9 +3361,11 @@
       <div id="compose-voice-row" style="display:flex; align-items:center; gap:10px; margin:-6px 0 14px;">
         <div id="compose-mic-btn" title="Record a voice note" style="width:38px; height:38px; border-radius:50%; background:var(--card); border:1px solid var(--card-border); display:flex; align-items:center; justify-content:center; font-size:15px; cursor:pointer; flex-shrink:0; color:var(--gold-dim);">🎙</div>
         <div id="compose-sticker-btn" title="Add a sticker" style="width:38px; height:38px; border-radius:50%; background:var(--card); border:1px solid var(--card-border); display:flex; align-items:center; justify-content:center; font-size:15px; cursor:pointer; flex-shrink:0; color:var(--gold-dim);">🏷</div>
+        <div id="compose-gallery-btn" title="Add pictures or a video from your phone" style="width:38px; height:38px; border-radius:50%; background:var(--card); border:1px solid var(--card-border); display:flex; align-items:center; justify-content:center; font-size:15px; cursor:pointer; flex-shrink:0; color:var(--gold-dim);">📷</div>
+        <input type="file" id="compose-gallery-input" accept="image/*,video/mp4,video/webm,video/quicktime" multiple style="display:none;">
         <div id="compose-video-btn" title="Add a video" style="display:none; width:38px; height:38px; border-radius:50%; background:var(--card); border:1px solid var(--card-border); align-items:center; justify-content:center; font-size:15px; cursor:pointer; flex-shrink:0; color:var(--gold-dim);">🎬</div>
         <input type="file" id="compose-video-input" accept="video/webm,video/mp4" style="display:none;">
-        <div id="compose-voice-status" style="font-size:12px; color:var(--muted-dim); flex:1;">or add a sticker, video or voice note</div>
+        <div id="compose-voice-status" style="font-size:12px; color:var(--muted-dim); flex:1;">or add a picture, video, sticker or voice note</div>
         <div id="compose-voice-preview-play" style="display:none; width:32px; height:32px; border-radius:50%; background:var(--gold-dim); align-items:center; justify-content:center; font-size:11px; color:var(--bg); cursor:pointer; flex-shrink:0;">▶</div>
         <div id="compose-voice-discard" style="display:none; font-size:11px; color:var(--muted-dim); text-decoration:underline; cursor:pointer; flex-shrink:0;">discard</div>
       </div>
@@ -3567,6 +3569,8 @@
     </div>
     <div id="chat-thread-input-row">
       <input id="community-thread-input" type="text" placeholder="say something to the group">
+      <div class="thread-sticker-btn" id="community-thread-photo-btn" title="Send a picture or video">📷</div>
+      <input type="file" id="community-gallery-input" accept="image/*,video/mp4,video/webm,video/quicktime" multiple style="display:none;">
       <div class="thread-sticker-btn" id="community-thread-sticker-btn" title="Send a sticker">🏷</div>
       <div id="community-thread-send" style="width:38px; height:38px; border-radius:50%; background:var(--card); border:1px solid var(--card-border); display:flex; align-items:center; justify-content:center; color:var(--gold-dim); font-size:15px; cursor:pointer; flex-shrink:0;">➤</div>
     </div>
@@ -3586,6 +3590,8 @@
     </div>
     <div id="chat-thread-input-row">
       <input id="chat-thread-input" type="text" placeholder="say something">
+      <div class="thread-sticker-btn" id="chat-thread-photo-btn" title="Send a picture or video">📷</div>
+      <input type="file" id="chat-gallery-input" accept="image/*,video/mp4,video/webm,video/quicktime" multiple style="display:none;">
       <div class="thread-sticker-btn" id="chat-thread-sticker-btn" title="Send a sticker">🏷</div>
       <div id="chat-thread-send">➤</div>
     </div>
@@ -12431,13 +12437,13 @@ async function sendChatMessage(){
   // no manual reload -- the realtime subscription renders it for both sides
 }
 
-async function sendChatSticker(url){
+async function sendChatSticker(url, pushLabel){
   if(!url || !currentChatId) return;
   const replyToId = chatReplyingTo?.id || null;
   clearChatReplyingTo();
   const { error } = await sb.from('chat_messages').insert({ chat_id: currentChatId, sender_id: currentUserId, content: '', sticker_url: url, reply_to_id: replyToId });
   if(error){ console.error('Error sending chat sticker:', error); return; }
-  sendPushTo(currentChatOtherUserId, myFounderSentChatIds.has(currentChatId) ? 'Meet Founder' : pushSenderName(), 'sent a sticker', '/', 'chat-' + currentChatId);
+  sendPushTo(currentChatOtherUserId, myFounderSentChatIds.has(currentChatId) ? 'Meet Founder' : pushSenderName(), pushLabel || 'sent a sticker', '/', 'chat-' + currentChatId);
   // no manual reload -- the realtime subscription renders it for both sides
 }
 
@@ -13536,7 +13542,7 @@ document.getElementById('compose-sticker-remove').addEventListener('click', disc
 async function refreshComposeVideoBtn(){
   const b = document.getElementById('compose-video-btn');
   try{ await ensureOrgs(); }catch(e){}
-  b.style.display = (typeof myOrgs !== 'undefined' && myOrgs.length) ? 'flex' : 'none';
+  b.style.display = 'none';   // replaced by the 📷 button (compose-gallery-btn), which takes pictures and videos from the phone for everyone
 }
 new MutationObserver(()=>{
   if(document.getElementById('compose-overlay').classList.contains('show')) refreshComposeVideoBtn();
@@ -13571,6 +13577,185 @@ document.getElementById('compose-video-input').addEventListener('change', async 
   document.getElementById('compose-sticker-remove').textContent = 'remove video';
   document.getElementById('compose-sticker-preview-row').style.display = 'flex';
 });
+
+
+/* ============================================================
+   PICTURES & VIDEOS FROM OUTSIDE MEET ME
+   Two ways in, one upload path:
+     1) 📷 buttons (post composer, chat, group chat) open the phone's gallery / camera.
+     2) Share from another app (Android, installed app) -> Meet Me: share-target.js in the service worker keeps the
+        files, the app wakes up with ?mm_share=N, and the files land in the post composer.
+   Pictures are shrunk on the phone first (longest side 1600 px, WebP/JPEG). Animated pictures use the sticker shrinker,
+   videos use the same trim + shrink as before. Nothing here is added to the person's sticker collection.
+   Videos are open to everyone (Rant, organisations, chat), except Spill, which stays pictures + voice + text.
+   NOTE: the meetme-upload Worker also checks who may upload video; it has to allow everyone too (see the hand-off note).
+   ============================================================ */
+const GALLERY_PIC_MAX_SIDE = 1600;
+const GALLERY_PIC_SKIP_BYTES = 450 * 1024;          // already small + already a normal size: upload untouched
+const GALLERY_PIC_FALLBACK_MAX_BYTES = 6 * 1024 * 1024;   // if the phone can't decode it, a picture up to 6 MB goes up as it is
+const GALLERY_CHAT_MAX_FILES = 4;
+
+function galleryIsVideo(file){ return /^video\//.test(file.type) || /\.(mp4|m4v|mov|webm)$/i.test(file.name || ''); }
+
+async function prepareGalleryPicture(file){
+  let kind = 'still';
+  try{ kind = await sniffStickerKind(file); }catch(e){}
+  if(kind === 'animated') return await prepareStickerImage(file);          // GIF / animated WebP: same rules as stickers
+  let bmp = null;
+  try{ bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }); }
+  catch(e1){ try{ bmp = await createImageBitmap(file); }catch(e2){ bmp = null; } }
+  if(!bmp){
+    if(/^image\/(jpeg|png|webp)$/.test(file.type) && file.size <= GALLERY_PIC_FALLBACK_MAX_BYTES) return { file };
+    return { error: 'Could not read that picture. Try a JPG or PNG.' };
+  }
+  try{
+    const longest = Math.max(bmp.width, bmp.height);
+    const k = Math.min(1, GALLERY_PIC_MAX_SIDE / longest);
+    const okType = /^image\/(jpeg|png|webp)$/.test(file.type);
+    if(k === 1 && okType && file.size <= GALLERY_PIC_SKIP_BYTES) return { file };
+    const w = Math.max(1, Math.round(bmp.width * k)), h = Math.max(1, Math.round(bmp.height * k));
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const g = c.getContext('2d');
+    g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+    g.drawImage(bmp, 0, 0, w, h);
+    let blob = await new Promise(r => c.toBlob(r, 'image/webp', 0.82));
+    let ext = 'webp';
+    if(!blob || blob.type !== 'image/webp'){          // older Safari can't write WebP: JPEG on a white background
+      const c2 = document.createElement('canvas'); c2.width = w; c2.height = h;
+      const g2 = c2.getContext('2d'); g2.fillStyle = '#fff'; g2.fillRect(0, 0, w, h); g2.drawImage(bmp, 0, 0, w, h);
+      blob = await new Promise(r => c2.toBlob(r, 'image/jpeg', 0.85)); ext = 'jpg';
+    }
+    if(!blob) return okType && file.size <= GALLERY_PIC_FALLBACK_MAX_BYTES ? { file } : { error: 'Could not prepare that picture.' };
+    if(k === 1 && okType && blob.size >= file.size) return { file };      // never make a picture bigger
+    return { file: new File([blob], 'photo.' + ext, { type: blob.type }), ext };
+  } finally { try{ bmp.close(); }catch(e){} }
+}
+
+// Uploads ONE picture or video from the phone. Returns { url } or { error } (or { cancelled } if the trim screen was closed).
+async function uploadGalleryFile(file0){
+  if(!currentUserId) return { error: 'Sign in first.' };
+  let file = file0, posterBlob = null, forcedExt = null;
+  const isVid = galleryIsVideo(file0);
+  if(isVid){
+    const r = await prepareVideoForUpload(file0);
+    if(r.cancelled) return { cancelled: true };
+    if(r.error) return { error: r.error };
+    file = r.file; posterBlob = r.poster || null;
+    if(!/^video\/(mp4|webm)$/.test(file.type)) return { error: 'Please use an MP4 or WebM video.' };   // e.g. an iPhone .mov that could not be converted
+  } else {
+    if(!/^image\//.test(file0.type)) return { error: 'That file type is not supported.' };
+    let r;
+    try{ r = await prepareGalleryPicture(file0); }catch(err){ console.error('Picture shrink failed:', err); r = { file: file0 }; }
+    if(r.error) return { error: r.error };
+    file = r.file; forcedExt = r.ext || null;
+  }
+  const stamp = Date.now() + '-' + Math.floor(Math.random() * 1000);
+  const ext = forcedExt || (file.type === 'video/webm' ? 'webm' : file.type === 'video/mp4' ? 'mp4' : ((file.name.split('.').pop() || 'jpg').toLowerCase()));
+  const label = isVid ? 'video' : 'picture';
+  uploadNotice('Uploading ' + label + '…');
+  const up = await uploadStickerFile(`${currentUserId}/${stamp}.${ext}`, file, uploadProgressNotice(label));
+  if(up.error){
+    console.error('Gallery upload failed:', up.error);
+    return { error: /organisation/i.test(up.error) ? 'Video upload is still switched off on the server for non-organisations.' : ('Could not upload ' + label + '.') };
+  }
+  if(posterBlob) await uploadStickerFile(`${currentUserId}/${stamp}-poster.jpg`, posterBlob);   // if the poster fails the video still plays
+  return { url: up.url, isVideo: isVid };
+}
+
+// Composer: add the chosen files to the post being written (pictures stack up to MAX_POST_PICS, a video stands alone).
+async function composeAddGalleryFiles(files){
+  files = Array.from(files || []).filter(f => /^image\//.test(f.type) || galleryIsVideo(f));
+  if(!files.length) return;
+  const noVideo = (currentTwinMode === 'spill' && currentScreenKey === 'twin');   // Spill: no video
+  const vids = files.filter(galleryIsVideo), pics = files.filter(f => !galleryIsVideo(f));
+  if(noVideo && vids.length && !pics.length){ uploadNotice('Spill takes pictures, voice notes and text. Videos go in Rant.', 3200); return; }
+  let queue;
+  if(vids.length && !noVideo){ queue = [vids[0]]; if(files.length > 1) uploadNotice('A post can carry one video, or up to ' + MAX_POST_PICS + ' pictures. Using the first video.', 3000); }
+  else queue = pics;
+  const have = stickerUrlList(selectedStickerUrl).filter(u => !isVideoStickerUrl(u)).length;
+  if(!vids.length || noVideo){
+    const room = Math.max(0, MAX_POST_PICS - have);
+    if(!room){ uploadNotice('Up to ' + MAX_POST_PICS + ' pictures per post.', 2400); return; }
+    if(queue.length > room){ queue = queue.slice(0, room); uploadNotice('Up to ' + MAX_POST_PICS + ' pictures per post. Adding the first ' + room + '.', 2600); }
+  }
+  let added = 0;
+  for(const f of queue){
+    const r = await uploadGalleryFile(f);
+    if(r.cancelled) break;
+    if(r.error){ uploadNotice(r.error, 3400); continue; }
+    composeAddPicture(r.url); added++;
+  }
+  if(added) uploadNotice((added > 1 ? added + ' pictures' : (queue[0] && galleryIsVideo(queue[0]) ? 'Video' : 'Picture')) + ' added ✓', 2200);
+}
+document.getElementById('compose-gallery-btn').addEventListener('click', ()=>{
+  const inp = document.getElementById('compose-gallery-input');
+  inp.accept = (currentTwinMode === 'spill' && currentScreenKey === 'twin') ? 'image/*' : 'image/*,video/mp4,video/webm,video/quicktime';
+  inp.click();
+});
+document.getElementById('compose-gallery-input').addEventListener('change', async (e)=>{
+  const files = Array.from(e.target.files || []); e.target.value = '';
+  await composeAddGalleryFiles(files);
+});
+
+// Chat / group chat: each chosen file goes out as its own message (up to 4 at once).
+async function sendGalleryFilesTo(files, sendOne){
+  files = Array.from(files || []).filter(f => /^image\//.test(f.type) || galleryIsVideo(f)).slice(0, GALLERY_CHAT_MAX_FILES);
+  for(const f of files){
+    const r = await uploadGalleryFile(f);
+    if(r.cancelled) break;
+    if(r.error){ uploadNotice(r.error, 3400); continue; }
+    await sendOne(r.url, r.isVideo);
+    uploadNotice((r.isVideo ? 'Video' : 'Picture') + ' sent ✓', 1800);
+  }
+}
+document.getElementById('chat-thread-photo-btn').addEventListener('click', ()=> document.getElementById('chat-gallery-input').click());
+document.getElementById('chat-gallery-input').addEventListener('change', async (e)=>{
+  const files = Array.from(e.target.files || []); e.target.value = '';
+  await sendGalleryFilesTo(files, (url, isVid)=> sendChatSticker(url, isVid ? 'sent a video' : 'sent a picture'));
+});
+document.getElementById('community-thread-photo-btn').addEventListener('click', ()=> document.getElementById('community-gallery-input').click());
+document.getElementById('community-gallery-input').addEventListener('change', async (e)=>{
+  const files = Array.from(e.target.files || []); e.target.value = '';
+  await sendGalleryFilesTo(files, (url)=> sendCommunitySticker(url));
+});
+
+/* ---- Share from another app -> Meet Me (works with share-target.js in the service worker) ---- */
+const SHARE_CACHE = 'meetme-share';
+async function takeSharedFiles(){
+  const out = [];
+  try{
+    if(!('caches' in window)) return out;
+    const cache = await caches.open(SHARE_CACHE);
+    const keys = await cache.keys();
+    keys.sort((a, b) => a.url.localeCompare(b.url));
+    for(const req of keys){
+      const res = await cache.match(req);
+      if(!res) continue;
+      const blob = await res.blob();
+      let name = 'shared'; try{ name = decodeURIComponent(res.headers.get('X-Name') || 'shared'); }catch(e){}
+      out.push(new File([blob], name, { type: res.headers.get('Content-Type') || blob.type || '' }));
+    }
+    for(const req of keys) await cache.delete(req);
+  }catch(e){ console.error('Reading shared files failed:', e); }
+  return out;
+}
+async function openSharedMedia(){
+  const params = new URLSearchParams(location.search);
+  if(!params.has('mm_share')) return;
+  try{ params.delete('mm_share'); const q = params.toString(); history.replaceState(null, '', location.pathname + (q ? '?' + q : '')); }catch(e){}
+  await new Promise(resolve => {      // let the splash finish first
+    const t = setInterval(()=>{ if(splash.style.display === 'none'){ clearInterval(t); resolve(); } }, 150);
+    setTimeout(()=>{ clearInterval(t); resolve(); }, 9000);
+  });
+  if(!currentUserId){ uploadNotice('Sign in, then share again.', 3200); await takeSharedFiles(); return; }
+  const files = await takeSharedFiles();
+  if(!files.length){ uploadNotice('Nothing came through. Try sharing again.', 3000); return; }
+  await goToScreen('twin');
+  if(currentTwinMode !== 'rant') await setTwinMode('rant');       // shared pictures and videos start a Rant post
+  currentPostAsCommunityId = null;
+  openComposeOverlay();
+  await composeAddGalleryFiles(files);
+}
 
 // Lets anyone save a sticker they see on a post into their OWN
 // collection -- the "steal it because it's beautiful" mechanic, minus
@@ -15872,6 +16057,7 @@ document.addEventListener('DOMContentLoaded', async function(){
 
   await rantPromise;
   openSharedPost();             // fire-and-forget -- only does anything when the app was opened from a shared link
+  openSharedMedia();            // fire-and-forget -- only does anything when pictures / videos were shared in from another app
   refreshChatUnread();          // fire-and-forget -- the badge appears when it lands
   startChatUnreadWatch();
   if(currentScreenKey === 'twin' && currentTwinMode === 'rant') startFeedRealtime(); // opens on Rant unless restored elsewhere
