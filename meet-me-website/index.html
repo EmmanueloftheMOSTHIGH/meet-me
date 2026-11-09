@@ -13236,6 +13236,7 @@ async function prepareStickerImage(file){
    uploaded only if it is already small, otherwise the person is asked for a smaller one.
    ============================================================ */
 const VIDEO_MAX_SECONDS = 60;
+const VIDEO_QUICK_SECONDS = 30;   // optional shorter cut offered for big clips (faster to prepare and send)
 const VIDEO_SKIP_BYTES  = 30 * 1024 * 1024;   // Cloudflare has no download fees, so an untrimmed clip up to 30 MB is uploaded exactly as it was filmed (instant, smooth, original sound)
 const VIDEO_FALLBACK_MAX_BYTES = 30 * 1024 * 1024;
 const VIDEO_MAX_W = 480, VIDEO_MAX_H = 640;   // re-recorded (trimmed) clips: phone-screen size, easy for weak phones to play
@@ -13261,7 +13262,7 @@ async function captureVideoPoster(v, atTime){
 
 // Long video? Let the person choose which VIDEO_MAX_SECONDS to keep by dragging the front and back handles.
 // Resolves { start, end } in seconds, or null if they cancel.
-function pickVideoTrim(url, dur){
+function pickVideoTrim(url, dur, limitSeconds){
   return new Promise(resolve=>{
     const ov = document.getElementById('video-trim-overlay');
     const pv = document.getElementById('video-trim-preview');
@@ -13271,7 +13272,9 @@ function pickVideoTrim(url, dur){
     const rangeEl = document.getElementById('video-trim-range');
     const readout = document.getElementById('video-trim-readout');
     const MIN_LEN = 1;
-    const maxLen = Math.min(VIDEO_MAX_SECONDS, dur);
+    const maxLen = Math.min(limitSeconds || VIDEO_MAX_SECONDS, dur);
+    const subEl = document.getElementById('video-trim-sub');
+    if(subEl) subEl.textContent = 'Drag the left and right handles to cut the front and back. Up to ' + Math.round(limitSeconds || VIDEO_MAX_SECONDS) + ' seconds.';
     let start = 0, end = maxLen;
     const fmt = t => { t = Math.max(0, t); const m = Math.floor(t/60), sec = Math.floor(t%60); return m + ':' + String(sec).padStart(2,'0'); };
     const trackW = ()=> track.clientWidth || 1;
@@ -13338,8 +13341,14 @@ async function prepareVideoForUpload(file){
     const dur = v.duration;
     if(!isFinite(dur) || dur <= 0) return { error: 'Could not read that video.' };
     let startT = 0, endT = dur, trimmed = false;
-    if(dur > VIDEO_MAX_SECONDS + 0.5){
-      const pick = await pickVideoTrim(url, dur);
+    // Optional quick cut: a big clip between 30 and 60 seconds is slow to prepare, so offer a 30 second version (never forced).
+    let quickMax = 0;
+    if(dur > VIDEO_QUICK_SECONDS + 0.5 && dur <= VIDEO_MAX_SECONDS + 0.5 && file.size > VIDEO_SKIP_BYTES){
+      const quick = await askConfirm({ title: 'Make it quicker?', message: 'This clip is big, so it takes a while to prepare and send. Trim it to ' + VIDEO_QUICK_SECONDS + ' seconds to send it faster, or keep it whole.', okText: 'Trim to ' + VIDEO_QUICK_SECONDS + 's', cancelText: 'Keep it whole' });
+      if(quick) quickMax = VIDEO_QUICK_SECONDS;
+    }
+    if(dur > VIDEO_MAX_SECONDS + 0.5 || quickMax){
+      const pick = await pickVideoTrim(url, dur, quickMax);
       if(!pick) return { cancelled: true };
       startT = pick.start; endT = pick.end; trimmed = true;
     }
@@ -13649,16 +13658,19 @@ async function uploadGalleryFile(file0){
     if(r.error) return { error: r.error };
     file = r.file; forcedExt = r.ext || null;
   }
-  const stamp = Date.now() + '-' + Math.floor(Math.random() * 1000);
+  // Pure digits, exactly like the old upload code (the Worker is picky about file names). Bumped by 1 if two land in the same millisecond.
+  const stamp = (window._galleryLastStamp = Math.max(Date.now(), (window._galleryLastStamp || 0) + 1));
   const ext = forcedExt || (file.type === 'video/webm' ? 'webm' : file.type === 'video/mp4' ? 'mp4' : ((file.name.split('.').pop() || 'jpg').toLowerCase()));
   const label = isVid ? 'video' : 'picture';
   uploadNotice('Uploading ' + label + '…');
+  // The small still picture shown with a video goes up at the same time as the video, not after it.
+  const posterUp = posterBlob ? uploadStickerFile(`${currentUserId}/${stamp}-poster.jpg`, posterBlob) : null;
   const up = await uploadStickerFile(`${currentUserId}/${stamp}.${ext}`, file, uploadProgressNotice(label));
+  if(posterUp) await posterUp;     // if the poster fails the video still plays
   if(up.error){
     console.error('Gallery upload failed:', up.error);
-    return { error: /organisation/i.test(up.error) ? 'Video upload is still switched off on the server for non-organisations.' : ('Could not upload ' + label + '.') };
+    return { error: /organisation/i.test(up.error) ? 'Video upload is still switched off on the server for non-organisations.' : ('Could not upload ' + label + ' (' + String(up.error).slice(0, 70) + ').') };
   }
-  if(posterBlob) await uploadStickerFile(`${currentUserId}/${stamp}-poster.jpg`, posterBlob);   // if the poster fails the video still plays
   return { url: up.url, isVideo: isVid };
 }
 
