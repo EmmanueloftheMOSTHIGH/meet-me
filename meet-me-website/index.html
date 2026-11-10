@@ -2139,7 +2139,7 @@
   .post[data-is-own="true"], .spill-card[data-is-own="true"], .yp-post[data-is-own="true"]{ cursor:pointer; }
 
   #toast{ position:absolute; bottom:100px; left:50%; transform:translateX(-50%) translateY(10px); background:var(--bg-elevated); border:1px solid var(--card-border);
-    padding:11px 20px; border-radius:20px; font-size:13px; color:var(--ivory); opacity:0; pointer-events:none; transition:opacity 0.3s ease, transform 0.3s ease; z-index:150; white-space:nowrap;
+    padding:11px 20px; border-radius:20px; font-size:13px; color:var(--ivory); opacity:0; pointer-events:none; transition:opacity 0.3s ease, transform 0.3s ease; z-index:150; white-space:normal; width:max-content; max-width:calc(100vw - 32px); text-align:center; line-height:1.4; box-sizing:border-box;
     box-shadow:0 4px 16px rgba(0,0,0,0.4); }
   #toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
 
@@ -11533,7 +11533,7 @@ function showNavToast(message){
   if(!toast){
     toast = document.createElement('div');
     toast.id = 'nav-toast';
-    toast.style.cssText = 'position:fixed; left:50%; bottom:90px; transform:translateX(-50%); background:var(--card,#17171b); color:var(--ivory,#f0e6d2); border:1px solid var(--card-border,rgba(240,230,210,0.15)); padding:10px 16px; border-radius:20px; font-size:13px; z-index:9999; opacity:0; transition:opacity .25s; pointer-events:none;';
+    toast.style.cssText = 'position:fixed; left:50%; bottom:90px; transform:translateX(-50%); background:var(--card,#17171b); color:var(--ivory,#f0e6d2); border:1px solid var(--card-border,rgba(240,230,210,0.15)); padding:10px 16px; border-radius:20px; font-size:13px; z-index:9999; width:max-content; max-width:calc(100vw - 32px); text-align:center; line-height:1.4; box-sizing:border-box; opacity:0; transition:opacity .25s; pointer-events:none;';
     document.body.appendChild(toast);
   }
   toast.textContent = message;
