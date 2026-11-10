@@ -13471,9 +13471,8 @@ function uploadStickerFile(path, blob, onProgress){
 }
 
 document.getElementById('sticker-upload-btn').addEventListener('click', async ()=>{
-  // Pictures and animated pictures (GIF / WebP) for everyone. Videos too, for organisation owners (the Worker enforces it as well).
-  await ensureOrgs();
-  document.getElementById('sticker-upload-input').accept = myOrgs.length ? 'image/*,video/*' : 'image/*';
+  // Pictures, animated pictures (GIF / WebP) and videos: for everyone.
+  document.getElementById('sticker-upload-input').accept = 'image/*,video/*';
   document.getElementById('sticker-upload-input').click();
 });
 document.getElementById('sticker-upload-input').addEventListener('change', async (e)=>{
@@ -13485,14 +13484,6 @@ document.getElementById('sticker-upload-input').addEventListener('change', async
     toast.textContent = 'Use a PNG, JPG, GIF or WebP picture' + (file.type.startsWith('video/') ? ', or an MP4 / WebM video.' : '.');
     toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 3200);
     return;
-  }
-  if(file.type.startsWith('video/')){
-    await ensureOrgs();
-    if(!myOrgs.length){
-      toast.textContent = 'Only organisations can upload videos.';
-      toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 3000);
-      return;
-    }
   }
   // Animated pictures: made smaller and lighter on the phone before upload (see SHRINK STICKER below). Still pictures are untouched.
   let forcedExt = null;
@@ -13565,7 +13556,7 @@ document.getElementById('compose-video-input').addEventListener('change', async 
   if(!file0 || !currentUserId) return;
   const flash = (t, ms)=>{ toast.textContent = t; toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), ms || 3000); };
   await ensureOrgs();
-  if(!myOrgs.length){ flash('Only organisations can upload videos.'); return; }
+  // videos are open to everyone now (the old organisations-only check was removed)
   const r = await prepareVideoForUpload(file0);
   if(r.cancelled) return;
   if(r.error){ flash(r.error, 3200); return; }
