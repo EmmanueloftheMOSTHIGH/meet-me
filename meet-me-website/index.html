@@ -8398,7 +8398,7 @@ async function openInspireSheet(postId, sourceSpace, name){
   pendingInspire = { postId, sourceSpace, name };
   // If this is the writer's own, unfinished trend, offer to add the next part from here too.
   const trendLookup = (sourceSpace === 'Rant' && currentUserId)
-    ? sb.from('posts').select('user_id, trend_id, trends(title, is_complete)').eq('id', postId).maybeSingle().then(r => r.data, () => null)
+    ? sb.from('posts').select('user_id, trend_id, organization_id, community_id, story_number, inspired_by_post_id, answer_to_post_id, is_question, post_type, trends(title, is_complete)').eq('id', postId).maybeSingle().then(r => r.data, () => null)
     : Promise.resolve(null);
   await ensureOrgs();
   const src = await trendLookup;
@@ -8406,6 +8406,10 @@ async function openInspireSheet(postId, sourceSpace, name){
   if(src && src.trend_id && src.trends && !src.trends.is_complete && src.user_id === currentUserId){
     pendingInspire.trendId = src.trend_id;
     rows.push({ key:'Trend', label:'Continue this trend', hint:'Add the next part to \u201c' + src.trends.title + '\u201d.' });
+  } else if(src && !src.trend_id && src.user_id === currentUserId && src.post_type === 'rant' && !src.community_id && !src.story_number
+            && !src.inspired_by_post_id && !src.answer_to_post_id && !src.is_question){
+    pendingInspire.orgId = src.organization_id || null;
+    rows.push({ key:'TrendStart', label:'Continue as a trend', hint:'This post becomes Part 1. You write Part 2.' });
   }
   rows.push(
     { key:'Rant',  label:'Rant',  hint:'Public. Say it plainly.' },
@@ -8425,7 +8429,8 @@ document.getElementById('inspire-rows').addEventListener('click', (e)=>{
   if(!row || !pendingInspire) return;
   const p = pendingInspire; pendingInspire = null;
   closeInspireSheet();
-  if(row.dataset.space === 'Trend'){ startTrendContinue(p.trendId); return; }   // not an "inspired by" post: the next part of the same trend
+  if(row.dataset.space === 'Trend'){ startTrendContinue(p.trendId); return; }
+  if(row.dataset.space === 'TrendStart'){ startTrendFromPost(p.postId, p.orgId); return; }   // not an "inspired by" post: the next part of the same trend
   openInspiredCompose(p.postId, row.dataset.space, p.name, p.sourceSpace);
 });
 
@@ -12826,7 +12831,7 @@ function openComposeOverlay(){
   const trendEligible = isPlainRant || currentScreenKey === 'orgs';
   composeTrendSetup(trendEligible);
   if(pendingContinueTrend){
-    if(trendEligible){ composeTrend = pendingContinueTrend; composeTrendRender(); title.textContent = 'Part ' + composeTrend.part; }
+    if(trendEligible){ composeTrend = pendingContinueTrend; composeTrendRender(); title.textContent = 'Part ' + (composeTrend.part || 2); }
     pendingContinueTrend = null;
   }
 
@@ -13167,16 +13172,18 @@ document.getElementById('compose-trend-remove').addEventListener('click', ()=>{ 
 async function resolveTrendId(trendToUse, orgToUse, content){
   if(!trendToUse) return null;
   if(trendToUse.id) return trendToUse.id;
-  const { data, error } = await sb.from('trends')
-    .insert({ creator_id: currentUserId, title: trendToUse.title, organization_id: orgToUse ? orgToUse.id : null })
-    .select('id').single();
+  const { data, error } = trendToUse.fromPostId
+    ? await sb.rpc('start_trend_from_post', { p_post_id: trendToUse.fromPostId, p_title: trendToUse.title })   // the existing post becomes Part 1
+    : await sb.from('trends')
+        .insert({ creator_id: currentUserId, title: trendToUse.title, organization_id: orgToUse ? orgToUse.id : null })
+        .select('id').single();
   if(error){
     console.error('Error starting trend:', error);
     composeDraftRestoreAfterFail(content);
     showNavToast(orgErrorMessage(error) || "Couldn't start that trend. Try again.");
     return undefined;
   }
-  return data.id;
+  return trendToUse.fromPostId ? data : data.id;   // the RPC returns the new trend's id directly
 }
 
 /* ----- adding the next part / finishing ----- */
@@ -13191,6 +13198,14 @@ async function startTrendContinue(trendId){
   if(t.organization_id && currentScreenKey !== 'orgs'){ showNavToast('Open Organisations to add to this trend.'); return; }
   if(!t.organization_id && !(currentScreenKey === 'twin' && currentTwinMode === 'rant')){ showNavToast('Open Rant to add to this trend.'); return; }
   pendingContinueTrend = { id: t.id, title: t.title, part: ((last && last[0] && last[0].trend_part) || 0) + 1, organization_id: t.organization_id };
+  openComposeOverlay();
+}
+// Turn one of your own existing posts into Part 1: the composer opens for Part 2 and asks for a title.
+// The post itself only joins the trend when you post Part 2 (see resolveTrendId).
+function startTrendFromPost(postId, orgId){
+  if(orgId && currentScreenKey !== 'orgs'){ showNavToast('Open Organisations to continue this post as a trend.'); return; }
+  if(!orgId && !(currentScreenKey === 'twin' && currentTwinMode === 'rant')){ showNavToast('Open Rant to continue this post as a trend.'); return; }
+  pendingContinueTrend = { id: null, fromPostId: postId, organization_id: orgId };
   openComposeOverlay();
 }
 async function finishTrend(trendId){
@@ -14242,7 +14257,7 @@ document.getElementById('compose-submit-btn').addEventListener('click', async ()
   const answerToId = currentAnswerToPostId;       // set when this post answers a Spill question
   const asQuestion = currentComposeAsQuestion;    // set when this Spill post is a question
   const draftKeyAtSubmit = composeDraftKey();   // same -- read before closeComposeOverlay() clears the context
-  const trendToUse = composeTrend ? { id: composeTrend.id, title: composeTrend.id ? composeTrend.title : document.getElementById('compose-trend-title').value.trim() } : null;   // same -- captured before discardTrend() clears it
+  const trendToUse = composeTrend ? { id: composeTrend.id, fromPostId: composeTrend.fromPostId || null, title: composeTrend.id ? composeTrend.title : document.getElementById('compose-trend-title').value.trim() } : null;   // same -- captured before discardTrend() clears it
 
   if(!content && !blobToUpload && !stickerToUse) return; // need at least one of text, voice, or sticker
   if(asQuestion && !content){ showNavToast('Write your question first.'); return; }
