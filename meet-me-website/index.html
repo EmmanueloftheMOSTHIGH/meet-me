@@ -1378,7 +1378,7 @@
   .yp-post-body{ font-size:13.5px; line-height:1.5; color:var(--ivory); }
   .yp-post-time{ font-size:10.5px; color:var(--muted-dim); margin-top:8px; }
 
-  #search-overlay, #user-profile-overlay, #bookmarks-overlay, #happening-view-overlay, #yourreplies-overlay{
+  #search-overlay, #user-profile-overlay, #bookmarks-overlay, #happening-view-overlay, #trend-view-overlay, #yourreplies-overlay{
     position:absolute; inset:0;
     background:var(--bg);
     z-index:79;
@@ -1386,7 +1386,7 @@
     transition:opacity 0.3s ease;
     display:flex; flex-direction:column;
   }
-  #search-overlay.show, #user-profile-overlay.show, #happening-view-overlay.show, #bookmarks-overlay.show, #yourreplies-overlay.show{ opacity:1; pointer-events:auto; }
+  #search-overlay.show, #user-profile-overlay.show, #happening-view-overlay.show, #trend-view-overlay.show, #bookmarks-overlay.show, #yourreplies-overlay.show{ opacity:1; pointer-events:auto; }
 
 
   /* ============ YOUR WEEK ============ */
@@ -1577,7 +1577,7 @@
     font-size:18px; color:var(--ivory); cursor:pointer; flex-shrink:0;
   }
   .yourposts-style-filters{ display:flex; gap:8px; padding:12px 16px; overflow-x:auto; flex-shrink:0; }
-  #search-results, #user-profile-feed, #happening-view-feed{ flex:1; overflow-y:auto; padding:0 16px 20px; display:flex; flex-direction:column; gap:10px; }
+  #search-results, #user-profile-feed, #happening-view-feed, #trend-view-feed{ flex:1; overflow-y:auto; padding:0 16px 20px; display:flex; flex-direction:column; gap:10px; }
   .search-user-row{ display:flex; align-items:center; gap:12px; padding:12px 8px; border-bottom:1px solid var(--card-border); cursor:pointer; }
   .user-link{ cursor:pointer; }
   .user-link:active{ opacity:0.7; }
@@ -2458,6 +2458,42 @@
 .happening-autocomplete-item:last-child{ border-bottom:none; }
 .happening-autocomplete-item:hover, .happening-autocomplete-item.active{ background:var(--card); }
 .happening-autocomplete-empty{ padding:9px 14px; font-size:12px; color:var(--muted-dim); }
+/* ---------- Trends: a writer's series of posts, shown as one card ---------- */
+.trend-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px; }
+.trend-left{ display:flex; align-items:center; gap:8px; min-width:0; }
+.trend-chip{
+  display:inline-flex; align-items:center; gap:7px; min-width:0; max-width:100%;
+  font-size:11.5px; color:var(--gold-text);
+  background:rgba(212,175,110,0.1); border:1px solid rgba(212,175,110,0.3);
+  border-radius:20px; padding:3px 10px; cursor:pointer;
+}
+.trend-chip-dot{ width:6px; height:6px; border-radius:50%; background:var(--gold); flex-shrink:0; }
+.trend-chip-title{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.trend-part-label{ font-size:11px; color:var(--muted-dim); white-space:nowrap; flex-shrink:0; }
+.trend-dots{ display:flex; align-items:center; gap:6px; flex-shrink:0; }
+.trend-dot{ position:relative; width:6px; height:6px; border-radius:50%; background:rgba(240,230,210,0.22); cursor:pointer; }
+.trend-dot::after{ content:''; position:absolute; inset:-9px -4px; }
+.trend-dot.on{ background:var(--gold); }
+@keyframes trendInRight{ from{ opacity:0.2; transform:translateX(28px); } to{ opacity:1; transform:none; } }
+@keyframes trendInLeft{ from{ opacity:0.2; transform:translateX(-28px); } to{ opacity:1; transform:none; } }
+.post.trend-in-right{ animation:trendInRight 0.22s ease both; }
+.post.trend-in-left{ animation:trendInLeft 0.22s ease both; }
+@media (prefers-reduced-motion: reduce){ .post.trend-in-right, .post.trend-in-left{ animation:none; } }
+#compose-trend-row{ display:flex; align-items:center; gap:10px; margin:-6px 0 14px; }
+#compose-trend-btn{
+  height:38px; padding:0 14px; border-radius:19px;
+  background:var(--card); border:1px solid var(--card-border);
+  display:flex; align-items:center; justify-content:center;
+  color:var(--gold-dim); font-size:12.5px; cursor:pointer; flex-shrink:0; white-space:nowrap;
+}
+#compose-trend-editor{ display:none; align-items:center; gap:10px; flex:1; min-width:0; }
+#compose-trend-title{
+  flex:1; min-width:0; height:38px; box-sizing:border-box; padding:0 14px; border-radius:19px;
+  background:var(--bg-elevated); border:1px solid var(--card-border); color:var(--ivory);
+  font-family:'Karla',sans-serif; font-size:13px; outline:none;
+}
+#compose-trend-label{ flex:1; min-width:0; font-size:12px; color:var(--gold-text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#compose-trend-remove{ font-size:11px; color:var(--muted-dim); text-decoration:underline; cursor:pointer; flex-shrink:0; }
 .sticker-tile-remove{
   position:absolute; top:3px; right:3px;
   width:18px; height:18px; border-radius:50%;
@@ -2678,7 +2714,7 @@
 
   /* ---- 3. scrollbars: mouse users need to see them ---- */
   #feed, #orgs-feed, #chat-list, #communities-list, #screen-profile, #chat-thread-messages, #community-thread-messages,
-  #yourposts-feed, #bookmarks-feed, #yourreplies-feed, #orgposts-feed, #search-results, #user-profile-feed, #happening-view-feed, #room-thread, #notif-list{
+  #yourposts-feed, #bookmarks-feed, #yourreplies-feed, #orgposts-feed, #search-results, #user-profile-feed, #happening-view-feed, #trend-view-feed, #room-thread, #notif-list{
     scrollbar-width:thin; scrollbar-color:rgba(240,230,210,0.16) transparent; }
   #feed::-webkit-scrollbar, #orgs-feed::-webkit-scrollbar, #chat-list::-webkit-scrollbar, #communities-list::-webkit-scrollbar,
   #screen-profile::-webkit-scrollbar, #chat-thread-messages::-webkit-scrollbar, #community-thread-messages::-webkit-scrollbar{ display:block; width:9px; }
@@ -2742,7 +2778,7 @@
 
   /* ================= FULL-PAGE OVERLAYS: stay to the right of the sidebar ================= */
   #root > #yourposts-overlay, #root > #search-overlay, #root > #user-profile-overlay, #root > #bookmarks-overlay,
-  #root > #yourreplies-overlay, #root > #orgposts-overlay, #root > #yourweek-overlay, #root > #happening-view-overlay, #root > #answers-overlay,
+  #root > #yourreplies-overlay, #root > #orgposts-overlay, #root > #yourweek-overlay, #root > #happening-view-overlay, #root > #trend-view-overlay, #root > #answers-overlay,
   #root > #anon-overlay, #root > #game-overlay, #root > #room-overlay,
   #root > #chat-thread-overlay, #root > #community-thread-overlay{ left:var(--mm-sb); }
   /* chat conversation opens as the right-hand pane while you're on Chat */
@@ -2751,7 +2787,7 @@
 
   /* keep reading width comfortable inside those pages (borders still run edge to edge) */
   #yourposts-overlay > *, #search-overlay > *, #user-profile-overlay > *, #bookmarks-overlay > *, #yourreplies-overlay > *,
-  #orgposts-overlay > *, #yourweek-overlay > *, #happening-view-overlay > *, #answers-overlay > *, #anon-overlay > *, #game-overlay > *,
+  #orgposts-overlay > *, #yourweek-overlay > *, #happening-view-overlay > *, #trend-view-overlay > *, #answers-overlay > *, #anon-overlay > *, #game-overlay > *,
   #chat-thread-overlay > *, #community-thread-overlay > *{
     padding-left:max(18px, calc((100% - var(--mm-read)) / 2)); padding-right:max(18px, calc((100% - var(--mm-read)) / 2)); }
   #main:has(#screen-chat.active) ~ #chat-thread-overlay > *,
@@ -3381,6 +3417,14 @@
         </div>
         <div id="happening-autocomplete"></div>
       </div>
+      <div id="compose-trend-row" style="display:none;">
+        <div id="compose-trend-btn" role="button" title="Start a trend: a series of posts that stay together">+ Trend</div>
+        <div id="compose-trend-editor">
+          <input id="compose-trend-title" type="text" maxlength="40" placeholder="Trend title" autocomplete="off">
+          <span id="compose-trend-label"></span>
+          <span id="compose-trend-remove" role="button">remove</span>
+        </div>
+      </div>
       <div id="compose-dock">
       <div id="compose-org-row">
         <div id="compose-org-pill"><span class="org-dot"></span><span id="compose-org-pill-label">Posting as you</span></div>
@@ -3444,6 +3488,17 @@
       </div>
     </div>
     <div id="happening-view-feed"></div>
+  </div>
+
+  <div id="trend-view-overlay">
+    <div class="overlay-header">
+      <div id="trend-view-back" class="yourposts-style-back">‹</div>
+      <div>
+        <div id="trend-view-title" style="font-family:'Fraunces',serif; font-size:16px; color:var(--ivory);">—</div>
+        <div id="trend-view-subtitle" style="font-size:11px; color:var(--muted-dim);">—</div>
+      </div>
+    </div>
+    <div id="trend-view-feed"></div>
   </div>
 
   <div id="answers-overlay">
@@ -5812,7 +5867,7 @@ document.getElementById('action-sheet-block').addEventListener('click', async ()
    ============================================================ */
 const postRepliesSheet = document.getElementById('post-replies-sheet');
 const OWN_POST_SELECTOR = '.post[data-post-id], .spill-card[data-post-id], .yp-post[data-post-id]';
-const POST_INTERACTIVE_SELECTOR = '.q-open, .org-dot, .spill-lock, .org-follow-pill, .post-action, .like-btn, .user-link, .sticker-tap, .text-tap, .voice-play-btn, .reply-trigger, .follow-trigger, .stand-trigger, .stand-panel, .org-name-link, .bookmark-trigger, .delete-post-trigger, .community-interest-trigger, .inspired-trigger, .rm-toggle, .inspired-source-link, .message-trigger, .friend-trigger, .share-trigger, .happening-pill, a, button, input, textarea';
+const POST_INTERACTIVE_SELECTOR = '.q-open, .org-dot, .spill-lock, .org-follow-pill, .post-action, .like-btn, .user-link, .sticker-tap, .text-tap, .voice-play-btn, .reply-trigger, .follow-trigger, .stand-trigger, .stand-panel, .org-name-link, .bookmark-trigger, .delete-post-trigger, .community-interest-trigger, .inspired-trigger, .rm-toggle, .inspired-source-link, .message-trigger, .friend-trigger, .share-trigger, .happening-pill, .trend-row, a, button, input, textarea';
 
 document.addEventListener('click', (e)=>{
   const trigger = e.target.closest('.own-replies-trigger');
@@ -7438,8 +7493,15 @@ document.addEventListener('click', async (e)=>{
     if(!res.ok){ console.error('Delete post failed:', res.error); showNavToast('Couldn\'t delete that post.'); return; }
     if(res.already) showNavToast('That post was already deleted.');
     const postEl = deleteBtn.closest('.post, .spill-card, .yp-post');
+    const deletedTrendPart = !!(postEl && postEl.dataset && postEl.dataset.trendId);
+    const deletedInSeries = !!(postEl && postEl.closest('#trend-view-feed'));
     if(postEl) postEl.remove();
     saveSnapshotSoon();
+    if(deletedTrendPart){   // parts are renumbered and the newest remaining part returns to the feed
+      trendCache = {};
+      if(deletedInSeries) reloadTrendView();
+      if(currentScreenKey === 'orgs') loadOrgsFeed(true); else if(currentScreenKey === 'twin' && currentTwinMode === 'rant') loadFeed();
+    }
   }
 });
 
@@ -8334,11 +8396,21 @@ function openInspiredCompose(postId, targetSpace, originalDisplayName, sourceSpa
 let pendingInspire = null;
 async function openInspireSheet(postId, sourceSpace, name){
   pendingInspire = { postId, sourceSpace, name };
+  // If this is the writer's own, unfinished trend, offer to add the next part from here too.
+  const trendLookup = (sourceSpace === 'Rant' && currentUserId)
+    ? sb.from('posts').select('user_id, trend_id, trends(title, is_complete)').eq('id', postId).maybeSingle().then(r => r.data, () => null)
+    : Promise.resolve(null);
   await ensureOrgs();
-  const rows = [
+  const src = await trendLookup;
+  const rows = [];
+  if(src && src.trend_id && src.trends && !src.trends.is_complete && src.user_id === currentUserId){
+    pendingInspire.trendId = src.trend_id;
+    rows.push({ key:'Trend', label:'Continue this trend', hint:'Add the next part to \u201c' + src.trends.title + '\u201d.' });
+  }
+  rows.push(
     { key:'Rant',  label:'Rant',  hint:'Public. Say it plainly.' },
     { key:'Spill', label:'Spill', hint:'Something you would only say once.' }
-  ];
+  );
   if(myOrgs.length) rows.push({ key:'Orgs', label:'Orgs', hint: myOrgs.length === 1 ? 'Post as ' + myOrgs[0].name : 'Post as one of your organisations' });
   document.getElementById('inspire-title').textContent = `Inspired by ${name}`;
   document.getElementById('inspire-rows').innerHTML = rows.map(r =>
@@ -8353,6 +8425,7 @@ document.getElementById('inspire-rows').addEventListener('click', (e)=>{
   if(!row || !pendingInspire) return;
   const p = pendingInspire; pendingInspire = null;
   closeInspireSheet();
+  if(row.dataset.space === 'Trend'){ startTrendContinue(p.trendId); return; }   // not an "inspired by" post: the next part of the same trend
   openInspiredCompose(p.postId, row.dataset.space, p.name, p.sourceSpace);
 });
 
@@ -8911,6 +8984,14 @@ function orgErrorMessage(err){
   if(m.includes('org_bad_color')) return 'Pick one of the palette colours.';
   if(m.includes('invite_rate')) return 'Too many tries. Try again in an hour.';
   if(m.includes('invite_invalid')) return "That code isn't valid, or it has already been used.";
+  if(m.includes('trend_limit_active')) return 'You already have 3 active trends. Finish one to start another.';
+  if(m.includes('trend_daily_limit')) return 'That trend already has 5 parts today. Add the next one tomorrow.';
+  if(m.includes('trend_part_limit')) return 'A trend can have up to 50 parts.';
+  if(m.includes('trend_complete')) return 'This trend is finished.';
+  if(m.includes('trend_not_author')) return 'Only the author can add a part.';
+  if(m.includes('trend_wrong_space')) return 'Post this part from the same place as the rest of the trend.';
+  if(m.includes('trend_invalid_post')) return "This kind of post can't be part of a trend.";
+  if(m.includes('trend_missing')) return 'That trend no longer exists.';
   return null;
 }
 
@@ -9431,7 +9512,7 @@ async function orgBodyClick(e){
 }
 document.getElementById('org-list-body').addEventListener('click', orgBodyClick);
 
-async function saveRant(content, communityId, audio, inspiredByPostId, stickerUrl, happeningId, doorQuestionId, doorRouteScore, asOrg, asFounder){
+async function saveRant(content, communityId, audio, inspiredByPostId, stickerUrl, happeningId, doorQuestionId, doorRouteScore, asOrg, asFounder, trendId){
   if(!currentUserId) return console.error('No user');
   const base = communityId ? { community_id: communityId } : { user_id: currentUserId };
   const row = { ...base, content: content || null, post_type: 'rant' };
@@ -9439,12 +9520,14 @@ async function saveRant(content, communityId, audio, inspiredByPostId, stickerUr
   if(inspiredByPostId) row.inspired_by_post_id = inspiredByPostId;
   if(stickerUrl) row.sticker_url = stickerUrl;
   if(happeningId) row.happening_id = happeningId;
+  if(trendId) row.trend_id = trendId;   // the database numbers the part and keeps the series together
   if(doorQuestionId){ row.door_question_id = doorQuestionId; row.door_route_score = doorRouteScore; }
   if(asOrg && !communityId){ row.organization_id = asOrg.id; row.header = asOrg.header || null; }
   else if(asFounder && isMeet8 && !communityId){ row.as_founder = true; }   // the database trigger is what really enforces Meet 8 only
   const { error } = await sb.from('posts').insert(row);
-  if(error){ console.error('Error saving rant:', error); composeDraftRestoreAfterFail(content); showNavToast(orgErrorMessage(error) || 'Your post didn\'t go through. Try again.'); return; }
+  if(error){ console.error('Error saving rant:', error); composeDraftRestoreAfterFail(content); showNavToast(orgErrorMessage(error) || 'Your post didn\'t go through. Try again.'); return false; }
   if(inspiredByPostId) await notifyInspiredBy(inspiredByPostId);
+  return true;
 }
 
 let feedOffset = 0;
@@ -9741,7 +9824,8 @@ document.addEventListener('click', async (e)=>{
   await loadOrgsFeed(true);
 });
 
-function renderRantPost(post, userLiked, likeCount, inspirationLabels){
+function renderRantPost(post, userLiked, likeCount, inspirationLabels, opts){
+  opts = opts || {};
   const isCommunity = !!post.community_id;
   const isOrg = !isCommunity && !!post.organization_id;
   const isStory = !isCommunity && !isOrg && !!post.story_number;   // a curated rant under a reserved number
@@ -9785,11 +9869,23 @@ function renderRantPost(post, userLiked, likeCount, inspirationLabels){
     ${isOrg && post.header ? `<div class="org-header">${escapeHtml(post.header)}</div>` : ''}
     ${doorTagHtml(post)}
     ${inspiredLine}
+    ${trendRowHtml(post, opts)}
     ${happeningPillHtml(post)}
     ${bodyHtml}
     <div class="post-foot">
       ${postActionsHtml(post.id, isCommunity ? null : (isStory ? (isOwnStory ? currentUserId : null) : ((isOrg || isFounder) ? (isOwn ? post.user_id : null) : post.user_id)), post.content, post.sticker_url, post.audio_url, post.duration_seconds, displayName, 'Rant', userLiked, likeCount, true, isCommunity ? post.community_id : null, (isCommunity || isOrg), (isStory && !isOwnStory) ? { ownerId: post.user_id, number: post.story_number } : null, isOrg ? 'Orgs' : 'Rant')}
     </div>`;
+  if(post.trend_id && post.trends){
+    div.dataset.trendId = post.trend_id;
+    div.dataset.trendPart = post.trend_part || 1;
+    if(!opts.inSeries) div.setAttribute('data-noswipe', '');   // swiping a trend card moves between its parts, not between Rant and Spill
+    const isLastPart = !opts.trendTotal || (post.trend_part || 1) >= opts.trendTotal;
+    if(!post.trends.is_complete && isLastPart && currentUserId && post.user_id === currentUserId && !isCommunity){
+      const menu = div.querySelector('.post-more-menu');
+      if(menu) menu.insertAdjacentHTML('afterbegin',
+        `<span class="post-action trend-continue-trigger" data-trend-id="${post.trend_id}">Add next part</span><span class="post-action trend-finish-trigger" data-trend-id="${post.trend_id}">Finish trend</span>`);
+    }
+  }
   if(fresh) watchFreshOrgPost(div);
   watchPostView(div, post);
   if(isOrg && myOrgIds.has(post.organization_id)) addOrgPostInsight(div, post);
@@ -9807,8 +9903,9 @@ async function loadFeed(){
   feedHasMore = true;
   const { data: rawPosts, error } = await sb
     .from('posts')
-    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), users!posts_user_id_fkey(meet_number), communities(name, icon)')
+    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), trend_id, trend_part, trends(title, is_complete, organization_id), users!posts_user_id_fkey(meet_number), communities(name, icon)')
     .eq('post_type', 'rant')
+    .eq('trend_hidden', false)
     .or('organization_id.is.null,community_id.not.is.null')   // organisation posts live in the Organisations pillar
     .order('created_at', { ascending: false })
     .range(0, FEED_PAGE_SIZE - 1);
@@ -9862,8 +9959,9 @@ async function loadMoreFeed(){
 
   const { data: rawPosts, error } = await sb
     .from('posts')
-    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), users!posts_user_id_fkey(meet_number), communities(name, icon)')
+    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), trend_id, trend_part, trends(title, is_complete, organization_id), users!posts_user_id_fkey(meet_number), communities(name, icon)')
     .eq('post_type', 'rant')
+    .eq('trend_hidden', false)
     .or('organization_id.is.null,community_id.not.is.null')
     .order('created_at', { ascending: false })
     .range(feedOffset, feedOffset + FEED_PAGE_SIZE - 1);
@@ -10336,9 +10434,10 @@ async function loadOrgPagePosts(reset){
     if(reset) orgPageOffset = 0;
     const { data: rows, error } = await sb
       .from('posts')
-      .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), users!posts_user_id_fkey(meet_number), communities(name, icon)')
+      .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), trend_id, trend_part, trends(title, is_complete, organization_id), users!posts_user_id_fkey(meet_number), communities(name, icon)')
       .eq('post_type', 'rant')
       .eq('organization_id', id)
+      .eq('trend_hidden', false)
       .is('community_id', null)
       .order('created_at', { ascending: false })
       .range(orgPageOffset, orgPageOffset + ORGPAGE_SIZE - 1);
@@ -10405,9 +10504,10 @@ async function renderOrgsFeed(){
   const orgsReady = ensureOrgs();   // start loading org names/follows at the same time as the posts, not after them
   const { data: rawPosts, error } = await sb
     .from('posts')
-    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), users!posts_user_id_fkey(meet_number), communities(name, icon)')
+    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), trend_id, trend_part, trends(title, is_complete, organization_id), users!posts_user_id_fkey(meet_number), communities(name, icon)')
     .eq('post_type', 'rant')
     .not('organization_id', 'is', null)
+    .eq('trend_hidden', false)
     .is('community_id', null)
     .order('created_at', { ascending: false })
     .range(0, ORGS_FEED_LIMIT - 1);
@@ -11568,7 +11668,7 @@ async function navigateToPost(postId){
   if(!postId) return;
   const { data: post, error } = await sb
     .from('posts')
-    .select('id, post_type, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), users!posts_user_id_fkey(meet_number), communities(name, icon)')
+    .select('id, post_type, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), trend_id, trend_part, trends(title, is_complete, organization_id), users!posts_user_id_fkey(meet_number), communities(name, icon)')
     .eq('id', postId)
     .single();
   if(error || !post){
@@ -12689,6 +12789,7 @@ function openComposeOverlay(){
   discardRecording();
   discardSticker();
   discardHappening();
+  discardTrend();
   currentInspiredByPostId = null;
   currentInspiredBySpace = null;
   currentAnswerToPostId = null;
@@ -12717,8 +12818,16 @@ function openComposeOverlay(){
     textarea.placeholder = 'Say it to your followers. You can paste a video link.';
     composeOrgSetup(true);
     ensureOrgs().then(()=>{
-      if(myOrgs.length && !postAsOrgId){ postAsOrgId = myOrgs[0].id; composeOrgRender(); }
+      if(myOrgs.length && !postAsOrgId){ postAsOrgId = (composeTrend && composeTrend.organization_id) ? composeTrend.organization_id : myOrgs[0].id; composeOrgRender(); }
     });
+  }
+
+  // Trends: plain Rant and the Organisations page. Adding to an existing trend arrives through pendingContinueTrend.
+  const trendEligible = isPlainRant || currentScreenKey === 'orgs';
+  composeTrendSetup(trendEligible);
+  if(pendingContinueTrend){
+    if(trendEligible){ composeTrend = pendingContinueTrend; composeTrendRender(); title.textContent = 'Part ' + composeTrend.part; }
+    pendingContinueTrend = null;
   }
 
   // Meet 8 only: a "Meet Founder" choice on plain Rant and Spill posts (not communities, not the Organisations page).
@@ -12743,6 +12852,7 @@ function closeComposeOverlay(){
   discardRecording();
   discardSticker();
   discardHappening();
+  discardTrend();
 }
 // Picking a picture ADDS it (up to MAX_POST_PICS, for comparisons). A video can't be combined: it stays on its own.
 function composeAddPicture(url){
@@ -12984,6 +13094,251 @@ document.getElementById('happening-view-feed').addEventListener('click', async (
 });
 document.getElementById('happening-view-back').addEventListener('click', ()=>{
   document.getElementById('happening-view-overlay').classList.remove('show');
+});
+
+/* ---------- Trends ----------
+   A trend is a writer's series: Part 1, Part 2, ... Each part is its own post (own likes,
+   own replies), but the feed shows the series as ONE card -- the newest part -- with a chip
+   and dots. Swipe the card, or tap a dot, to move between parts. Tap the chip for the whole
+   series, oldest first. The database numbers the parts and enforces the rules (only the
+   author adds parts, 3 active trends each, 5 parts per trend per day, 50 parts total). */
+const TREND_PART_SELECT = 'id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), trend_id, trend_part, trends(title, is_complete, organization_id), users!posts_user_id_fkey(meet_number), communities(name, icon)';
+let composeTrend = null;            // null | { id:null } (starting one) | { id, title, part, organization_id } (adding a part)
+let pendingContinueTrend = null;    // set just before openComposeOverlay() when adding to an existing trend
+let trendCache = {};                // trendId -> { parts, at }
+let trendViewState = null;          // { id, title } while the series page is open
+
+function trendRowHtml(post, opts){
+  if(!post.trend_id || !post.trends) return '';
+  opts = opts || {};
+  const t = post.trends;
+  const cur = post.trend_part || 1;
+  const total = Math.max(opts.trendTotal || cur, cur);
+  const partLabel = 'Part ' + cur + (t.is_complete ? ' \u00b7 Complete' : '');
+  if(opts.inSeries) return `<div class="trend-row"><span class="trend-left"><span class="trend-part-label">${partLabel}</span></span></div>`;
+  let dots = '';
+  if(total > 1){
+    dots = total <= 7
+      ? Array.from({ length: total }, (_, i) => `<span class="trend-dot${i + 1 === cur ? ' on' : ''}" data-part="${i + 1}"></span>`).join('')
+      : `<span class="trend-part-label">${cur} / ${total}</span>`;
+  }
+  return `<div class="trend-row" data-trend-id="${post.trend_id}" data-trend-title="${escapeHtml(t.title)}">`
+    + `<span class="trend-left"><span class="trend-chip" role="button" aria-label="Open trend: ${escapeHtml(t.title)}"><span class="trend-chip-dot"></span><span class="trend-chip-title">Trend: ${escapeHtml(t.title)}</span></span><span class="trend-part-label">${partLabel}</span></span>`
+    + (dots ? `<span class="trend-dots">${dots}</span>` : '')
+    + `</div>`;
+}
+
+/* ----- composer ----- */
+function composeTrendRender(){
+  const btn = document.getElementById('compose-trend-btn');
+  const editor = document.getElementById('compose-trend-editor');
+  const input = document.getElementById('compose-trend-title');
+  const label = document.getElementById('compose-trend-label');
+  if(!composeTrend){ btn.style.display = 'flex'; editor.style.display = 'none'; return; }
+  btn.style.display = 'none';
+  editor.style.display = 'flex';
+  if(composeTrend.id){
+    input.style.display = 'none';
+    label.style.display = 'block';
+    label.textContent = 'Part ' + composeTrend.part + ' \u00b7 ' + composeTrend.title;
+  } else {
+    input.style.display = 'block';
+    label.style.display = 'none';
+  }
+}
+function discardTrend(){
+  composeTrend = null;
+  document.getElementById('compose-trend-title').value = '';
+  composeTrendRender();
+}
+function composeTrendSetup(eligible){
+  document.getElementById('compose-trend-row').style.display = eligible ? 'flex' : 'none';
+  if(!eligible) composeTrend = null;
+  composeTrendRender();
+}
+document.getElementById('compose-trend-btn').addEventListener('click', ()=>{
+  composeTrend = { id: null };
+  composeTrendRender();
+  setTimeout(()=>document.getElementById('compose-trend-title').focus(), 50);
+});
+document.getElementById('compose-trend-remove').addEventListener('click', ()=>{ discardTrend(); document.getElementById('compose-textarea').focus(); });
+
+// Called when posting. Returns the trend id to attach (null = not a trend), or undefined if the trend could not be started.
+async function resolveTrendId(trendToUse, orgToUse, content){
+  if(!trendToUse) return null;
+  if(trendToUse.id) return trendToUse.id;
+  const { data, error } = await sb.from('trends')
+    .insert({ creator_id: currentUserId, title: trendToUse.title, organization_id: orgToUse ? orgToUse.id : null })
+    .select('id').single();
+  if(error){
+    console.error('Error starting trend:', error);
+    composeDraftRestoreAfterFail(content);
+    showNavToast(orgErrorMessage(error) || "Couldn't start that trend. Try again.");
+    return undefined;
+  }
+  return data.id;
+}
+
+/* ----- adding the next part / finishing ----- */
+async function startTrendContinue(trendId){
+  const [{ data: t }, { data: last }] = await Promise.all([
+    sb.from('trends').select('id, title, organization_id, is_complete, creator_id').eq('id', trendId).maybeSingle(),
+    sb.from('posts').select('trend_part').eq('trend_id', trendId).order('trend_part', { ascending: false }).limit(1)
+  ]);
+  if(!t){ showNavToast('That trend no longer exists.'); return; }
+  if(t.is_complete){ showNavToast('This trend is finished.'); return; }
+  if(t.creator_id !== currentUserId){ showNavToast('Only the author can add a part.'); return; }
+  if(t.organization_id && currentScreenKey !== 'orgs'){ showNavToast('Open Organisations to add to this trend.'); return; }
+  if(!t.organization_id && !(currentScreenKey === 'twin' && currentTwinMode === 'rant')){ showNavToast('Open Rant to add to this trend.'); return; }
+  pendingContinueTrend = { id: t.id, title: t.title, part: ((last && last[0] && last[0].trend_part) || 0) + 1, organization_id: t.organization_id };
+  openComposeOverlay();
+}
+async function finishTrend(trendId){
+  if(!(await askConfirm({ title:'Finish this trend?', message:'No more parts can be added after this.', okText:'Finish trend', cancelText:'Keep it open' }))) return;
+  const { error } = await sb.from('trends').update({ is_complete: true }).eq('id', trendId);
+  if(error){ console.error('Finish trend failed:', error); showNavToast("Couldn't finish that trend. Try again."); return; }
+  trendCache = {};
+  showNavToast('Trend finished.');
+  if(document.getElementById('trend-view-overlay').classList.contains('show')) reloadTrendView();
+  if(currentScreenKey === 'orgs') loadOrgsFeed(true); else if(currentScreenKey === 'twin' && currentTwinMode === 'rant') loadFeed();
+}
+
+/* ----- moving between parts on the feed card ----- */
+async function trendPartsFor(trendId){
+  const c = trendCache[trendId];
+  if(c && Date.now() - c.at < 60000) return c.parts;
+  const { data, error } = await sb.from('posts').select(TREND_PART_SELECT).eq('trend_id', trendId).order('trend_part', { ascending: true });
+  if(error || !data) return null;
+  trendCache[trendId] = { parts: data, at: Date.now() };
+  return data;
+}
+async function renderTrendPart(part, total){
+  const [likeRes, counts] = await Promise.all([
+    currentUserId ? sb.from('likes').select('post_id').eq('user_id', currentUserId).eq('post_id', part.id) : Promise.resolve({ data: [] }),
+    fetchLikeCounts([part.id])
+  ]);
+  const liked = !!(likeRes.data && likeRes.data.length);
+  return renderRantPost(part, liked, counts[part.id] || 0, {}, { trendTotal: total });
+}
+async function trendGoTo(card, target){
+  if(!card || card.dataset.trendBusy) return;
+  const cur = Number(card.dataset.trendPart) || 1;
+  card.dataset.trendBusy = '1';
+  try{
+    const parts = await trendPartsFor(card.dataset.trendId);
+    if(!parts || !parts.length) return;
+    target = Math.max(1, Math.min(parts.length, target));
+    if(target === cur) return;
+    const part = parts.find(p => p.trend_part === target) || parts[target - 1];
+    await ensureOrgs();
+    const next = await renderTrendPart(part, parts.length);
+    next.classList.add(target > cur ? 'trend-in-right' : 'trend-in-left');
+    card.replaceWith(next);
+  } finally {
+    delete card.dataset.trendBusy;
+  }
+}
+(function setupTrendSwipe(){
+  let card = null, sx = 0, sy = 0, t0 = 0;
+  document.addEventListener('touchstart', (e)=>{
+    card = null;
+    if(e.touches.length !== 1 || !e.target.closest) return;
+    const c = e.target.closest('.post[data-trend-id]');
+    if(!c || c.closest('#trend-view-feed')) return;
+    if(e.target.closest('.post-foot, .post-action, .like-btn, .sticker-tap, .voice-play-btn, .trend-chip, audio, video, input, textarea')) return;
+    card = c; sx = e.touches[0].clientX; sy = e.touches[0].clientY; t0 = Date.now();
+  }, { passive: true });
+  document.addEventListener('touchend', (e)=>{
+    if(!card) return;
+    const c = card; card = null;
+    if(selectingText()) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - sx, dy = t.clientY - sy;
+    if(Date.now() - t0 > 700) return;
+    if(Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.8) return;   // clearly sideways, not a scroll
+    trendGoTo(c, (Number(c.dataset.trendPart) || 1) + (dx < 0 ? 1 : -1));
+  }, { passive: true });
+  document.addEventListener('touchcancel', ()=>{ card = null; }, { passive: true });
+})();
+
+/* ----- the series page: every part, oldest first ----- */
+async function openTrendView(trendId, title){
+  trendViewState = { id: trendId, title: title || '' };
+  document.getElementById('trend-view-title').textContent = title || 'Trend';
+  document.getElementById('trend-view-subtitle').textContent = 'Loading...';
+  document.getElementById('trend-view-feed').innerHTML = '';
+  document.getElementById('trend-view-overlay').classList.add('show');
+  await reloadTrendView();
+}
+async function reloadTrendView(){
+  const st = trendViewState;
+  if(!st) return;
+  const { data: parts, error } = await sb.from('posts').select(TREND_PART_SELECT).eq('trend_id', st.id).order('trend_part', { ascending: true });
+  if(!trendViewState || trendViewState.id !== st.id) return;   // closed or switched while loading
+  const feed = document.getElementById('trend-view-feed');
+  if(error){ document.getElementById('trend-view-subtitle').textContent = 'Could not load this trend.'; return; }
+  if(!parts || !parts.length){
+    document.getElementById('trend-view-subtitle').textContent = '';
+    feed.innerHTML = '<div style="text-align:center;padding:26px;font-size:12px;color:var(--muted-dim);">This trend has no parts left.</div>';
+    return;
+  }
+  await ensureOrgs();
+  const ids = parts.map(p => p.id);
+  let likedIds = new Set();
+  if(currentUserId){
+    const { data: likeRows } = await sb.from('likes').select('post_id').eq('user_id', currentUserId).in('post_id', ids);
+    likedIds = new Set((likeRows || []).map(l => l.post_id));
+  }
+  const likeCounts = await fetchLikeCounts(ids);
+  const complete = !!(parts[0].trends && parts[0].trends.is_complete);
+  document.getElementById('trend-view-subtitle').textContent = parts.length + (parts.length === 1 ? ' part' : ' parts') + (complete ? ' \u00b7 Complete' : '');
+  feed.innerHTML = '';
+  parts.forEach(p => feed.appendChild(renderRantPost(p, likedIds.has(p.id), likeCounts[p.id] || 0, {}, { trendTotal: parts.length, inSeries: true })));
+  feed.scrollTop = 0;
+}
+function reloadTrendViewIfOpen(){
+  if(trendViewState && document.getElementById('trend-view-overlay').classList.contains('show')) reloadTrendView();
+}
+document.getElementById('trend-view-back').addEventListener('click', ()=>{
+  document.getElementById('trend-view-overlay').classList.remove('show');
+  trendViewState = null;
+});
+document.getElementById('trend-view-feed').addEventListener('click', async (e)=>{
+  const likeBtn = e.target.closest('.like-btn');
+  if(likeBtn){ e.stopPropagation(); const postId = likeBtn.dataset.postId; if(postId) await toggleLike(postId, likeBtn); return; }
+  const replyBtn = e.target.closest('.reply-trigger');
+  if(replyBtn){ e.stopPropagation(); openActionSheet(replyBtn.dataset.receiverId, replyBtn.dataset.postId, replyBtn.dataset.name, replyBtn.dataset.story === '1'); return; }
+});
+
+/* ----- taps: chip opens the series, dots jump to a part, menu items add a part / finish ----- */
+document.addEventListener('click', async (e)=>{
+  const cont = e.target.closest('.trend-continue-trigger');
+  if(cont){
+    e.stopPropagation();
+    const wrap = cont.closest('.post-more'); if(wrap) wrap.classList.remove('open');
+    await startTrendContinue(cont.dataset.trendId);
+    return;
+  }
+  const fin = e.target.closest('.trend-finish-trigger');
+  if(fin){
+    e.stopPropagation();
+    const wrap = fin.closest('.post-more'); if(wrap) wrap.classList.remove('open');
+    await finishTrend(fin.dataset.trendId);
+    return;
+  }
+  const dot = e.target.closest('.trend-dot');
+  if(dot){
+    e.stopPropagation();
+    const card = dot.closest('.post[data-trend-id]');
+    if(card) trendGoTo(card, Number(dot.dataset.part));
+    return;
+  }
+  const chip = e.target.closest('.trend-chip');
+  if(chip){
+    e.stopPropagation();
+    const row = chip.closest('.trend-row');
+    if(row) openTrendView(row.dataset.trendId, row.dataset.trendTitle);
+  }
 });
 
 function discardReplySticker(){
@@ -13887,9 +14242,12 @@ document.getElementById('compose-submit-btn').addEventListener('click', async ()
   const answerToId = currentAnswerToPostId;       // set when this post answers a Spill question
   const asQuestion = currentComposeAsQuestion;    // set when this Spill post is a question
   const draftKeyAtSubmit = composeDraftKey();   // same -- read before closeComposeOverlay() clears the context
+  const trendToUse = composeTrend ? { id: composeTrend.id, title: composeTrend.id ? composeTrend.title : document.getElementById('compose-trend-title').value.trim() } : null;   // same -- captured before discardTrend() clears it
 
   if(!content && !blobToUpload && !stickerToUse) return; // need at least one of text, voice, or sticker
   if(asQuestion && !content){ showNavToast('Write your question first.'); return; }
+  if(trendToUse && !trendToUse.id && !trendToUse.title){ showNavToast('Give your trend a title.'); return; }
+  if(trendToUse && (inspiredByPostId || answerToId || postingAsCommunity)){ showNavToast('A trend can\'t be an "inspired by" post. Remove the trend first.'); return; }
 
   let audio = null;
   if(blobToUpload){
@@ -13952,7 +14310,10 @@ document.getElementById('compose-submit-btn').addEventListener('click', async ()
   }
   if(currentScreenKey === 'orgs'){
     if(!orgToUse) return;
-    await saveRant(content, null, audio, null, stickerToUse, null, null, null, orgToUse);
+    const orgTrendId = await resolveTrendId(trendToUse, orgToUse, content);
+    if(orgTrendId === undefined) return;
+    await saveRant(content, null, audio, null, stickerToUse, null, null, null, orgToUse, null, orgTrendId);
+    if(trendToUse){ trendCache = {}; reloadTrendViewIfOpen(); }
     await loadOrgsFeed(true);
     await refreshYourPostsIfOpen();
     return;
@@ -13963,7 +14324,10 @@ document.getElementById('compose-submit-btn').addEventListener('click', async ()
     cachedSpills = spills;
     renderSpills(spills);
   } else {
-    await saveRant(content, null, audio, null, stickerToUse, happeningToUse, null, null, orgToUse, founderToUse);
+    const rantTrendId = await resolveTrendId(trendToUse, orgToUse, content);
+    if(rantTrendId === undefined) return;
+    await saveRant(content, null, audio, null, stickerToUse, happeningToUse, null, null, orgToUse, founderToUse, rantTrendId);
+    if(trendToUse){ trendCache = {}; reloadTrendViewIfOpen(); }
     await loadFeed();
   }
   await refreshYourPostsIfOpen();
