@@ -3478,7 +3478,7 @@
   <div id="edit-post-overlay" class="account-overlay">
     <div class="account-panel" style="max-width:420px;">
       <div class="account-title">Edit post</div>
-      <div class="account-sub">You can edit for 24 hours after posting. An edited post shows "(edited)".</div>
+      <div class="account-sub" id="edit-post-sub">An edited post shows "(edited)".</div>
       <input id="edit-post-header" type="text" maxlength="60" placeholder="Header" autocomplete="off" style="display:none; width:100%; box-sizing:border-box; margin-bottom:10px; padding:12px 14px; border-radius:12px; border:1px solid var(--card-border); background:var(--bg-elevated); color:var(--ivory); font-family:'Karla',sans-serif; font-size:15px; outline:none;">
       <textarea id="edit-post-text" rows="7" maxlength="5000" style="width:100%; box-sizing:border-box; margin-bottom:14px; padding:12px 14px; border-radius:12px; border:1px solid var(--card-border); background:var(--bg-elevated); color:var(--ivory); font-family:'Karla',sans-serif; font-size:15px; line-height:1.5; resize:vertical; outline:none;"></textarea>
       <div class="account-btn primary" id="edit-post-save">Save changes</div>
@@ -8072,13 +8072,22 @@ document.addEventListener('click', (e)=>{
 // One batched query for how many likes each post in a list has, instead
 // of a query per post -- used by Rant, the only space that
 // shows a public like count.
-async function fetchLikeCounts(postIds){
+// Returns null when the counts could not be read (no network, server error), so callers that update something
+// already on screen can leave it as it is. An empty result ({}) only ever means "none of these have likes".
+async function fetchLikeCountsStrict(postIds){
   const counts = {};
   if(!postIds || !postIds.length) return counts;
-  const { data, error } = await sb.from('likes').select('post_id').in('post_id', postIds);
-  if(error){ console.error('Error loading like counts:', error); return counts; }
-  (data || []).forEach(row => { counts[row.post_id] = (counts[row.post_id] || 0) + 1; });
-  return counts;
+  try{
+    const { data, error } = await sb.from('likes').select('post_id').in('post_id', postIds);
+    if(error){ console.error('Error loading like counts:', error); return null; }
+    (data || []).forEach(row => { counts[row.post_id] = (counts[row.post_id] || 0) + 1; });
+    return counts;
+  }catch(e){ console.error('Error loading like counts:', e); return null; }
+}
+// For first-time rendering, where a failure just means the page itself didn't load either.
+async function fetchLikeCounts(postIds){
+  const counts = await fetchLikeCountsStrict(postIds);
+  return counts || {};
 }
 
 // Replies used to be visible only to the receiver, privately (see Your
@@ -9066,6 +9075,7 @@ function orgErrorMessage(err){
   if(m.includes('trend_limit_active')) return 'You already have 3 active trends. Finish one to start another.';
   if(m.includes('trend_daily_limit')) return 'That trend already has 5 parts today. Add the next one tomorrow.';
   if(m.includes('trend_part_limit')) return 'A trend can have up to 50 parts.';
+  if(m.includes('trend_bad_number')) return 'Pick a part number from 2 to 99.';
   if(m.includes('trend_complete')) return 'This trend is finished.';
   if(m.includes('trend_not_author')) return 'Only the author can add a part.';
   if(m.includes('trend_wrong_space')) return 'Post this part from the same place as the rest of the trend.';
@@ -9592,7 +9602,7 @@ async function orgBodyClick(e){
 document.getElementById('org-list-body').addEventListener('click', orgBodyClick);
 
 let lastSavedRantRow = null;
-const RANT_CARD_SELECT = 'id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, post_type, community_id, organization_id, header, edited_at, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), trend_id, trend_part, trends(title, is_complete, organization_id), users!posts_user_id_fkey(meet_number), communities(name, icon)';
+const RANT_CARD_SELECT = 'id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, post_type, community_id, organization_id, header, edited_at, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), trend_id, trend_part, trends(title, is_complete, organization_id, start_part), users!posts_user_id_fkey(meet_number), communities(name, icon)';
 
 // Puts a just-posted Rant at the top of the feed immediately, instead of reloading the whole feed
 // (which meant a query, then likes, like counts and labels, then redrawing 20 cards). Returns false when
@@ -9927,7 +9937,7 @@ document.addEventListener('click', async (e)=>{
   await loadOrgsFeed(true);
 });
 
-const EDIT_WINDOW_MS = 24 * 60 * 60 * 1000;   // the database enforces the same 24 hours
+const EDIT_WINDOW_MS = 24 * 60 * 60 * 1000;   // organisation posts only; the database enforces the same 24 hours
 function renderRantPost(post, userLiked, likeCount, inspirationLabels, opts){
   opts = opts || {};
   const isCommunity = !!post.community_id;
@@ -9990,7 +10000,7 @@ function renderRantPost(post, userLiked, likeCount, inspirationLabels, opts){
         `<span class="post-action trend-continue-trigger" data-trend-id="${post.trend_id}">Add next part</span><span class="post-action trend-finish-trigger" data-trend-id="${post.trend_id}">Finish trend</span>`);
     }
   }
-  if(isOwn && !isCommunity && (post.post_type || 'rant') === 'rant' && !post.answer_to_post_id && (Date.now() - new Date(post.created_at).getTime()) < EDIT_WINDOW_MS){
+  if(isOwn && !isCommunity && (post.post_type || 'rant') === 'rant' && !post.answer_to_post_id && (!isOrg || (Date.now() - new Date(post.created_at).getTime()) < EDIT_WINDOW_MS)){   // normal posts: any time. organisation posts: 24 hours
     const menu = div.querySelector('.post-more-menu');
     if(menu) menu.insertAdjacentHTML('afterbegin', `<span class="post-action edit-post-trigger" data-post-id="${post.id}" data-content="${escapeHtml(post.content || '')}" data-header="${escapeHtml(post.header || '')}" data-org="${isOrg ? '1' : ''}">Edit</span>`);
   }
@@ -10012,7 +10022,7 @@ async function loadFeed(){
   const orgsReady = ensureOrgs();   // load org names/follows at the same time as the posts, not after them
   const { data: rawPosts, error } = await sb
     .from('posts')
-    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, edited_at, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), trend_id, trend_part, trends(title, is_complete, organization_id), users!posts_user_id_fkey(meet_number), communities(name, icon)')
+    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, edited_at, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), trend_id, trend_part, trends(title, is_complete, organization_id, start_part), users!posts_user_id_fkey(meet_number), communities(name, icon)')
     .eq('post_type', 'rant')
     .eq('trend_hidden', false)
     .or('organization_id.is.null,community_id.not.is.null')   // organisation posts live in the Organisations pillar
@@ -10068,7 +10078,7 @@ async function loadMoreFeed(){
 
   const { data: rawPosts, error } = await sb
     .from('posts')
-    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, edited_at, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), trend_id, trend_part, trends(title, is_complete, organization_id), users!posts_user_id_fkey(meet_number), communities(name, icon)')
+    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, edited_at, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), trend_id, trend_part, trends(title, is_complete, organization_id, start_part), users!posts_user_id_fkey(meet_number), communities(name, icon)')
     .eq('post_type', 'rant')
     .eq('trend_hidden', false)
     .or('organization_id.is.null,community_id.not.is.null')
@@ -10543,7 +10553,7 @@ async function loadOrgPagePosts(reset){
     if(reset) orgPageOffset = 0;
     const { data: rows, error } = await sb
       .from('posts')
-      .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, edited_at, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), trend_id, trend_part, trends(title, is_complete, organization_id), users!posts_user_id_fkey(meet_number), communities(name, icon)')
+      .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, edited_at, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), trend_id, trend_part, trends(title, is_complete, organization_id, start_part), users!posts_user_id_fkey(meet_number), communities(name, icon)')
       .eq('post_type', 'rant')
       .eq('organization_id', id)
       .eq('trend_hidden', false)
@@ -10634,7 +10644,7 @@ async function renderOrgsFeed(){
   const orgsReady = ensureOrgs();   // start loading org names/follows at the same time as the posts, not after them
   const { data: rawPosts, error } = await sb
     .from('posts')
-    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, edited_at, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), trend_id, trend_part, trends(title, is_complete, organization_id), users!posts_user_id_fkey(meet_number), communities(name, icon)')
+    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, edited_at, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), trend_id, trend_part, trends(title, is_complete, organization_id, start_part), users!posts_user_id_fkey(meet_number), communities(name, icon)')
     .eq('post_type', 'rant')
     .not('organization_id', 'is', null)
     .eq('trend_hidden', false)
@@ -11674,11 +11684,13 @@ function scheduleLiveLikesRefresh(delay){
 }
 async function refreshVisibleLikeCounts(){
   if(document.hidden) return;
+  if(typeof navigator !== 'undefined' && navigator.onLine === false) return;   // offline: keep what is on screen
   if(Date.now() - lastOwnLikeAt < 2500){ scheduleLiveLikesRefresh(2600); return; }   // let your own tap settle first
   const btns = Array.from(document.querySelectorAll('.like-btn[data-post-id]')).filter(b => b.querySelector('.like-count'));
   if(!btns.length) return;
   const ids = Array.from(new Set(btns.map(b => b.dataset.postId))).slice(0, 80);
-  const counts = await fetchLikeCounts(ids);
+  const counts = await fetchLikeCountsStrict(ids);
+  if(!counts) return;                              // could not read them: leave the numbers as they are
   if(Date.now() - lastOwnLikeAt < 2500) return;   // you tapped while we were fetching
   btns.forEach(b => {
     if(!ids.includes(b.dataset.postId)) return;
@@ -11867,7 +11879,7 @@ async function navigateToPost(postId){
   if(!postId) return;
   const { data: post, error } = await sb
     .from('posts')
-    .select('id, post_type, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, edited_at, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), trend_id, trend_part, trends(title, is_complete, organization_id), users!posts_user_id_fkey(meet_number), communities(name, icon)')
+    .select('id, post_type, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, edited_at, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), trend_id, trend_part, trends(title, is_complete, organization_id, start_part), users!posts_user_id_fkey(meet_number), communities(name, icon)')
     .eq('id', postId)
     .single();
   if(error || !post){
@@ -13025,7 +13037,7 @@ function openComposeOverlay(){
   const trendEligible = isPlainRant || currentScreenKey === 'orgs';
   composeTrendSetup(trendEligible);
   if(pendingContinueTrend){
-    if(trendEligible){ composeTrend = pendingContinueTrend; composeTrend.next = composeTrend.part || 2; composeTrend.chosenPart = composeTrend.next; composeTrendRender(); composePartHeading(); }
+    if(trendEligible){ composeTrend = pendingContinueTrend; composeTrend.next = composeTrend.part || 2; composeTrend.chosenPart = composeTrend.next; composeTrend.offset = composeTrend.offset || 0; composeTrend.startNum = composeTrend.startNum || 2; composeTrendRender(); composePartHeading(); }
     pendingContinueTrend = null;
   }
 
@@ -13301,7 +13313,7 @@ document.getElementById('happening-view-back').addEventListener('click', ()=>{
    and dots. Swipe the card, or tap a dot, to move between parts. Tap the chip for the whole
    series, oldest first. The database numbers the parts and enforces the rules (only the
    author adds parts, 3 active trends each, 5 parts per trend per day, 50 parts total). */
-const TREND_PART_SELECT = 'id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, edited_at, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), trend_id, trend_part, trends(title, is_complete, organization_id), users!posts_user_id_fkey(meet_number), communities(name, icon)';
+const TREND_PART_SELECT = 'id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, edited_at, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), trend_id, trend_part, trends(title, is_complete, organization_id, start_part), users!posts_user_id_fkey(meet_number), communities(name, icon)';
 let composeTrend = null;            // null | { id:null } (starting one) | { id, title, part, organization_id } (adding a part)
 let pendingContinueTrend = null;    // set just before openComposeOverlay() when adding to an existing trend
 let trendCache = {};                // trendId -> { parts, at }
@@ -13313,13 +13325,14 @@ function trendRowHtml(post, opts){
   const t = post.trends;
   const cur = post.trend_part || 1;
   const total = Math.max(opts.trendTotal || cur, cur);
-  const partLabel = 'Part ' + cur + (t.is_complete ? ' \u00b7 Complete' : '');
+  const off = (t.start_part || 1) - 1;   // a trend that starts at "Part 2" shows every number shifted by one
+  const partLabel = 'Part ' + (cur + off) + (t.is_complete ? ' \u00b7 Complete' : '');
   if(opts.inSeries) return `<div class="trend-row"><span class="trend-left"><span class="trend-part-label">${partLabel}</span></span></div>`;
   let dots = '';
   if(total > 1){
     dots = total <= 7
       ? Array.from({ length: total }, (_, i) => `<span class="trend-dot${i + 1 === cur ? ' on' : ''}" data-part="${i + 1}"></span>`).join('')
-      : `<span class="trend-part-label">${cur} / ${total}</span>`;
+      : `<span class="trend-part-label">${cur + off} / ${total + off}</span>`;
   }
   return `<div class="trend-row" data-trend-id="${post.trend_id}" data-trend-title="${escapeHtml(t.title)}">`
     + `<span class="trend-left"><span class="trend-chip" role="button" aria-label="Open trend: ${escapeHtml(t.title)}"><span class="trend-chip-dot"></span><span class="trend-chip-title">Trend: ${escapeHtml(t.title)}</span></span><span class="trend-part-label">${partLabel}</span></span>`
@@ -13332,16 +13345,24 @@ function trendRowHtml(post, opts){
 // 1 to (parts so far) inserts at that number and moves the later parts up; the next number just adds to the end.
 function composePartHeading(){
   const title = document.getElementById('compose-title');
-  if(!composeTrend || !composeTrend.id){ return; }
-  title.innerHTML = 'Part <input id="compose-part-input" type="text" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="Part number" value="' + composeTrend.chosenPart + '">';
+  if(!composeTrend) return;
+  const existing = !!composeTrend.id;
+  const off = existing ? (composeTrend.offset || 0) : 0;
+  // existing trend: the number is the position this part takes (first part up to the next one).
+  // continuing a post: the number the NEW part gets; the post you are continuing takes the number before it.
+  const min = existing ? off + 1 : 2;
+  const max = existing ? off + composeTrend.next : 99;
+  const shown = existing ? composeTrend.chosenPart + off : (composeTrend.startNum || 2);
+  title.innerHTML = 'Part <input id="compose-part-input" type="text" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="Part number" value="' + shown + '">';
   const inp = document.getElementById('compose-part-input');
   inp.addEventListener('input', ()=>{ inp.value = inp.value.replace(/\D/g, '').slice(0, 2); });
   inp.addEventListener('focus', ()=>{ inp.select(); });
   inp.addEventListener('blur', ()=>{
     let n = parseInt(inp.value, 10);
-    if(!n || n < 1){ n = composeTrend.next; }
-    if(n > composeTrend.next){ showNavToast('This trend has ' + (composeTrend.next - 1) + ' part' + (composeTrend.next - 1 === 1 ? '' : 's') + ' so far. The most you can pick is ' + composeTrend.next + '.'); n = composeTrend.next; }
-    composeTrend.chosenPart = n;
+    if(!n){ n = existing ? max : 2; }
+    if(n < min){ showNavToast(existing ? 'This trend starts at Part ' + min + '.' : 'Part 1 is the post you are continuing, so the next part is 2 or more.'); n = min; }
+    if(n > max){ showNavToast(existing ? 'This trend has ' + (composeTrend.next - 1) + ' part' + (composeTrend.next - 1 === 1 ? '' : 's') + ' so far. The most you can pick is ' + max + '.' : 'The highest part number is 99.'); n = max; }
+    if(existing) composeTrend.chosenPart = n - off; else composeTrend.startNum = n;
     inp.value = n;
     composeTrendRender();
   });
@@ -13357,7 +13378,7 @@ function composeTrendRender(){
   if(composeTrend.id){
     input.style.display = 'none';
     label.style.display = 'block';
-    label.textContent = 'Part ' + (composeTrend.chosenPart || composeTrend.part) + ' \u00b7 ' + composeTrend.title;
+    label.textContent = 'Part ' + ((composeTrend.chosenPart || composeTrend.part) + (composeTrend.offset || 0)) + ' \u00b7 ' + composeTrend.title;
   } else {
     input.style.display = 'block';
     label.style.display = 'none';
@@ -13365,7 +13386,7 @@ function composeTrendRender(){
 }
 function discardTrend(){
   const hd = document.getElementById('compose-title');
-  if(composeTrend && composeTrend.id && hd.querySelector('#compose-part-input')){   // heading was "Part N": put it back
+  if(composeTrend && hd.querySelector('#compose-part-input')){   // heading was "Part N": put it back
     hd.textContent = (currentScreenKey === 'orgs') ? 'Post as your organisation' : "What's true right now?";
   }
   composeTrend = null;
@@ -13389,7 +13410,7 @@ async function resolveTrendId(trendToUse, orgToUse, content){
   if(!trendToUse) return null;
   if(trendToUse.id) return trendToUse.id;
   const { data, error } = trendToUse.fromPostId
-    ? await sb.rpc('start_trend_from_post', { p_post_id: trendToUse.fromPostId, p_title: trendToUse.title })   // the existing post becomes Part 1
+    ? await sb.rpc('start_trend_from_post', { p_post_id: trendToUse.fromPostId, p_title: trendToUse.title, p_start_part: trendToUse.startPart || 1 })   // the existing post becomes Part 1
     : await sb.from('trends')
         .insert({ creator_id: currentUserId, title: trendToUse.title, organization_id: orgToUse ? orgToUse.id : null })
         .select('id').single();
@@ -13405,7 +13426,7 @@ async function resolveTrendId(trendToUse, orgToUse, content){
 /* ----- adding the next part / finishing ----- */
 async function startTrendContinue(trendId){
   const [{ data: t }, { data: last }] = await Promise.all([
-    sb.from('trends').select('id, title, organization_id, is_complete, creator_id').eq('id', trendId).maybeSingle(),
+    sb.from('trends').select('id, title, organization_id, is_complete, creator_id, start_part').eq('id', trendId).maybeSingle(),
     sb.from('posts').select('trend_part').eq('trend_id', trendId).order('trend_part', { ascending: false }).limit(1)
   ]);
   if(!t){ showNavToast('That trend no longer exists.'); return; }
@@ -13413,7 +13434,7 @@ async function startTrendContinue(trendId){
   if(t.creator_id !== currentUserId){ showNavToast('Only the author can add a part.'); return; }
   if(t.organization_id && currentScreenKey !== 'orgs'){ showNavToast('Open Organisations to add to this trend.'); return; }
   if(!t.organization_id && !(currentScreenKey === 'twin' && currentTwinMode === 'rant')){ showNavToast('Open Rant to add to this trend.'); return; }
-  pendingContinueTrend = { id: t.id, title: t.title, part: ((last && last[0] && last[0].trend_part) || 0) + 1, organization_id: t.organization_id };
+  pendingContinueTrend = { id: t.id, title: t.title, part: ((last && last[0] && last[0].trend_part) || 0) + 1, organization_id: t.organization_id, offset: (t.start_part || 1) - 1 };
   openComposeOverlay();
 }
 // Turn one of your own existing posts into Part 1: the composer opens for Part 2 and asks for a title.
@@ -13460,9 +13481,10 @@ function trendLoad(trendId, force){
       const ids = data.map(p => p.id);
       const [likeRes, counts] = await Promise.all([
         currentUserId ? sb.from('likes').select('post_id').eq('user_id', currentUserId).in('post_id', ids) : Promise.resolve({ data: [] }),
-        fetchLikeCounts(ids),
+        fetchLikeCountsStrict(ids),
         ensureOrgs()
       ]);
+      if(!counts || (likeRes && likeRes.error)) throw new Error('likes unavailable');   // never cache "0 likes" because the network blinked
       entry.liked = new Set((likeRes.data || []).map(l => l.post_id));
       entry.counts = counts;
       ids.forEach(id => { entry.likeAt[id] = Date.now(); });
@@ -13505,8 +13527,9 @@ function trendRefreshLikes(el, part, entry){
   entry.likeAt[part.id] = Date.now();
   Promise.all([
     currentUserId ? sb.from('likes').select('post_id').eq('user_id', currentUserId).eq('post_id', part.id) : Promise.resolve({ data: [] }),
-    fetchLikeCounts([part.id])
+    fetchLikeCountsStrict([part.id])
   ]).then(([lr, counts]) => {
+    if(!counts || (lr && lr.error)) return;                              // could not read: keep the heart and count shown
     if(!el.isConnected || Date.now() - lastOwnLikeAt < 2500) return;   // you tapped meanwhile: your tap wins
     const liked = !!(lr.data && lr.data.length);
     const n = counts[part.id] || 0;
@@ -13839,7 +13862,7 @@ async function removeMySticker(url){
 let editPostId = null, editPostOriginal = { content:'', header:'' }, editPostIsOrg = false, editPostBusy = false;
 function editErrorMessage(err){
   const m = (err && err.message) || '';
-  if(m.includes('edit_window_closed')) return 'The 24 hours for editing this post have passed.';
+  if(m.includes('edit_window_closed')) return 'Organisation posts can only be edited for 24 hours after posting.';
   if(m.includes('edit_empty')) return 'A post needs some text.';
   if(m.includes('edit_too_long')) return 'That is too long. Keep it under 5000 characters.';
   if(m.includes('org_header_required')) return 'This organisation needs a header.';
@@ -13854,6 +13877,7 @@ function openEditPost(btn){
   editPostOriginal = { content: btn.dataset.content || '', header: btn.dataset.header || '' };
   const hd = document.getElementById('edit-post-header');
   hd.style.display = editPostIsOrg ? 'block' : 'none';
+  document.getElementById('edit-post-sub').textContent = editPostIsOrg ? 'Organisation posts can be edited for 24 hours after posting. An edited post shows "(edited)".' : 'An edited post shows "(edited)".';
   hd.value = editPostOriginal.header;
   const ta = document.getElementById('edit-post-text');
   ta.value = editPostOriginal.content;
@@ -14751,7 +14775,7 @@ document.getElementById('compose-submit-btn').addEventListener('click', async ()
   const answerToId = currentAnswerToPostId;       // set when this post answers a Spill question
   const asQuestion = currentComposeAsQuestion;    // set when this Spill post is a question
   const draftKeyAtSubmit = composeDraftKey();   // same -- read before closeComposeOverlay() clears the context
-  const trendToUse = composeTrend ? { id: composeTrend.id, part: (composeTrend.id && composeTrend.chosenPart && composeTrend.chosenPart < composeTrend.next) ? composeTrend.chosenPart : null, laterCount: composeTrend.id ? (composeTrend.next - (composeTrend.chosenPart || composeTrend.next)) : 0, fromPostId: composeTrend.fromPostId || null, title: composeTrend.id ? composeTrend.title : document.getElementById('compose-trend-title').value.trim() } : null;   // same -- captured before discardTrend() clears it
+  const trendToUse = composeTrend ? { id: composeTrend.id, part: (composeTrend.id && composeTrend.chosenPart && composeTrend.chosenPart < composeTrend.next) ? composeTrend.chosenPart : null, laterCount: composeTrend.id ? (composeTrend.next - (composeTrend.chosenPart || composeTrend.next)) : 0, fromPostId: composeTrend.fromPostId || null, offset: composeTrend.offset || 0, startPart: composeTrend.fromPostId ? Math.max(1, (composeTrend.startNum || 2) - 1) : null, title: composeTrend.id ? composeTrend.title : document.getElementById('compose-trend-title').value.trim() } : null;   // same -- captured before discardTrend() clears it
 
   if(!content && !blobToUpload && !stickerToUse) return; // need at least one of text, voice, or sticker
   if(asQuestion && !content){ showNavToast('Write your question first.'); return; }
@@ -14759,9 +14783,10 @@ document.getElementById('compose-submit-btn').addEventListener('click', async ()
   if(trendToUse && (inspiredByPostId || answerToId || postingAsCommunity)){ showNavToast('A trend can\'t be an "inspired by" post. Remove the trend first.'); return; }
 
   if(trendToUse && trendToUse.part){
-    const lastNo = trendToUse.part + trendToUse.laterCount - 1;
-    const moved = trendToUse.laterCount === 1 ? 'Part ' + trendToUse.part : 'Parts ' + trendToUse.part + ' to ' + lastNo;
-    if(!(await askConfirm({ title:'Insert as Part ' + trendToUse.part + '?', message: moved + ' will move up by one number.', okText:'Insert', cancelText:'Cancel' }))) return;
+    const firstShown = trendToUse.part + (trendToUse.offset || 0);
+    const lastNo = firstShown + trendToUse.laterCount - 1;
+    const moved = trendToUse.laterCount === 1 ? 'Part ' + firstShown : 'Parts ' + firstShown + ' to ' + lastNo;
+    if(!(await askConfirm({ title:'Insert as Part ' + firstShown + '?', message: moved + ' will move up by one number.', okText:'Insert', cancelText:'Cancel' }))) return;
   }
 
   let audio = null;
