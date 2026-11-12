@@ -409,7 +409,8 @@
 
   /* Organisations: "new posts" pill (sticks to the top while you scroll) + pull-to-refresh hint */
   #orgs-new-wrap{ position:sticky; top:4px; height:0; margin-bottom:-14px; z-index:6; display:flex; justify-content:center; pointer-events:none; flex-shrink:0; }
-  #orgs-new-banner{ display:none; pointer-events:auto; background:var(--gold-dim); color:var(--bg); font-size:11.5px; font-weight:600; letter-spacing:0.04em; padding:7px 16px; border-radius:20px; cursor:pointer; box-shadow:0 6px 16px rgba(0,0,0,0.35); height:fit-content; }
+  #orgs-new-banner{ display:none; pointer-events:auto; background:var(--gold); color:var(--bg); font-size:12px; font-weight:600; letter-spacing:0.03em; padding:8px 18px; border-radius:20px; cursor:pointer; box-shadow:0 6px 18px var(--gold-dim), 0 2px 6px rgba(0,0,0,0.25); height:fit-content; }
+  #orgs-new-banner:active{ background:var(--gold-light); transform:scale(0.97); }
   #orgs-new-banner.show{ display:block; animation:orgsPillIn .25s ease; }
   @keyframes orgsPillIn{ from{ opacity:0; transform:translateY(-8px); } to{ opacity:1; transform:none; } }
   #orgs-pull-indicator{ position:absolute; left:0; right:0; top:0; z-index:5; text-align:center; padding-top:10px; font-size:11px; letter-spacing:0.06em; text-transform:uppercase; color:var(--muted-dim); opacity:0; pointer-events:none; transition:opacity 0.15s ease; }
@@ -602,11 +603,19 @@
   }
   #feed-new-posts-banner{
     display:none; position:absolute; left:50%; top:8px; transform:translate(-50%,0); z-index:6;
-    background:var(--gold-dim); color:var(--bg); font-size:11.5px; font-weight:600;
-    letter-spacing:0.04em; padding:7px 16px; border-radius:20px; cursor:pointer;
-    box-shadow:0 6px 16px rgba(0,0,0,0.35);
+    background:var(--gold); color:var(--bg); font-size:12px; font-weight:600;
+    letter-spacing:0.03em; padding:8px 18px; border-radius:20px; cursor:pointer;
+    box-shadow:0 6px 18px var(--gold-dim), 0 2px 6px rgba(0,0,0,0.25);
   }
-  #feed-new-posts-banner.show{ display:block; }
+  #feed-new-posts-banner:active{ background:var(--gold-light); }
+  #feed-new-posts-banner.show{ display:block; animation:feedPillIn .28s ease; }
+  @keyframes feedPillIn{ from{ opacity:0; transform:translate(-50%,-10px) scale(0.96); } to{ opacity:1; transform:translate(-50%,0) scale(1); } }
+  /* a post that just dropped in from the pill glows in the theme's gold for a moment */
+  .post.post-new-in{ animation:postNewIn 1.8s ease; }
+  @keyframes postNewIn{
+    0%{ box-shadow:0 0 0 2px var(--gold), 0 0 22px var(--gold-dim); }
+    100%{ box-shadow:0 0 0 2px transparent, 0 0 0 transparent; }
+  }
   .post{ background:var(--card); border:1px solid var(--card-border); border-radius:14px; padding:16px 16px 14px; }
   .post-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
   .post-head-right{ display:flex; align-items:center; gap:10px; }
@@ -1988,6 +1997,17 @@
   .nav-item-label{ font-size:9.5px; letter-spacing:0.06em; text-transform:uppercase; color:var(--muted-dim); }
   .nav-item.active .nav-item-label{ color:var(--gold-light); }
 
+  /* Pillar dots: new Rant / Organisations posts waiting to be loaded. Tap the pillar and the feed loads. */
+  .nav-icon{ position:relative; }
+  .nav-new-dot, .twin-new-dot{ position:absolute; width:8px; height:8px; border-radius:50%; background:var(--gold); pointer-events:none;
+    box-shadow:0 0 0 2px var(--bg), 0 0 8px var(--gold-dim); animation:pillarDotIn .25s ease, pillarDotPulse 2.4s ease-in-out .4s infinite; }
+  .nav-new-dot{ top:-3px; right:-6px; }
+  .twin-btn{ position:relative; }
+  .twin-new-dot{ top:6px; left:calc(50% + 28px); box-shadow:0 0 0 2px var(--bg-elevated), 0 0 8px var(--gold-dim); }
+  @keyframes pillarDotIn{ from{ transform:scale(0); } to{ transform:scale(1); } }
+  @keyframes pillarDotPulse{ 0%,100%{ opacity:1; } 50%{ opacity:.45; } }
+  @media (prefers-reduced-motion:reduce){ .nav-new-dot, .twin-new-dot{ animation:none; } }
+
   #moment{ position:absolute; inset:0; background:#08080a; z-index:80; opacity:0; pointer-events:none; transition:opacity 0.9s ease;
     display:flex; flex-direction:column; align-items:center; justify-content:center; padding:8vh 30px; text-align:center; overflow:hidden; }
   #moment.show{ opacity:1; pointer-events:auto; }
@@ -2476,6 +2496,7 @@
 .trend-dot.on{ background:var(--gold); }
 @keyframes trendInRight{ from{ opacity:0.2; transform:translateX(28px); } to{ opacity:1; transform:none; } }
 @keyframes trendInLeft{ from{ opacity:0.2; transform:translateX(-28px); } to{ opacity:1; transform:none; } }
+.post[data-trend-id]:not(#trend-view-feed .post){ touch-action:pan-y; }
 .post.trend-in-right{ animation:trendInRight 0.22s ease both; }
 .post.trend-in-left{ animation:trendInLeft 0.22s ease both; }
 @media (prefers-reduced-motion: reduce){ .post.trend-in-right, .post.trend-in-left{ animation:none; } }
@@ -5234,6 +5255,7 @@ async function goToScreen(key){
   if(key === 'twin' && currentTwinMode === 'rant'){ startFeedRealtime(); }
   else { stopFeedRealtime(); }
   if(key === 'orgs'){ startOrgsRealtime(); } else { stopOrgsRealtime(); }
+  onPillarVisited(key);
 }
 
 document.querySelectorAll('#bottom-nav .nav-item').forEach(item=>{
@@ -5308,6 +5330,7 @@ async function setTwinMode(mode){
     startFeedRealtime();
   }
   document.getElementById('screen-label-text').textContent = currentTwinMode==='rant' ? 'Rant' : 'Spill';
+  onPillarVisited('twin');
   saveAppState();
 }
 document.querySelectorAll('#twin-toggle .twin-btn').forEach(btn=>{
@@ -9986,6 +10009,7 @@ function renderFeedBoundary(){
 async function loadFeed(){
   feedOffset = 0;
   feedHasMore = true;
+  const orgsReady = ensureOrgs();   // load org names/follows at the same time as the posts, not after them
   const { data: rawPosts, error } = await sb
     .from('posts')
     .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, edited_at, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), trend_id, trend_part, trends(title, is_complete, organization_id), users!posts_user_id_fkey(meet_number), communities(name, icon)')
@@ -9995,7 +10019,7 @@ async function loadFeed(){
     .order('created_at', { ascending: false })
     .range(0, FEED_PAGE_SIZE - 1);
   if(error){ console.error('Error loading feed:', error); return; }
-  await ensureOrgs();
+  await orgsReady;
   feedOffset = rawPosts.length;
   feedHasMore = rawPosts.length === FEED_PAGE_SIZE;
   const posts = shapeFeedPosts(rawPosts);
@@ -10680,6 +10704,8 @@ async function renderOrgsFeed(){
    a pill counts them, and tapping it scrolls to the top and loads them. */
 let orgsRealtimeChannel = null;
 let newOrgPostsSinceLoad = 0;
+let pendingOrgItems = [];       // fetched in the background as they arrive (see Rant's pill)
+let flushingIncomingOrgPosts = false;
 function startOrgsRealtime(){
   if(orgsRealtimeChannel) return;
   orgsRealtimeChannel = sb
@@ -10689,6 +10715,8 @@ function startOrgsRealtime(){
       if(!n.organization_id || n.community_id) return;               // only organisation posts
       if(n.user_id === currentUserId) return;                         // your own post already reloads this page on save
       if(myMutedOrgIds.has(n.organization_id)) return;                // muted organisations stay quiet
+      if(pendingOrgItems.some(i => i.id === n.id)) return;
+      pendingOrgItems.push({ id: n.id, promise: prefetchIncomingPost(n.id) });
       newOrgPostsSinceLoad++;
       showOrgsNewBanner();
     })
@@ -10703,15 +10731,37 @@ function showOrgsNewBanner(){
   b.classList.add('show');
 }
 function clearOrgsNewBanner(){
+  pillarDotClear('orgs');
   newOrgPostsSinceLoad = 0;
+  pendingOrgItems = [];
   document.getElementById('orgs-new-banner').classList.remove('show');
 }
 document.getElementById('orgs-new-banner').addEventListener('click', async (e)=>{
   e.stopPropagation();
+  if(flushingIncomingOrgPosts) return;
+  flushingIncomingOrgPosts = true;
   const sc = document.getElementById('orgs-feed');
-  sc.scrollTo({ top: 0, behavior: 'smooth' });
-  await loadOrgsFeed(true);
-  sc.scrollTop = 0;
+  try{
+    const items = pendingOrgItems.slice();
+    const rows = items.length ? await Promise.all(items.map(i => i.promise)) : [];
+    let done = rows.length > 0 && rows.every(r => r && !r.trend_id);
+    if(done){
+      rows.sort((x, y) => new Date(x.created_at) - new Date(y.created_at));   // oldest first, so the newest ends on top
+      for(const r of rows){
+        if(document.querySelector('#orgs-list .post[data-post-id="' + r.id + '"]')) continue;
+        if(!(await showNewOrgPostNow(r))){ done = false; break; }
+        const card = document.querySelector('#orgs-list .post[data-post-id="' + r.id + '"]');
+        if(card) card.classList.add('post-new-in');
+      }
+    }
+    if(done){ clearOrgsNewBanner(); sc.scrollTo({ top: 0, behavior: 'smooth' }); }
+    else { sc.scrollTo({ top: 0, behavior: 'smooth' }); await loadOrgsFeed(true); sc.scrollTop = 0; }   // quick way not possible: full reload as before
+  } catch(err){
+    console.error('Quick show of new organisation posts failed, reloading:', err);
+    await loadOrgsFeed(true);
+  } finally {
+    flushingIncomingOrgPosts = false;
+  }
 });
 (function setupOrgsPullToRefresh(){
   const feedEl = document.getElementById('orgs-feed');
@@ -10772,6 +10822,15 @@ document.getElementById('orgs-feed').addEventListener('click', async (e)=>{
    ============================================================ */
 let feedRealtimeChannel = null;
 let newPostsSinceLoad = 0;
+// New posts from other people are fetched in the background the moment they arrive, so tapping the blue pill
+// only has to draw them -- no waiting on a full feed reload.
+let pendingRantItems = [];
+let flushingIncomingRants = false;
+function prefetchIncomingPost(id){
+  return sb.from('posts').select(RANT_CARD_SELECT).eq('id', id).maybeSingle()
+    .then(({ data, error }) => (error || !data) ? null : data)
+    .catch(() => null);
+}
 
 function startFeedRealtime(){
   stopFeedRealtime();
@@ -10782,6 +10841,8 @@ function startFeedRealtime(){
     }, (payload) => {
       if(payload.new.user_id === currentUserId) return; // your own post already reloads the feed on save
       if(payload.new.organization_id && !payload.new.community_id) return; // organisation posts belong to the Organisations pillar
+      if(pendingRantItems.some(i => i.id === payload.new.id)) return;
+      pendingRantItems.push({ id: payload.new.id, promise: prefetchIncomingPost(payload.new.id) });
       newPostsSinceLoad++;
       showNewPostsBanner();
     })
@@ -10790,6 +10851,7 @@ function startFeedRealtime(){
 function stopFeedRealtime(){
   if(feedRealtimeChannel){ sb.removeChannel(feedRealtimeChannel); feedRealtimeChannel = null; }
   newPostsSinceLoad = 0;
+  pendingRantItems = [];
 }
 
 function showNewPostsBanner(){
@@ -10798,13 +10860,43 @@ function showNewPostsBanner(){
   banner.classList.add('show');
 }
 function clearNewPostsBanner(){
+  pillarDotClear('twin');
   newPostsSinceLoad = 0;
+  pendingRantItems = [];
   document.getElementById('feed-new-posts-banner').classList.remove('show');
 }
-document.getElementById('feed-new-posts-banner').addEventListener('click', async ()=>{
-  document.getElementById('feed').scrollTo({ top: 0, behavior: 'smooth' });
-  await loadFeed();
-});
+// Tapping the pill: draw the already-fetched posts at the top. Anything the quick way can't show
+// (a trend part, a failed fetch, nothing queued) falls back to the normal full reload.
+async function showIncomingRants(){
+  if(flushingIncomingRants) return;
+  flushingIncomingRants = true;
+  try{
+    const feed = document.getElementById('feed');
+    const items = pendingRantItems.slice();
+    const rows = items.length ? await Promise.all(items.map(i => i.promise)) : [];
+    const usable = rows.length > 0 && rows.every(r => r && !r.trend_id);
+    if(!usable){ await loadFeed(); return; }
+    rows.sort((x, y) => new Date(x.created_at) - new Date(y.created_at));   // oldest first, so the newest ends on top
+    const fresh = shapeFeedPosts(rows).filter(r => !feed.querySelector('.post[data-post-id="' + r.id + '"]'));
+    const labels = await fetchInspirationLabels(fresh.filter(r => r.inspired_by_post_id));
+    const boundary = document.getElementById('boundary-marker');
+    fresh.forEach(r => {
+      const card = renderRantPost(r, false, 0, labels);
+      card.classList.add('post-new-in');
+      feed.insertBefore(card, feed.querySelector('.post') || boundary);
+    });
+    feedOffset += fresh.length;   // the next page must not repeat these
+    clearNewPostsBanner();
+    feed.scrollTo({ top: 0, behavior: 'smooth' });
+    saveSnapshotSoon();
+  } catch(e){
+    console.error('Quick show of new rants failed, reloading:', e);
+    await loadFeed();
+  } finally {
+    flushingIncomingRants = false;
+  }
+}
+document.getElementById('feed-new-posts-banner').addEventListener('click', showIncomingRants);
 
 /* Pull-to-refresh: only arms when the feed is already scrolled to the
    very top, so it never fights normal scrolling further down. */
@@ -13342,62 +13434,241 @@ async function finishTrend(trendId){
   if(currentScreenKey === 'orgs') loadOrgsFeed(true); else if(currentScreenKey === 'twin' && currentTwinMode === 'rant') loadFeed();
 }
 
-/* ----- moving between parts on the feed card ----- */
-async function trendPartsFor(trendId){
+/* ----- moving between parts on the feed card -----
+   Speed: the parts, your likes and the like counts for a whole trend are fetched ONCE (in parallel, as soon as a
+   trend card is near the screen or touched) and kept in trendCache. A swipe then swaps the card instantly from
+   that cache -- no waiting on the network -- and the like state of the part you land on is quietly re-checked
+   in the background. Feel: the card follows your finger while you drag, and a quick flick is enough. */
+const TREND_REVALIDATE_MS = 60000;   // older than this: still used instantly, but re-read quietly for next time
+const TREND_LIKE_RECHECK_MS = 15000;
+const trendReducedMotion = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches:false };
+
+function trendEntryReady(trendId){
   const c = trendCache[trendId];
-  if(c && Date.now() - c.at < 60000) return c.parts;
-  const { data, error } = await sb.from('posts').select(TREND_PART_SELECT).eq('trend_id', trendId).order('trend_part', { ascending: true });
-  if(error || !data) return null;
-  trendCache[trendId] = { parts: data, at: Date.now() };
-  return data;
+  return (c && c.parts) ? c : null;
 }
-async function renderTrendPart(part, total){
-  const [likeRes, counts] = await Promise.all([
+// One load per trend (the in-flight promise is shared, so a touch and a dot tap never double-fetch).
+function trendLoad(trendId, force){
+  const old = trendCache[trendId];
+  if(old && old.loading) return old.promise;                                                   // already on its way
+  if(old && !force && old.parts && Date.now() - old.at < TREND_REVALIDATE_MS) return old.promise;
+  const entry = { at: Date.now(), parts: null, liked: new Set(), counts: {}, likeAt: {}, promise: null, loading: true };
+  entry.promise = (async ()=>{
+    try{
+      const { data, error } = await sb.from('posts').select(TREND_PART_SELECT).eq('trend_id', trendId).order('trend_part', { ascending: true });
+      if(error || !data || !data.length) throw (error || new Error('no parts'));
+      const ids = data.map(p => p.id);
+      const [likeRes, counts] = await Promise.all([
+        currentUserId ? sb.from('likes').select('post_id').eq('user_id', currentUserId).in('post_id', ids) : Promise.resolve({ data: [] }),
+        fetchLikeCounts(ids),
+        ensureOrgs()
+      ]);
+      entry.liked = new Set((likeRes.data || []).map(l => l.post_id));
+      entry.counts = counts;
+      ids.forEach(id => { entry.likeAt[id] = Date.now(); });
+      entry.parts = data;
+      entry.at = Date.now();
+      entry.loading = false;
+      return entry;   // if trendCache was reset meanwhile (a post was edited/added), this entry is no longer in it and is simply dropped
+    }catch(err){
+      entry.loading = false;
+      if(trendCache[trendId] === entry){
+        if(entry.parts) entry.at = Date.now() - TREND_REVALIDATE_MS + 5000;   // keep serving the old parts, retry in 5s
+        else delete trendCache[trendId];
+      }
+      return entry.parts ? entry : null;
+    }
+  })();
+  // While a refresh is running, keep serving the old parts so swipes never wait.
+  if(old && old.parts){ entry.parts = old.parts; entry.liked = old.liked; entry.counts = old.counts; entry.likeAt = old.likeAt; }
+  trendCache[trendId] = entry;
+  return entry.promise;
+}
+// Kept for anything else that wants the plain list of parts.
+async function trendPartsFor(trendId){
+  const e = await trendLoad(trendId);
+  return e ? e.parts : null;
+}
+// Before the card leaves the screen, remember what its heart/count currently show, so coming back is correct.
+function trendSnapshot(card, entry){
+  const btn = card.querySelector('.like-btn[data-post-id]');
+  if(!btn || !entry) return;
+  const id = /^\d+$/.test(btn.dataset.postId) ? Number(btn.dataset.postId) : btn.dataset.postId;   // same type as part.id
+  if(btn.classList.contains('liked')) entry.liked.add(id); else entry.liked.delete(id);
+  const el = btn.querySelector('.like-count');
+  if(el) entry.counts[id] = parseInt(el.textContent, 10) || 0;
+  entry.likeAt[id] = Date.now();
+}
+// Silent re-check of the part just shown (other people may have liked it since the cache was filled).
+function trendRefreshLikes(el, part, entry){
+  if(Date.now() - (entry.likeAt[part.id] || 0) < TREND_LIKE_RECHECK_MS) return;
+  entry.likeAt[part.id] = Date.now();
+  Promise.all([
     currentUserId ? sb.from('likes').select('post_id').eq('user_id', currentUserId).eq('post_id', part.id) : Promise.resolve({ data: [] }),
     fetchLikeCounts([part.id])
-  ]);
-  const liked = !!(likeRes.data && likeRes.data.length);
-  return renderRantPost(part, liked, counts[part.id] || 0, {}, { trendTotal: total });
+  ]).then(([lr, counts]) => {
+    if(!el.isConnected || Date.now() - lastOwnLikeAt < 2500) return;   // you tapped meanwhile: your tap wins
+    const liked = !!(lr.data && lr.data.length);
+    const n = counts[part.id] || 0;
+    if(liked) entry.liked.add(part.id); else entry.liked.delete(part.id);
+    entry.counts[part.id] = n;
+    const btn = el.querySelector('.like-btn');
+    if(btn){
+      const heart = btn.querySelector('.heart');
+      btn.classList.toggle('liked', liked);
+      if(heart) heart.textContent = liked ? '\u2665' : '\u2661';
+      const c = btn.querySelector('.like-count');
+      if(c && c.textContent !== String(n)) c.textContent = n;
+    }
+  }).catch(()=>{});
 }
-async function trendGoTo(card, target){
-  if(!card || card.dataset.trendBusy) return;
+function renderTrendPartSync(part, total, entry){
+  return renderRantPost(part, entry.liked.has(part.id), entry.counts[part.id] || 0, {}, { trendTotal: total });
+}
+// The instant swap. `dir` is +1 (next part) or -1 (previous), only used to pick the slide-in side.
+function trendSwap(card, target, entry){
+  if(!card.isConnected) return false;
+  const parts = entry.parts;
   const cur = Number(card.dataset.trendPart) || 1;
-  card.dataset.trendBusy = '1';
-  try{
-    const parts = await trendPartsFor(card.dataset.trendId);
-    if(!parts || !parts.length) return;
-    target = Math.max(1, Math.min(parts.length, target));
-    if(target === cur) return;
-    const part = parts.find(p => p.trend_part === target) || parts[target - 1];
-    await ensureOrgs();
-    const next = await renderTrendPart(part, parts.length);
-    next.classList.add(target > cur ? 'trend-in-right' : 'trend-in-left');
-    card.replaceWith(next);
-  } finally {
-    delete card.dataset.trendBusy;
+  target = Math.max(1, Math.min(parts.length, target));
+  if(target === cur) return false;
+  const part = parts.find(p => p.trend_part === target) || parts[target - 1];
+  if(!part) return false;
+  trendSnapshot(card, entry);
+  const next = renderTrendPartSync(part, parts.length, entry);
+  card.replaceWith(next);
+  if(!trendReducedMotion.matches && next.animate){
+    const from = (target > cur ? 1 : -1) * 36;
+    next.animate(
+      [ { transform: 'translate3d(' + from + 'px,0,0)', opacity: 0.25 }, { transform: 'translate3d(0,0,0)', opacity: 1 } ],
+      { duration: 150, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' }
+    );
   }
+  trendRefreshLikes(next, part, entry);
+  if(Date.now() - entry.at > TREND_REVALIDATE_MS) trendLoad(part.trend_id, true);   // refresh quietly for the next swipe
+  return true;
 }
+function trendGoTo(card, target){
+  if(!card || !card.isConnected) return;
+  const id = card.dataset.trendId;
+  const ready = trendEntryReady(id);
+  if(ready){ trendSwap(card, target, ready); return; }
+  if(card.dataset.trendBusy) return;                       // first ever swipe on this trend and the data is still arriving
+  card.dataset.trendBusy = '1';
+  trendLoad(id).then(entry => {
+    delete card.dataset.trendBusy;
+    if(entry && card.isConnected) trendSwap(card, target, entry);
+  });
+}
+
+/* Warm the cache before anyone swipes: any trend card with more than one part that comes near the screen. */
+(function setupTrendPrefetch(){
+  if(!('IntersectionObserver' in window)) return;
+  const seen = new WeakSet();
+  const io = new IntersectionObserver(entries => {
+    entries.forEach(en => {
+      if(!en.isIntersecting) return;
+      const c = en.target;
+      io.unobserve(c);
+      if(c.isConnected && c.dataset.trendId && !trendEntryReady(c.dataset.trendId)) trendLoad(c.dataset.trendId);
+    });
+  }, { rootMargin: '300px 0px' });
+  function consider(n){
+    if(n.nodeType !== 1) return;
+    const cards = [];
+    if(n.matches && n.matches('.post[data-trend-id]')) cards.push(n);
+    if(n.querySelectorAll) n.querySelectorAll('.post[data-trend-id]').forEach(c => cards.push(c));
+    cards.forEach(c => {
+      if(seen.has(c) || c.closest('#trend-view-feed')) return;
+      if(!c.querySelector('.trend-dots')) return;           // single-part trend: nothing to swipe to
+      seen.add(c); io.observe(c);
+    });
+  }
+  const mo = new MutationObserver(muts => muts.forEach(m => m.addedNodes.forEach(consider)));
+  ['feed', 'orgs-list'].forEach(id => {
+    const el = document.getElementById(id);
+    if(!el) return;
+    consider(el);
+    mo.observe(el, { childList: true, subtree: true });
+  });
+})();
+
+/* The swipe itself: the card tracks your finger (no waiting for touchend), flicks count, and at the first/last part it
+   resists instead of doing nothing. */
 (function setupTrendSwipe(){
-  let card = null, sx = 0, sy = 0, t0 = 0;
+  let card = null, sx = 0, sy = 0, lx = 0, lt = 0, vx = 0, decided = false, dragging = false, width = 320, raf = 0, dxNow = 0;
+  function edgeFactor(c, dx){
+    const entry = trendEntryReady(c.dataset.trendId);
+    if(!entry) return 1;
+    const cur = Number(c.dataset.trendPart) || 1;
+    return ((dx < 0 && cur >= entry.parts.length) || (dx > 0 && cur <= 1)) ? 0.22 : 1;   // nothing further that way
+  }
+  function paint(){
+    raf = 0;
+    if(!card || !dragging) return;
+    const x = dxNow * edgeFactor(card, dxNow);
+    card.style.transform = 'translate3d(' + x + 'px,0,0)';
+    card.style.opacity = String(Math.max(0.55, 1 - Math.abs(x) / (width * 1.2)));
+  }
+  function reset(c, animate){
+    if(!c) return;
+    c.style.transition = animate ? 'transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.18s ease' : '';
+    c.style.transform = ''; c.style.opacity = '';
+    if(animate) setTimeout(() => { c.style.transition = ''; c.style.willChange = ''; }, 200); else c.style.willChange = '';
+  }
   document.addEventListener('touchstart', (e)=>{
-    card = null;
+    card = null; decided = false; dragging = false;
     if(e.touches.length !== 1 || !e.target.closest) return;
     const c = e.target.closest('.post[data-trend-id]');
     if(!c || c.closest('#trend-view-feed')) return;
     if(e.target.closest('.post-foot, .post-action, .like-btn, .sticker-tap, .voice-play-btn, .trend-chip, audio, video, input, textarea')) return;
-    card = c; sx = e.touches[0].clientX; sy = e.touches[0].clientY; t0 = Date.now();
+    card = c; sx = lx = e.touches[0].clientX; sy = e.touches[0].clientY; lt = Date.now(); vx = 0;
+    width = c.offsetWidth || 320;
+    if(!trendEntryReady(c.dataset.trendId)) trendLoad(c.dataset.trendId);   // last-chance warm-up: the swipe itself takes time
+  }, { passive: true });
+  document.addEventListener('touchmove', (e)=>{
+    if(!card) return;
+    const t = e.touches[0];
+    const dx = t.clientX - sx, dy = t.clientY - sy;
+    if(!decided){
+      if(Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      decided = true;
+      dragging = Math.abs(dx) > Math.abs(dy) * 1.3;           // clearly sideways, otherwise it's a scroll: leave it alone
+      if(!dragging){ card = null; return; }
+      card.style.transition = 'none'; card.style.willChange = 'transform, opacity';
+    }
+    if(!dragging) return;
+    if(selectingText()){ reset(card, false); card = null; dragging = false; return; }
+    const now = Date.now(), dt = now - lt;
+    if(dt > 0){ vx = 0.7 * vx + 0.3 * ((t.clientX - lx) / dt); }
+    lx = t.clientX; lt = now;
+    dxNow = dx;
+    if(!raf) raf = requestAnimationFrame(paint);
   }, { passive: true });
   document.addEventListener('touchend', (e)=>{
     if(!card) return;
     const c = card; card = null;
-    if(selectingText()) return;
+    if(raf){ cancelAnimationFrame(raf); raf = 0; }
+    if(!dragging){ return; }
+    dragging = false;
+    if(selectingText()){ reset(c, true); return; }
     const t = e.changedTouches[0];
-    const dx = t.clientX - sx, dy = t.clientY - sy;
-    if(Date.now() - t0 > 700) return;
-    if(Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.8) return;   // clearly sideways, not a scroll
-    trendGoTo(c, (Number(c.dataset.trendPart) || 1) + (dx < 0 ? 1 : -1));
+    const dx = t.clientX - sx;
+    const flick = Math.abs(vx) > 0.35 && Math.abs(dx) > 18;   // a quick flick is enough
+    const far = Math.abs(dx) > Math.min(70, width * 0.2);      // or a short, deliberate drag
+    if(!(flick || far)){ reset(c, true); return; }
+    const dir = dx < 0 ? 1 : -1;
+    const entry = trendEntryReady(c.dataset.trendId);
+    const cur = Number(c.dataset.trendPart) || 1;
+    if(entry && (cur + dir < 1 || cur + dir > entry.parts.length)){ reset(c, true); return; }   // already at the end
+    reset(c, false);                                          // the new card takes over right away
+    trendGoTo(c, cur + dir);
   }, { passive: true });
-  document.addEventListener('touchcancel', ()=>{ card = null; }, { passive: true });
+  document.addEventListener('touchcancel', ()=>{
+    if(card && dragging) reset(card, true);
+    card = null; dragging = false;
+    if(raf){ cancelAnimationFrame(raf); raf = 0; }
+  }, { passive: true });
 })();
 
 /* ----- the series page: every part, oldest first ----- */
@@ -16683,6 +16954,7 @@ document.addEventListener('DOMContentLoaded', async function(){
   prefetchNotifications();      // fire-and-forget -- the bell opens with the list already loaded
   startNotifRealtime();
   startLiveLikes();
+  startPillarDots();
   await registerServiceWorker();
   clearShownPushes();
   await refreshPushRowLabel();
@@ -16691,6 +16963,65 @@ document.addEventListener('DOMContentLoaded', async function(){
 
   await Promise.allSettled([spillPromise, momentQuestionPromise, doorPromise]);
 });
+
+/* ============================================================
+   PILLAR DOTS -- a small gold dot on a pillar (Orgs, Rant/Spill) when new posts have arrived that you haven't loaded.
+   Tap the pillar and its feed loads. While you are on a feed, the "new posts" pill does this job; if you leave with
+   posts still waiting, the dot takes over. When you are in Spill, the dot sits on the Rant switch instead.
+   ============================================================ */
+const pillarDots = { orgs:false, twin:false };
+let pillarDotChannel = null;
+
+function paintPillarDots(){
+  const navDot = (key, on) => {
+    const icon = document.querySelector('#bottom-nav .nav-item[data-screen="' + key + '"] .nav-icon');
+    if(!icon) return;
+    let d = icon.querySelector('.nav-new-dot');
+    if(on && !d){ d = document.createElement('i'); d.className = 'nav-new-dot'; icon.appendChild(d); }
+    else if(!on && d){ d.remove(); }
+  };
+  navDot('orgs', pillarDots.orgs && currentScreenKey !== 'orgs');
+  navDot('twin', pillarDots.twin && currentScreenKey !== 'twin');
+  const rantBtn = document.querySelector('#twin-toggle .twin-btn[data-mode="rant"]');
+  if(rantBtn){
+    const on = pillarDots.twin && currentScreenKey === 'twin' && currentTwinMode === 'spill';
+    let d = rantBtn.querySelector('.twin-new-dot');
+    if(on && !d){ d = document.createElement('i'); d.className = 'twin-new-dot'; rantBtn.appendChild(d); }
+    else if(!on && d){ d.remove(); }
+  }
+}
+function pillarDotClear(key){
+  if(!pillarDots[key]) return;
+  pillarDots[key] = false;
+  paintPillarDots();
+}
+// Called whenever a pillar (or Rant/Spill) is opened: if posts were waiting, load that feed now.
+function onPillarVisited(key){
+  if(key === 'orgs' && pillarDots.orgs){
+    loadOrgsFeed(true);                                  // clears the dot when it renders
+  } else if(key === 'twin' && currentScreenKey === 'twin' && currentTwinMode === 'rant' && pillarDots.twin){
+    pillarDots.twin = false;
+    Promise.resolve(loadFeed()).then(()=>{ const f = document.getElementById('feed'); if(f) f.scrollTo({ top: 0 }); }).catch(()=>{});
+  }
+  paintPillarDots();
+}
+function startPillarDots(){
+  if(pillarDotChannel || !currentUserId) return;
+  pillarDotChannel = sb
+    .channel('pillar-dots')
+    .on('postgres_changes', { event:'INSERT', schema:'public', table:'posts', filter:'post_type=eq.rant' }, (payload)=>{
+      const n = payload.new || {};
+      if(n.user_id === currentUserId) return;
+      if(n.organization_id && !n.community_id){            // an organisation post -> Orgs pillar
+        if(myMutedOrgIds.has(n.organization_id)) return;
+        pillarDots.orgs = true;
+      } else {                                              // a normal rant -> Rant
+        pillarDots.twin = true;
+      }
+      paintPillarDots();
+    })
+    .subscribe();
+}
 
 /* ============================================================
    READ MORE -- long text in post cards (main feed, organisations, Your posts, bookmarks,
