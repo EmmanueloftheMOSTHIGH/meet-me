@@ -2492,6 +2492,11 @@
   background:var(--bg-elevated); border:1px solid var(--card-border); color:var(--ivory);
   font-family:'Karla',sans-serif; font-size:13px; outline:none;
 }
+#compose-part-input{
+  width:1.7em; padding:0 2px; margin:0 0 0 2px; text-align:center;
+  font:inherit; color:inherit; background:transparent; outline:none;
+  border:0; border-bottom:1.5px dotted currentColor; border-radius:0; -moz-appearance:textfield;
+}
 #compose-trend-label{ flex:1; min-width:0; font-size:12px; color:var(--gold-text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 #compose-trend-remove{ font-size:11px; color:var(--muted-dim); text-decoration:underline; cursor:pointer; flex-shrink:0; }
 .sticker-tile-remove{
@@ -3446,6 +3451,17 @@
       <div class="account-btn primary" id="compose-submit-btn">Post</div>
       <div class="account-close" id="compose-overlay-close">cancel</div>
       </div>
+    </div>
+  </div>
+
+  <div id="edit-post-overlay" class="account-overlay">
+    <div class="account-panel" style="max-width:420px;">
+      <div class="account-title">Edit post</div>
+      <div class="account-sub">You can edit for 24 hours after posting. An edited post shows "(edited)".</div>
+      <input id="edit-post-header" type="text" maxlength="60" placeholder="Header" autocomplete="off" style="display:none; width:100%; box-sizing:border-box; margin-bottom:10px; padding:12px 14px; border-radius:12px; border:1px solid var(--card-border); background:var(--bg-elevated); color:var(--ivory); font-family:'Karla',sans-serif; font-size:15px; outline:none;">
+      <textarea id="edit-post-text" rows="7" maxlength="5000" style="width:100%; box-sizing:border-box; margin-bottom:14px; padding:12px 14px; border-radius:12px; border:1px solid var(--card-border); background:var(--bg-elevated); color:var(--ivory); font-family:'Karla',sans-serif; font-size:15px; line-height:1.5; resize:vertical; outline:none;"></textarea>
+      <div class="account-btn primary" id="edit-post-save">Save changes</div>
+      <div class="account-close" id="edit-post-cancel">cancel</div>
     </div>
   </div>
 
@@ -9552,7 +9568,7 @@ async function orgBodyClick(e){
 }
 document.getElementById('org-list-body').addEventListener('click', orgBodyClick);
 
-async function saveRant(content, communityId, audio, inspiredByPostId, stickerUrl, happeningId, doorQuestionId, doorRouteScore, asOrg, asFounder, trendId){
+async function saveRant(content, communityId, audio, inspiredByPostId, stickerUrl, happeningId, doorQuestionId, doorRouteScore, asOrg, asFounder, trendId, trendPart){
   if(!currentUserId) return console.error('No user');
   const base = communityId ? { community_id: communityId } : { user_id: currentUserId };
   const row = { ...base, content: content || null, post_type: 'rant' };
@@ -9561,6 +9577,7 @@ async function saveRant(content, communityId, audio, inspiredByPostId, stickerUr
   if(stickerUrl) row.sticker_url = stickerUrl;
   if(happeningId) row.happening_id = happeningId;
   if(trendId) row.trend_id = trendId;   // the database numbers the part and keeps the series together
+  if(trendId && trendPart) row.trend_part = trendPart;   // only sent when inserting before the end; the database moves the later parts up
   if(doorQuestionId){ row.door_question_id = doorQuestionId; row.door_route_score = doorRouteScore; }
   if(asOrg && !communityId){ row.organization_id = asOrg.id; row.header = asOrg.header || null; }
   else if(asFounder && isMeet8 && !communityId){ row.as_founder = true; }   // the database trigger is what really enforces Meet 8 only
@@ -9864,6 +9881,7 @@ document.addEventListener('click', async (e)=>{
   await loadOrgsFeed(true);
 });
 
+const EDIT_WINDOW_MS = 24 * 60 * 60 * 1000;   // the database enforces the same 24 hours
 function renderRantPost(post, userLiked, likeCount, inspirationLabels, opts){
   opts = opts || {};
   const isCommunity = !!post.community_id;
@@ -9904,7 +9922,7 @@ function renderRantPost(post, userLiked, likeCount, inspirationLabels, opts){
   div.innerHTML = `
     <div class="post-head">
       <span class="post-id">${headHtml}</span>
-      <span class="post-head-right">${(isOrg && currentUserId && !myFollows[org.id] && !myOrgIds.has(org.id)) ? `<span class="org-follow-pill" role="button" data-org-id="${org.id}">Follow</span>` : ''}<span class="post-time">${formatRelativeTime(post.created_at)}</span></span>
+      <span class="post-head-right">${(isOrg && currentUserId && !myFollows[org.id] && !myOrgIds.has(org.id)) ? `<span class="org-follow-pill" role="button" data-org-id="${org.id}">Follow</span>` : ''}<span class="post-time">${formatRelativeTime(post.created_at)}${post.edited_at ? ' (edited)' : ''}</span></span>
     </div>
     ${isOrg && post.header ? `<div class="org-header">${escapeHtml(post.header)}</div>` : ''}
     ${doorTagHtml(post)}
@@ -9926,6 +9944,10 @@ function renderRantPost(post, userLiked, likeCount, inspirationLabels, opts){
         `<span class="post-action trend-continue-trigger" data-trend-id="${post.trend_id}">Add next part</span><span class="post-action trend-finish-trigger" data-trend-id="${post.trend_id}">Finish trend</span>`);
     }
   }
+  if(isOwn && !isCommunity && (post.post_type || 'rant') === 'rant' && !post.answer_to_post_id && (Date.now() - new Date(post.created_at).getTime()) < EDIT_WINDOW_MS){
+    const menu = div.querySelector('.post-more-menu');
+    if(menu) menu.insertAdjacentHTML('afterbegin', `<span class="post-action edit-post-trigger" data-post-id="${post.id}" data-content="${escapeHtml(post.content || '')}" data-header="${escapeHtml(post.header || '')}" data-org="${isOrg ? '1' : ''}">Edit</span>`);
+  }
   if(fresh) watchFreshOrgPost(div);
   watchPostView(div, post);
   if(isOrg && myOrgIds.has(post.organization_id)) addOrgPostInsight(div, post);
@@ -9943,7 +9965,7 @@ async function loadFeed(){
   feedHasMore = true;
   const { data: rawPosts, error } = await sb
     .from('posts')
-    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), trend_id, trend_part, trends(title, is_complete, organization_id), users!posts_user_id_fkey(meet_number), communities(name, icon)')
+    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, edited_at, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), trend_id, trend_part, trends(title, is_complete, organization_id), users!posts_user_id_fkey(meet_number), communities(name, icon)')
     .eq('post_type', 'rant')
     .eq('trend_hidden', false)
     .or('organization_id.is.null,community_id.not.is.null')   // organisation posts live in the Organisations pillar
@@ -9999,7 +10021,7 @@ async function loadMoreFeed(){
 
   const { data: rawPosts, error } = await sb
     .from('posts')
-    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), trend_id, trend_part, trends(title, is_complete, organization_id), users!posts_user_id_fkey(meet_number), communities(name, icon)')
+    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, edited_at, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), trend_id, trend_part, trends(title, is_complete, organization_id), users!posts_user_id_fkey(meet_number), communities(name, icon)')
     .eq('post_type', 'rant')
     .eq('trend_hidden', false)
     .or('organization_id.is.null,community_id.not.is.null')
@@ -10474,7 +10496,7 @@ async function loadOrgPagePosts(reset){
     if(reset) orgPageOffset = 0;
     const { data: rows, error } = await sb
       .from('posts')
-      .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), trend_id, trend_part, trends(title, is_complete, organization_id), users!posts_user_id_fkey(meet_number), communities(name, icon)')
+      .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, edited_at, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), trend_id, trend_part, trends(title, is_complete, organization_id), users!posts_user_id_fkey(meet_number), communities(name, icon)')
       .eq('post_type', 'rant')
       .eq('organization_id', id)
       .eq('trend_hidden', false)
@@ -10544,7 +10566,7 @@ async function renderOrgsFeed(){
   const orgsReady = ensureOrgs();   // start loading org names/follows at the same time as the posts, not after them
   const { data: rawPosts, error } = await sb
     .from('posts')
-    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), trend_id, trend_part, trends(title, is_complete, organization_id), users!posts_user_id_fkey(meet_number), communities(name, icon)')
+    .select('id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, edited_at, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), trend_id, trend_part, trends(title, is_complete, organization_id), users!posts_user_id_fkey(meet_number), communities(name, icon)')
     .eq('post_type', 'rant')
     .not('organization_id', 'is', null)
     .eq('trend_hidden', false)
@@ -11708,7 +11730,7 @@ async function navigateToPost(postId){
   if(!postId) return;
   const { data: post, error } = await sb
     .from('posts')
-    .select('id, post_type, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), trend_id, trend_part, trends(title, is_complete, organization_id), users!posts_user_id_fkey(meet_number), communities(name, icon)')
+    .select('id, post_type, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, edited_at, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), trend_id, trend_part, trends(title, is_complete, organization_id), users!posts_user_id_fkey(meet_number), communities(name, icon)')
     .eq('id', postId)
     .single();
   if(error || !post){
@@ -12866,7 +12888,7 @@ function openComposeOverlay(){
   const trendEligible = isPlainRant || currentScreenKey === 'orgs';
   composeTrendSetup(trendEligible);
   if(pendingContinueTrend){
-    if(trendEligible){ composeTrend = pendingContinueTrend; composeTrendRender(); title.textContent = 'Part ' + (composeTrend.part || 2); }
+    if(trendEligible){ composeTrend = pendingContinueTrend; composeTrend.next = composeTrend.part || 2; composeTrend.chosenPart = composeTrend.next; composeTrendRender(); composePartHeading(); }
     pendingContinueTrend = null;
   }
 
@@ -13142,7 +13164,7 @@ document.getElementById('happening-view-back').addEventListener('click', ()=>{
    and dots. Swipe the card, or tap a dot, to move between parts. Tap the chip for the whole
    series, oldest first. The database numbers the parts and enforces the rules (only the
    author adds parts, 3 active trends each, 5 parts per trend per day, 50 parts total). */
-const TREND_PART_SELECT = 'id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), trend_id, trend_part, trends(title, is_complete, organization_id), users!posts_user_id_fkey(meet_number), communities(name, icon)';
+const TREND_PART_SELECT = 'id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, community_id, organization_id, header, edited_at, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), trend_id, trend_part, trends(title, is_complete, organization_id), users!posts_user_id_fkey(meet_number), communities(name, icon)';
 let composeTrend = null;            // null | { id:null } (starting one) | { id, title, part, organization_id } (adding a part)
 let pendingContinueTrend = null;    // set just before openComposeOverlay() when adding to an existing trend
 let trendCache = {};                // trendId -> { parts, at }
@@ -13169,6 +13191,24 @@ function trendRowHtml(post, opts){
 }
 
 /* ----- composer ----- */
+// "Part 3" in the composer heading: when adding to an existing trend the number can be edited.
+// 1 to (parts so far) inserts at that number and moves the later parts up; the next number just adds to the end.
+function composePartHeading(){
+  const title = document.getElementById('compose-title');
+  if(!composeTrend || !composeTrend.id){ return; }
+  title.innerHTML = 'Part <input id="compose-part-input" type="text" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="Part number" value="' + composeTrend.chosenPart + '">';
+  const inp = document.getElementById('compose-part-input');
+  inp.addEventListener('input', ()=>{ inp.value = inp.value.replace(/\D/g, '').slice(0, 2); });
+  inp.addEventListener('focus', ()=>{ inp.select(); });
+  inp.addEventListener('blur', ()=>{
+    let n = parseInt(inp.value, 10);
+    if(!n || n < 1){ n = composeTrend.next; }
+    if(n > composeTrend.next){ showNavToast('This trend has ' + (composeTrend.next - 1) + ' part' + (composeTrend.next - 1 === 1 ? '' : 's') + ' so far. The most you can pick is ' + composeTrend.next + '.'); n = composeTrend.next; }
+    composeTrend.chosenPart = n;
+    inp.value = n;
+    composeTrendRender();
+  });
+}
 function composeTrendRender(){
   const btn = document.getElementById('compose-trend-btn');
   const editor = document.getElementById('compose-trend-editor');
@@ -13180,13 +13220,17 @@ function composeTrendRender(){
   if(composeTrend.id){
     input.style.display = 'none';
     label.style.display = 'block';
-    label.textContent = 'Part ' + composeTrend.part + ' \u00b7 ' + composeTrend.title;
+    label.textContent = 'Part ' + (composeTrend.chosenPart || composeTrend.part) + ' \u00b7 ' + composeTrend.title;
   } else {
     input.style.display = 'block';
     label.style.display = 'none';
   }
 }
 function discardTrend(){
+  const hd = document.getElementById('compose-title');
+  if(composeTrend && composeTrend.id && hd.querySelector('#compose-part-input')){   // heading was "Part N": put it back
+    hd.textContent = (currentScreenKey === 'orgs') ? 'Post as your organisation' : "What's true right now?";
+  }
   composeTrend = null;
   document.getElementById('compose-trend-title').value = '';
   composeTrendRender();
@@ -13475,6 +13519,68 @@ async function removeMySticker(url){
   myStickers = myStickers.filter(u => u !== url);
   renderStickerPicker();
 }
+/* ---------- edit your own post text (24 hours, Rant and Organisations) ---------- */
+let editPostId = null, editPostOriginal = { content:'', header:'' }, editPostIsOrg = false, editPostBusy = false;
+function editErrorMessage(err){
+  const m = (err && err.message) || '';
+  if(m.includes('edit_window_closed')) return 'The 24 hours for editing this post have passed.';
+  if(m.includes('edit_empty')) return 'A post needs some text.';
+  if(m.includes('edit_too_long')) return 'That is too long. Keep it under 5000 characters.';
+  if(m.includes('org_header_required')) return 'This organisation needs a header.';
+  if(m.includes('edit_header_too_long')) return 'The header can be 60 characters at most.';
+  if(m.includes('edit_not_author')) return 'Only the author can edit this post.';
+  if(m.includes('edit_missing')) return 'That post no longer exists.';
+  return "Couldn't save your edit. Try again.";
+}
+function openEditPost(btn){
+  editPostId = btn.dataset.postId;
+  editPostIsOrg = btn.dataset.org === '1';
+  editPostOriginal = { content: btn.dataset.content || '', header: btn.dataset.header || '' };
+  const hd = document.getElementById('edit-post-header');
+  hd.style.display = editPostIsOrg ? 'block' : 'none';
+  hd.value = editPostOriginal.header;
+  const ta = document.getElementById('edit-post-text');
+  ta.value = editPostOriginal.content;
+  document.getElementById('edit-post-overlay').classList.add('show');
+  setTimeout(()=>{ ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }, 60);
+}
+function closeEditPost(){
+  document.getElementById('edit-post-overlay').classList.remove('show');
+  editPostId = null; editPostBusy = false;
+  document.getElementById('edit-post-save').style.opacity = '';
+}
+document.addEventListener('click', (e)=>{
+  const b = e.target.closest('.edit-post-trigger');
+  if(!b) return;
+  e.stopPropagation();
+  const wrap = b.closest('.post-more'); if(wrap) wrap.classList.remove('open');
+  openEditPost(b);
+});
+document.getElementById('edit-post-cancel').addEventListener('click', closeEditPost);
+document.getElementById('edit-post-save').addEventListener('click', async ()=>{
+  if(editPostBusy || !editPostId) return;
+  const content = document.getElementById('edit-post-text').value.trim();
+  const header = editPostIsOrg ? document.getElementById('edit-post-header').value.trim() : '';
+  if(content === editPostOriginal.content.trim() && header === editPostOriginal.header.trim()){ closeEditPost(); showNavToast('No changes.'); return; }
+  editPostBusy = true;
+  document.getElementById('edit-post-save').style.opacity = '0.6';
+  const { error } = await sb.rpc('edit_post_text', { p_post_id: Number(editPostId), p_content: content, p_header: editPostIsOrg ? header : null });
+  if(error){
+    console.error('Edit post failed:', error);
+    editPostBusy = false;
+    document.getElementById('edit-post-save').style.opacity = '';
+    showNavToast(editErrorMessage(error));
+    return;
+  }
+  closeEditPost();
+  showNavToast('Post updated.');
+  trendCache = {};
+  if(typeof reloadTrendViewIfOpen === 'function') reloadTrendViewIfOpen();
+  if(currentScreenKey === 'orgs') await loadOrgsFeed(true);
+  else if(currentScreenKey === 'twin' && currentTwinMode === 'rant') await loadFeed();
+  if(typeof yourpostsOverlay !== 'undefined' && yourpostsOverlay.classList.contains('show')) await loadYourPosts();
+});
+
 async function toggleStickerStar(url){
   if(!currentUserId || !url) return;
   const next = !myStickerStars.has(url);
@@ -14329,12 +14435,18 @@ document.getElementById('compose-submit-btn').addEventListener('click', async ()
   const answerToId = currentAnswerToPostId;       // set when this post answers a Spill question
   const asQuestion = currentComposeAsQuestion;    // set when this Spill post is a question
   const draftKeyAtSubmit = composeDraftKey();   // same -- read before closeComposeOverlay() clears the context
-  const trendToUse = composeTrend ? { id: composeTrend.id, fromPostId: composeTrend.fromPostId || null, title: composeTrend.id ? composeTrend.title : document.getElementById('compose-trend-title').value.trim() } : null;   // same -- captured before discardTrend() clears it
+  const trendToUse = composeTrend ? { id: composeTrend.id, part: (composeTrend.id && composeTrend.chosenPart && composeTrend.chosenPart < composeTrend.next) ? composeTrend.chosenPart : null, laterCount: composeTrend.id ? (composeTrend.next - (composeTrend.chosenPart || composeTrend.next)) : 0, fromPostId: composeTrend.fromPostId || null, title: composeTrend.id ? composeTrend.title : document.getElementById('compose-trend-title').value.trim() } : null;   // same -- captured before discardTrend() clears it
 
   if(!content && !blobToUpload && !stickerToUse) return; // need at least one of text, voice, or sticker
   if(asQuestion && !content){ showNavToast('Write your question first.'); return; }
   if(trendToUse && !trendToUse.id && !trendToUse.title){ showNavToast('Give your trend a title.'); return; }
   if(trendToUse && (inspiredByPostId || answerToId || postingAsCommunity)){ showNavToast('A trend can\'t be an "inspired by" post. Remove the trend first.'); return; }
+
+  if(trendToUse && trendToUse.part){
+    const lastNo = trendToUse.part + trendToUse.laterCount - 1;
+    const moved = trendToUse.laterCount === 1 ? 'Part ' + trendToUse.part : 'Parts ' + trendToUse.part + ' to ' + lastNo;
+    if(!(await askConfirm({ title:'Insert as Part ' + trendToUse.part + '?', message: moved + ' will move up by one number.', okText:'Insert', cancelText:'Cancel' }))) return;
+  }
 
   let audio = null;
   if(blobToUpload){
@@ -14400,7 +14512,7 @@ document.getElementById('compose-submit-btn').addEventListener('click', async ()
     if(!orgToUse) return;
     const orgTrendId = await resolveTrendId(trendToUse, orgToUse, content);
     if(orgTrendId === undefined) return;
-    await saveRant(content, null, audio, null, stickerToUse, null, null, null, orgToUse, null, orgTrendId);
+    await saveRant(content, null, audio, null, stickerToUse, null, null, null, orgToUse, null, orgTrendId, trendToUse && trendToUse.part);
     if(trendToUse){ trendCache = {}; reloadTrendViewIfOpen(); }
     await loadOrgsFeed(true);
     await refreshYourPostsIfOpen();
@@ -14414,7 +14526,7 @@ document.getElementById('compose-submit-btn').addEventListener('click', async ()
   } else {
     const rantTrendId = await resolveTrendId(trendToUse, orgToUse, content);
     if(rantTrendId === undefined) return;
-    await saveRant(content, null, audio, null, stickerToUse, happeningToUse, null, null, orgToUse, founderToUse, rantTrendId);
+    await saveRant(content, null, audio, null, stickerToUse, happeningToUse, null, null, orgToUse, founderToUse, rantTrendId, trendToUse && trendToUse.part);
     if(trendToUse){ trendCache = {}; reloadTrendViewIfOpen(); }
     await loadFeed();
   }
