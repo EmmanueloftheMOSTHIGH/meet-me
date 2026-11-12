@@ -9568,6 +9568,26 @@ async function orgBodyClick(e){
 }
 document.getElementById('org-list-body').addEventListener('click', orgBodyClick);
 
+let lastSavedRantRow = null;
+const RANT_CARD_SELECT = 'id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, post_type, community_id, organization_id, header, edited_at, as_founder, story_number, inspired_by_post_id, door_question_id, happening_id, happenings(name), trend_id, trend_part, trends(title, is_complete, organization_id), users!posts_user_id_fkey(meet_number), communities(name, icon)';
+
+// Puts a just-posted Rant at the top of the feed immediately, instead of reloading the whole feed
+// (which meant a query, then likes, like counts and labels, then redrawing 20 cards). Returns false when
+// the post can't be shown this way (organisation, community or trend posts), so the caller reloads as before.
+async function showNewRantNow(row){
+  if(!row || row.organization_id || row.community_id || row.trend_id) return false;
+  const feed = document.getElementById('feed');
+  if(!feed) return false;
+  if(feed.querySelector('.post[data-post-id="' + row.id + '"]')) return true;
+  const labels = row.inspired_by_post_id ? await fetchInspirationLabels([row]) : {};
+  const card = renderRantPost(row, false, 0, labels);
+  const firstPost = feed.querySelector('.post');
+  feed.insertBefore(card, firstPost || document.getElementById('boundary-marker'));
+  feedOffset += 1;   // the next page must not repeat this post
+  feed.scrollTo({ top: 0, behavior: 'smooth' });
+  saveSnapshotSoon();
+  return true;
+}
 async function saveRant(content, communityId, audio, inspiredByPostId, stickerUrl, happeningId, doorQuestionId, doorRouteScore, asOrg, asFounder, trendId, trendPart){
   if(!currentUserId) return console.error('No user');
   const base = communityId ? { community_id: communityId } : { user_id: currentUserId };
@@ -9581,7 +9601,10 @@ async function saveRant(content, communityId, audio, inspiredByPostId, stickerUr
   if(doorQuestionId){ row.door_question_id = doorQuestionId; row.door_route_score = doorRouteScore; }
   if(asOrg && !communityId){ row.organization_id = asOrg.id; row.header = asOrg.header || null; }
   else if(asFounder && isMeet8 && !communityId){ row.as_founder = true; }   // the database trigger is what really enforces Meet 8 only
-  const { error } = await sb.from('posts').insert(row);
+  lastSavedRantRow = null;
+  // The saved row comes back in the same request, so the new post can go straight onto the feed with no second trip.
+  const { data: savedRow, error } = await sb.from('posts').insert(row).select(RANT_CARD_SELECT).single();
+  if(!error && savedRow) lastSavedRantRow = savedRow;
   if(error){ console.error('Error saving rant:', error); composeDraftRestoreAfterFail(content); showNavToast(orgErrorMessage(error) || 'Your post didn\'t go through. Try again.'); return false; }
   if(inspiredByPostId) await notifyInspiredBy(inspiredByPostId);
   return true;
@@ -10561,6 +10584,27 @@ document.getElementById('orgpage-posts').addEventListener('click', async (e)=>{
   if(likeBtn){ e.stopPropagation(); const pid = likeBtn.dataset.postId; if(pid) await toggleLike(pid, likeBtn); }
 });
 
+let lastOrgsRows = [];   // the rows the strip and feed were last built from
+
+// Puts a just-posted organisation post at the top of the Organisations feed straight away and refreshes the logo strip.
+// It does not reorder anything else. Returns false for trend parts or an empty page, so the caller reloads as before.
+async function showNewOrgPostNow(row){
+  if(!row || !row.organization_id || row.community_id || row.trend_id) return false;
+  const list = document.getElementById('orgs-list');
+  if(!list) return false;
+  if(list.querySelector('.post[data-post-id="' + row.id + '"]')) return true;
+  const firstPost = list.querySelector('.post');
+  if(!firstPost) return false;   // empty page: it has no "Latest" section yet, so let the full load build it
+  await ensureOrgs();
+  const labels = row.inspired_by_post_id ? await fetchInspirationLabels([row]) : {};
+  firstPost.parentNode.insertBefore(renderRantPost(row, false, 0, labels), firstPost);
+  lastOrgsRows = [row].concat(lastOrgsRows || []);
+  renderOrgsStrip(lastOrgsRows, null);
+  const sc = document.getElementById('orgs-feed');
+  if(sc) sc.scrollTo({ top: 0, behavior: 'smooth' });
+  saveSnapshotSoon();
+  return true;
+}
 async function renderOrgsFeed(){
   const list = document.getElementById('orgs-list');
   const orgsReady = ensureOrgs();   // start loading org names/follows at the same time as the posts, not after them
@@ -10587,6 +10631,7 @@ async function renderOrgsFeed(){
   const isFollowed = p => !!myFollows[p.organization_id] || myOrgIds.has(p.organization_id);
   const followed = rows.filter(isFollowed);
   const others = rows.filter(p => !isFollowed(p));
+  lastOrgsRows = rows;
   renderOrgsStrip(rows, null);   // the strip needs only posts + org info, so draw it now instead of waiting for like counts
 
   const [likedIds, likeCounts, inspirationLabels] = await Promise.all([
@@ -14487,11 +14532,11 @@ document.getElementById('compose-submit-btn').addEventListener('click', async ()
   }
 
   if(inspiredByPostId){
-    if(inspiredBySpace === 'Rant'){ await saveRant(content, null, audio, inspiredByPostId, stickerToUse, null, null, null, null, founderToUse); if(currentScreenKey==='twin' && currentTwinMode==='rant') await loadFeed(); }
+    if(inspiredBySpace === 'Rant'){ const okRant = await saveRant(content, null, audio, inspiredByPostId, stickerToUse, null, null, null, null, founderToUse); if(currentScreenKey==='twin' && currentTwinMode==='rant' && !(okRant && await showNewRantNow(lastSavedRantRow))) await loadFeed(); }
     else if(inspiredBySpace === 'Orgs'){
       if(!orgToUse){ showNavToast('Pick which organisation to post as.'); return; }
-      await saveRant(content, null, audio, inspiredByPostId, stickerToUse, null, null, null, orgToUse);
-      if(currentScreenKey === 'orgs') await loadOrgsFeed(true);
+      const okInsp = await saveRant(content, null, audio, inspiredByPostId, stickerToUse, null, null, null, orgToUse);
+      if(currentScreenKey === 'orgs' && !(okInsp && await showNewOrgPostNow(lastSavedRantRow))) await loadOrgsFeed(true);
     }
     else if(inspiredBySpace === 'Spill'){ await saveSpill(content, audio, inspiredByPostId, stickerToUse, null, null, founderToUse); if(currentTwinMode==='spill'){ const spills = await loadSpills(); cachedSpills = spills; renderSpills(spills); } }
     await refreshYourPostsIfOpen();
@@ -14512,9 +14557,9 @@ document.getElementById('compose-submit-btn').addEventListener('click', async ()
     if(!orgToUse) return;
     const orgTrendId = await resolveTrendId(trendToUse, orgToUse, content);
     if(orgTrendId === undefined) return;
-    await saveRant(content, null, audio, null, stickerToUse, null, null, null, orgToUse, null, orgTrendId, trendToUse && trendToUse.part);
+    const okOrg = await saveRant(content, null, audio, null, stickerToUse, null, null, null, orgToUse, null, orgTrendId, trendToUse && trendToUse.part);
     if(trendToUse){ trendCache = {}; reloadTrendViewIfOpen(); }
-    await loadOrgsFeed(true);
+    if(!(okOrg && !trendToUse && await showNewOrgPostNow(lastSavedRantRow))) await loadOrgsFeed(true);
     await refreshYourPostsIfOpen();
     return;
   }
@@ -14526,9 +14571,9 @@ document.getElementById('compose-submit-btn').addEventListener('click', async ()
   } else {
     const rantTrendId = await resolveTrendId(trendToUse, orgToUse, content);
     if(rantTrendId === undefined) return;
-    await saveRant(content, null, audio, null, stickerToUse, happeningToUse, null, null, orgToUse, founderToUse, rantTrendId, trendToUse && trendToUse.part);
+    const okPlain = await saveRant(content, null, audio, null, stickerToUse, happeningToUse, null, null, orgToUse, founderToUse, rantTrendId, trendToUse && trendToUse.part);
     if(trendToUse){ trendCache = {}; reloadTrendViewIfOpen(); }
-    await loadFeed();
+    if(!(okPlain && !trendToUse && await showNewRantNow(lastSavedRantRow))) await loadFeed();
   }
   await refreshYourPostsIfOpen();
 });
