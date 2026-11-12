@@ -2501,6 +2501,16 @@
   display:flex; align-items:center; justify-content:center;
   font-size:13px; line-height:1; cursor:pointer;
 }
+.sticker-tile-star{
+  position:absolute; top:3px; left:3px;
+  width:18px; height:18px; border-radius:50%;
+  background:rgba(5,5,6,0.75); color:var(--ivory);
+  display:flex; align-items:center; justify-content:center;
+  font-size:11px; line-height:1; cursor:pointer;
+}
+.sticker-tile-star.on{ color:var(--gold-light); }
+#sticker-clear-all{ text-align:center; font-size:12px; color:var(--muted-dim); text-decoration:underline; cursor:pointer; padding:10px 0 2px; }
+#sticker-clear-all:active{ color:#e05a5a; }
 .chat-cancel-btn{
   font-size:10px; letter-spacing:0.05em; text-transform:uppercase;
   color:var(--muted); border:1px solid var(--card-border);
@@ -3442,10 +3452,11 @@
   <div id="sticker-picker-overlay" class="account-overlay">
     <div class="account-panel" style="max-width:360px;">
       <div class="account-title">Your stickers</div>
-      <div class="account-sub">Tap one to use it, or add a new one.</div>
+      <div class="account-sub">Tap one to use it. Star the ones you want to keep; the rest clear after 24 hours.</div>
       <div id="sticker-picker-grid" style="display:grid; grid-template-columns:repeat(4,1fr); gap:10px; max-height:280px; overflow-y:auto; margin-bottom:14px;"></div>
       <input type="file" id="sticker-upload-input" accept="image/png,image/webp,image/jpeg,image/gif" style="display:none;">
       <div class="account-btn primary" id="sticker-upload-btn">+ Upload a sticker</div>
+      <div id="sticker-clear-all">Delete all stickers</div>
       <div class="account-close" id="sticker-picker-close">close</div>
     </div>
   </div>
@@ -8407,7 +8418,7 @@ async function openInspireSheet(postId, sourceSpace, name){
     pendingInspire.trendId = src.trend_id;
     rows.push({ key:'Trend', label:'Continue this trend', hint:'Add the next part to \u201c' + src.trends.title + '\u201d.' });
   } else if(src && !src.trend_id && src.user_id === currentUserId && src.post_type === 'rant' && !src.community_id && !src.story_number
-            && !src.inspired_by_post_id && !src.answer_to_post_id && !src.is_question){
+            && !src.answer_to_post_id && !src.is_question){   // an "inspired by" post is still a normal post
     pendingInspire.orgId = src.organization_id || null;
     rows.push({ key:'TrendStart', label:'Continue as a trend', hint:'This post becomes Part 1. You write Part 2.' });
   }
@@ -8951,6 +8962,29 @@ async function fetchOrgRows(){
   if(r.error){ r = await sb.from('organizations').select('id, name, crest_color, type'); }   // column not added yet: carry on without taglines
   return r;
 }
+// Latest first: the organisation you posted as most recently leads the list, so "Post as" opens on it and cycles from there.
+// Organisations that have never posted keep their original order, after the ones that have.
+async function sortMyOrgsLatestFirst(){
+  if(!myOrgs || myOrgs.length < 2) return;
+  try{
+    const ids = myOrgs.map(r => r.id);
+    const { data } = await sb.from('posts').select('organization_id, created_at').in('organization_id', ids).order('created_at', { ascending:false }).limit(300);
+    const rank = {};
+    (data || []).forEach((r, i)=>{ if(rank[r.organization_id] === undefined) rank[r.organization_id] = i; });
+    myOrgs = myOrgs.map((o, i)=>({ o, i })).sort((a, b)=>{
+      const ra = rank[a.o.id], rb = rank[b.o.id];
+      if(ra === undefined && rb === undefined) return a.i - b.i;
+      if(ra === undefined) return 1;
+      if(rb === undefined) return -1;
+      return ra - rb;
+    }).map(x => x.o);
+  }catch(e){ console.error('Ordering organisations failed:', e); }
+}
+function bumpOrgToFront(id){
+  const i = myOrgs.findIndex(o => o.id === id);
+  if(i > 0){ const [o] = myOrgs.splice(i, 1); myOrgs.unshift(o); }
+}
+
 function ensureOrgs(force){
   if(force) orgsPromise = null;
   if(orgsPromise) return orgsPromise;
@@ -8966,6 +9000,7 @@ function ensureOrgs(force){
       orgMap = {};
       (o.data || []).forEach(r => { orgMap[r.id] = r; });
       myOrgs = mine.data || [];
+      await sortMyOrgsLatestFirst();
       myOrgs.forEach(r => { orgMap[r.id] = Object.assign({}, orgMap[r.id] || {}, { id:r.id, name:r.name, type:r.type, crest_color:r.crest_color }); });
       myOrgIds = new Set(myOrgs.map(r => r.id));
       if(typeof updateDeskRow === 'function') updateDeskRow();
@@ -13367,17 +13402,32 @@ function discardReplySticker(){
 // a multi-field compose step the way a post does.
 let stickerPickerTarget = 'post';
 
+// Stickers are kept only if starred. An unstarred sticker clears itself 24 hours after it was added or saved.
+const STICKER_UNSTARRED_MS = 24 * 60 * 60 * 1000;
+let myStickerStars = new Set();
 async function loadMyStickers(){
   if(!currentUserId) return;
-  const { data } = await sb.from('user_stickers').select('image_url').eq('user_id', currentUserId).order('created_at', { ascending: false });
-  myStickers = (data || []).map(s => s.image_url);
+  const { data } = await sb.from('user_stickers').select('image_url, starred, created_at').eq('user_id', currentUserId).order('created_at', { ascending: false });
+  const rows = data || [];
+  const cutoff = Date.now() - STICKER_UNSTARRED_MS;
+  const expired = rows.filter(r => !r.starred && new Date(r.created_at).getTime() < cutoff);
+  if(expired.length){
+    sb.from('user_stickers').delete().eq('user_id', currentUserId).eq('starred', false).lt('created_at', new Date(cutoff).toISOString())
+      .then(({ error })=>{ if(error) console.error('Clearing old stickers failed:', error); });
+  }
+  const kept = rows.filter(r => !expired.includes(r));
+  kept.sort((a, b) => (b.starred ? 1 : 0) - (a.starred ? 1 : 0));   // starred first, newest first inside each group (the query is already newest first)
+  myStickers = kept.map(r => r.image_url);
+  myStickerStars = new Set(kept.filter(r => r.starred).map(r => r.image_url));
 }
 
 function renderStickerPicker(){
   const grid = document.getElementById('sticker-picker-grid');
   grid.innerHTML = '';
+  document.getElementById('sticker-clear-all').style.display = '';
   if(!myStickers.length){
-    grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; font-size:12px; color:var(--muted-dim); padding:14px 0;">No stickers yet — upload one, or save one you see in a post.</div>';
+    grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; font-size:12px; color:var(--muted-dim); padding:14px 0;">No stickers yet. Upload one, or save one you see in a post, then star it to keep it.</div>';
+    document.getElementById('sticker-clear-all').style.display = 'none';
     return;
   }
   myStickers.forEach(url => {
@@ -13386,9 +13436,10 @@ function renderStickerPicker(){
     tile.innerHTML = (isVideoStickerUrl(url)
       ? `<img src="${escapeHtml(videoPosterUrl(url))}" style="width:100%; height:100%; object-fit:contain;" onerror="this.style.display='none'"><span class="vid-play sm"></span>`
       : `<img src="${escapeHtml(url)}" loading="lazy" decoding="async" onerror="stickerImgRetry(this)" style="width:100%; height:100%; object-fit:contain;">`)
+      + `<div class="sticker-tile-star${myStickerStars.has(url) ? ' on' : ''}" data-sticker-url="${escapeHtml(url)}" title="${myStickerStars.has(url) ? 'Starred: kept' : 'Star to keep'}">${myStickerStars.has(url) ? '★' : '☆'}</div>`
       + `<div class="sticker-tile-remove" data-sticker-url="${escapeHtml(url)}" title="Remove from your stickers">×</div>`;
     tile.addEventListener('click', (e)=>{
-      if(e.target.closest('.sticker-tile-remove')) return; // handled by its own listener below
+      if(e.target.closest('.sticker-tile-remove, .sticker-tile-star')) return; // handled by their own listener below
       if(stickerPickerTarget === 'chat'){
         document.getElementById('sticker-picker-overlay').classList.remove('show');
         sendChatSticker(url);
@@ -13424,12 +13475,33 @@ async function removeMySticker(url){
   myStickers = myStickers.filter(u => u !== url);
   renderStickerPicker();
 }
+async function toggleStickerStar(url){
+  if(!currentUserId || !url) return;
+  const next = !myStickerStars.has(url);
+  const { error } = await sb.from('user_stickers').update({ starred: next }).eq('user_id', currentUserId).eq('image_url', url);
+  if(error){ console.error('Error starring sticker:', error); showNavToast('Could not update the star. Try again.'); return; }
+  await loadMyStickers();
+  renderStickerPicker();
+}
+async function deleteAllMyStickers(){
+  if(!currentUserId) return;
+  const { error } = await sb.from('user_stickers').delete().eq('user_id', currentUserId);
+  if(error){ console.error('Error deleting stickers:', error); showNavToast('Could not delete your stickers. Try again.'); return; }
+  myStickers = []; myStickerStars = new Set();
+  renderStickerPicker();
+}
+document.getElementById('sticker-clear-all').addEventListener('click', async ()=>{
+  const starred = myStickerStars.size;
+  if(await askConfirm({ title:'Delete all stickers?', message: starred ? 'This removes every sticker, including your ' + starred + ' starred ' + (starred === 1 ? 'one' : 'ones') + '.' : 'This removes every sticker in your collection.', okText:'Delete all', danger:true })) deleteAllMyStickers();
+});
 document.getElementById('sticker-picker-grid').addEventListener('click', async (e)=>{
+  const starBtn = e.target.closest('.sticker-tile-star');
+  if(starBtn){ e.stopPropagation(); toggleStickerStar(starBtn.dataset.stickerUrl); return; }
   const removeBtn = e.target.closest('.sticker-tile-remove');
   if(!removeBtn) return;
   e.stopPropagation();
   const url = removeBtn.dataset.stickerUrl;
-  if(await askConfirm({ title:'Remove this sticker?', message:'It will be taken out of your collection.', okText:'Remove', danger:true })) removeMySticker(url);
+  if(await askConfirm({ title:'Remove this sticker?', message: myStickerStars.has(url) ? 'It is starred. It will be taken out of your collection.' : 'It will be taken out of your collection.', okText:'Remove', danger:true })) removeMySticker(url);
 });
 
 document.getElementById('compose-sticker-btn').addEventListener('click', async ()=>{
@@ -14279,6 +14351,7 @@ document.getElementById('compose-submit-btn').addEventListener('click', async ()
   }
 
   closeComposeOverlay();
+  if(orgToUse) bumpOrgToFront(orgToUse.id);   // the organisation just used goes to the top of the list
   composeLastDraftKey = draftKeyAtSubmit;
   composeDraftClear(draftKeyAtSubmit);          // the draft comes back automatically if saving fails (see saveRant / saveSpill)
 
