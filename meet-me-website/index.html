@@ -635,6 +635,14 @@
   .waveform{ flex:1; display:flex; align-items:center; gap:2px; height:20px; }
   .waveform span{ width:2.5px; background:var(--gold-dim); border-radius:2px; }
   .voice-note .dur{ font-size:11px; color:var(--muted); flex-shrink:0; }
+  .voice-note .waveform{ min-width:0; overflow:hidden; }
+  /* Scrubbing: tap or drag across the lines to move through the voice note. Lines already played turn bright gold.
+     The padding/negative margin makes the touch area taller than the lines without changing the layout. */
+  .voice-note .waveform{ justify-content:space-between; touch-action:none; cursor:pointer; padding:9px 0; margin:-9px 0; user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent; }
+  .voice-note .waveform span{ pointer-events:none; background:var(--gold); opacity:.28; transition:opacity .12s ease, background .12s ease; }
+  .voice-note .waveform span.played{ background:var(--gold-light); opacity:1; }
+  .voice-note.scrubbing .waveform span{ transition:none; }
+  .vn-speed{ font-size:11px; font-weight:600; color:var(--gold-text); border:1px solid var(--gold-dim); border-radius:10px; padding:5px 8px; min-width:34px; text-align:center; flex-shrink:0; cursor:pointer; user-select:none; -webkit-user-select:none; }
   .post-foot{ display:flex; align-items:center; gap:16px; margin-top:12px; flex-wrap:wrap; }
   .post-action{ font-size:12px; color:var(--muted-dim); cursor:pointer; }
   .post-action.friend-trigger{ color:var(--gold-text); }
@@ -3437,6 +3445,8 @@
         <input type="file" id="compose-gallery-input" accept="image/*,video/mp4,video/webm,video/quicktime" multiple style="display:none;">
         <div id="compose-video-btn" title="Add a video" style="display:none; width:38px; height:38px; border-radius:50%; background:var(--card); border:1px solid var(--card-border); align-items:center; justify-content:center; font-size:15px; cursor:pointer; flex-shrink:0; color:var(--gold-dim);">🎬</div>
         <input type="file" id="compose-video-input" accept="video/webm,video/mp4" style="display:none;">
+        <div id="compose-audio-btn" title="Upload an mp3 or other audio file" style="width:38px; height:38px; border-radius:50%; background:var(--card); border:1px solid var(--card-border); display:flex; align-items:center; justify-content:center; font-size:15px; cursor:pointer; flex-shrink:0; color:var(--gold-dim);">🎵</div>
+        <input type="file" id="compose-audio-input" accept="audio/mpeg,audio/mp3,audio/mp4,audio/x-m4a,audio/wav,audio/webm,audio/ogg,.mp3,.m4a,.wav,.ogg" style="display:none;">
         <div id="compose-voice-status" style="font-size:12px; color:var(--muted-dim); flex:1;">or add a picture, video, sticker or voice note</div>
         <div id="compose-voice-preview-play" style="display:none; width:32px; height:32px; border-radius:50%; background:var(--gold-dim); align-items:center; justify-content:center; font-size:11px; color:var(--bg); cursor:pointer; flex-shrink:0;">▶</div>
         <div id="compose-voice-discard" style="display:none; font-size:11px; color:var(--muted-dim); text-decoration:underline; cursor:pointer; flex-shrink:0;">discard</div>
@@ -5917,7 +5927,7 @@ document.getElementById('action-sheet-block').addEventListener('click', async ()
    ============================================================ */
 const postRepliesSheet = document.getElementById('post-replies-sheet');
 const OWN_POST_SELECTOR = '.post[data-post-id], .spill-card[data-post-id], .yp-post[data-post-id]';
-const POST_INTERACTIVE_SELECTOR = '.q-open, .org-dot, .spill-lock, .org-follow-pill, .post-action, .like-btn, .user-link, .sticker-tap, .text-tap, .voice-play-btn, .reply-trigger, .follow-trigger, .stand-trigger, .stand-panel, .org-name-link, .bookmark-trigger, .delete-post-trigger, .community-interest-trigger, .inspired-trigger, .rm-toggle, .inspired-source-link, .message-trigger, .friend-trigger, .share-trigger, .happening-pill, .trend-row, a, button, input, textarea';
+const POST_INTERACTIVE_SELECTOR = '.q-open, .org-dot, .spill-lock, .org-follow-pill, .post-action, .like-btn, .user-link, .sticker-tap, .text-tap, .voice-play-btn, .vn-speed, .waveform, .reply-trigger, .follow-trigger, .stand-trigger, .stand-panel, .org-name-link, .bookmark-trigger, .delete-post-trigger, .community-interest-trigger, .inspired-trigger, .rm-toggle, .inspired-source-link, .message-trigger, .friend-trigger, .share-trigger, .happening-pill, .trend-row, a, button, input, textarea';
 
 document.addEventListener('click', (e)=>{
   const trigger = e.target.closest('.own-replies-trigger');
@@ -7524,6 +7534,39 @@ async function deletePostRow(postId){
   return still ? { ok:false, error:{ message:'delete refused' } } : { ok:true, already:true };
 }
 
+// Forward a voice note: hands the real audio file to the phone's share sheet (WhatsApp, Telegram, etc.).
+// The file is kept after the first fetch, so a second try is instant.
+const vnForwardCache = {};
+document.addEventListener('click', async (e)=>{
+  const fwd = e.target.closest('.forward-vn-trigger');
+  if(!fwd) return;
+  e.stopPropagation();
+  const wrap = fwd.closest('.post-more'); if(wrap) wrap.classList.remove('open');
+  const url = fwd.dataset.audioUrl;
+  if(!url) return;
+  try{
+    let file = vnForwardCache[url];
+    const t0 = Date.now();
+    if(!file){
+      showNavToast('Preparing voice note…');
+      file = await fetchAsFile(url, 'meet-me-voice-note');
+      vnForwardCache[url] = file;
+      // The share sheet only opens right after a tap; if loading took long, the tap has expired.
+      if(Date.now() - t0 > 4000){ showNavToast('Ready. Tap Forward voice note again.'); return; }
+    }
+    if(navigator.canShare && navigator.canShare({ files: [file] })){
+      await navigator.share({ files: [file], title: 'Meet Me voice note' });
+    } else {
+      const blobUrl = URL.createObjectURL(file);
+      const link = document.createElement('a');
+      link.href = blobUrl; link.download = file.name; link.click();
+      setTimeout(()=>URL.revokeObjectURL(blobUrl), 4000);
+    }
+  }catch(err){
+    if(err && err.name !== 'AbortError'){ console.error('Forwarding voice note failed:', err); showNavToast('Couldn\'t forward that voice note.'); }
+  }
+});
+
 document.addEventListener('click', async (e)=>{
   const copyBtn = e.target.closest('.copy-text-trigger');
   if(copyBtn){
@@ -7603,12 +7646,24 @@ document.addEventListener('click', async (e)=>{
 // was playing, same as any normal media app.
 let activePlaybackAudio = null;
 let activePlaybackBtn = null;
+const vnAudioByUrl = {};
+// Playback speed for every voice note: tap the chip to cycle 1x -> 1.5x -> 2x. The choice is remembered.
+const VN_SPEEDS = [1, 1.5, 2];
+let vnSpeed = 1;
+try{ const sv = parseFloat(localStorage.getItem('mm_vn_speed')); if(VN_SPEEDS.indexOf(sv) >= 0) vnSpeed = sv; }catch(e){}
+function vnSpeedLabel(v){ return v + 'x'; }
 
 function voiceNoteHtml(audioUrl, durationSeconds){
   const dur = durationSeconds ? formatDuration(durationSeconds) : '--:--';
+  // If this note was already played or scrubbed, a redrawn card keeps its spot (lines + time).
+  const known = vnAudioByUrl[audioUrl];
+  const total = durationSeconds || (known && isFinite(known.duration) ? known.duration : 0);
+  const ratio = (known && total) ? Math.min(1, known.currentTime / total) : 0;
+  const durText = (known && known.currentTime > 0) ? (formatDuration(Math.floor(known.currentTime)) + ' / ' + dur) : dur;
+  const N = 24;
   let bars = '';
-  for(let i=0;i<24;i++){ const h = 4 + Math.abs(Math.sin(i*0.9))*14; bars += `<span style="height:${h}px"></span>`; }
-  return `<div class="voice-note"><div class="play voice-play-btn" data-audio-url="${escapeHtml(audioUrl)}">▶</div><div class="waveform">${bars}</div><div class="dur">${dur}</div></div>`;
+  for(let i=0;i<N;i++){ const h = 4 + Math.abs(Math.sin(i*0.9))*14; bars += `<span class="${(i + 0.5) / N <= ratio ? 'played' : ''}" style="height:${h}px"></span>`; }
+  return `<div class="voice-note" data-dur="${durationSeconds || ''}"><div class="play voice-play-btn" data-audio-url="${escapeHtml(audioUrl)}">▶</div><div class="waveform" role="slider" aria-label="Voice note position">${bars}</div><div class="dur" data-total="${dur}">${durText}</div><div class="vn-speed" role="button" aria-label="Playback speed">${vnSpeedLabel(vnSpeed)}</div></div>`;
 }
 
 function isVideoStickerUrl(url){
@@ -8046,12 +8101,136 @@ document.addEventListener('click', (e)=>{
 });
 
 
+// ---- Voice-note scrubbing: tap or drag across the lines to move forward / back ----
+let vnScrubbing = null;   // the .voice-note being dragged right now (the live repaint leaves it alone)
+let vnRaf = 0;
+
+// One audio element per file URL, shared by playing and scrubbing, so the spot is never lost.
+function vnGetAudio(url){
+  let a = vnAudioByUrl[url];
+  if(!a){
+    a = new Audio(url);
+    vnAudioByUrl[url] = a;
+    // Voice notes recorded in the browser (.webm) usually report an endless length and refuse to seek until the
+    // browser has scanned to the end once. This does that scan silently, then goes back to where we were.
+    a.addEventListener('loadedmetadata', ()=>{
+      if(a.duration === Infinity){
+        a._vnFixing = true;
+        const fix = ()=>{
+          a.removeEventListener('timeupdate', fix);
+          a.currentTime = a._vnWant || 0;
+          a._vnFixing = false;
+        };
+        a.addEventListener('timeupdate', fix);
+        a.currentTime = 1e101;
+      }
+    });
+  }
+  return a;
+}
+// Length in seconds: the audio's own if it knows it, else the length saved with the post.
+function vnTotal(audio, noteEl){
+  if(audio && isFinite(audio.duration) && audio.duration > 0) return audio.duration;
+  const d = noteEl ? parseFloat(noteEl.dataset.dur) : 0;
+  return d > 0 ? d : 0;
+}
+// Draws the played lines and the time. ratioOverride (0..1) is used while dragging, before the audio has caught up.
+function vnPaint(noteEl, audio, ratioOverride){
+  if(!noteEl || !noteEl.isConnected) return;
+  const total = vnTotal(audio, noteEl);
+  const cur = (ratioOverride !== undefined) ? ratioOverride * total : audio.currentTime;
+  const ratio = (ratioOverride !== undefined) ? ratioOverride : (total ? Math.min(1, audio.currentTime / total) : 0);
+  const bars = noteEl.querySelectorAll('.waveform span');
+  const n = bars.length;
+  bars.forEach((b, i)=>{ const on = (i + 0.5) / n <= ratio; if(b.classList.contains('played') !== on) b.classList.toggle('played', on); });
+  const durEl = noteEl.querySelector('.dur');
+  if(durEl){
+    if(!durEl.dataset.total) durEl.dataset.total = durEl.textContent;
+    const txt = (cur >= 1 || !audio.paused) ? (formatDuration(Math.floor(cur)) + ' / ' + durEl.dataset.total) : durEl.dataset.total;
+    if(durEl.textContent !== txt) durEl.textContent = txt;
+  }
+}
+function vnSeek(audio, noteEl, ratio){
+  const total = vnTotal(audio, noteEl);
+  if(!total) return false;
+  const t = Math.max(0, Math.min(total - 0.05, ratio * total));
+  audio._vnWant = t;
+  if(audio._vnFixing) return true;          // applied as soon as the silent scan finishes
+  if(audio.readyState >= 1) audio.currentTime = t;
+  else audio.addEventListener('loadedmetadata', ()=>{ if(!audio._vnFixing) audio.currentTime = t; }, { once:true });
+  return true;
+}
+// Smooth line-by-line progress while the active note plays.
+function vnTick(){
+  vnRaf = 0;
+  if(!activePlaybackAudio) return;
+  const n = activePlaybackBtn && activePlaybackBtn.closest('.voice-note');
+  if(n && n !== vnScrubbing && !activePlaybackAudio._vnFixing) vnPaint(n, activePlaybackAudio);
+  vnRaf = requestAnimationFrame(vnTick);
+}
+function vnStartTick(){ if(!vnRaf) vnRaf = requestAnimationFrame(vnTick); }
+
+(function setupVnScrub(){
+  let wf = null, note = null, audio = null, pid = null;
+  const WF = '.voice-note .waveform';
+  const ratioFrom = (e)=>{
+    const r = wf.getBoundingClientRect();
+    return r.width ? Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) : 0;
+  };
+  // While a finger is on the lines, no other gesture (swiping between feeds or cards, long-press, scrolling) reacts.
+  ['touchstart','touchmove','touchend','touchcancel'].forEach(ev => document.addEventListener(ev, (e)=>{
+    if(wf || (e.target && e.target.closest && e.target.closest(WF))) e.stopPropagation();
+  }, { capture:true, passive:true }));
+
+  document.addEventListener('pointerdown', (e)=>{
+    if(!e.target || !e.target.closest) return;
+    const w = e.target.closest(WF);
+    if(!w || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    const n = w.closest('.voice-note');
+    const btn = n && n.querySelector('.voice-play-btn');
+    if(!btn || !btn.dataset.audioUrl) return;
+    wf = w; note = n; pid = e.pointerId;
+    audio = vnGetAudio(btn.dataset.audioUrl);
+    try{ w.setPointerCapture(pid); }catch(_){}
+    vnScrubbing = note;
+    note.classList.add('scrubbing');
+    vnPaint(note, audio, ratioFrom(e));
+    e.stopPropagation();
+  }, true);
+  document.addEventListener('pointermove', (e)=>{
+    if(!wf || e.pointerId !== pid) return;
+    vnPaint(note, audio, ratioFrom(e));
+  }, true);
+  function finish(e, commit){
+    if(!wf || e.pointerId !== pid) return;
+    const r = ratioFrom(e), n = note, a = audio, w = wf;
+    wf = null; note = null; audio = null; pid = null; vnScrubbing = null;
+    n.classList.remove('scrubbing');
+    try{ w.releasePointerCapture(e.pointerId); }catch(_){}
+    if(commit && vnSeek(a, n, r)) vnPaint(n, a, r);
+    else vnPaint(n, a);                      // cancelled, or the length isn't known yet: show where the audio really is
+  }
+  document.addEventListener('pointerup', (e)=>finish(e, true), true);
+  document.addEventListener('pointercancel', (e)=>finish(e, false), true);
+})();
+
 document.addEventListener('click', (e)=>{
+  const speedChip = e.target.closest('.vn-speed');
+  if(speedChip){
+    e.stopPropagation();
+    vnSpeed = VN_SPEEDS[(VN_SPEEDS.indexOf(vnSpeed) + 1) % VN_SPEEDS.length];
+    try{ localStorage.setItem('mm_vn_speed', String(vnSpeed)); }catch(err){}
+    document.querySelectorAll('.vn-speed').forEach(el => { el.textContent = vnSpeedLabel(vnSpeed); });
+    if(activePlaybackAudio){ activePlaybackAudio.playbackRate = vnSpeed; }
+    return;
+  }
   const playBtn = e.target.closest('.voice-play-btn');
   if(!playBtn) return;
   e.stopPropagation();
   const url = playBtn.dataset.audioUrl;
 
+  // Tapping the playing note pauses it. Its audio stays on the button, so the next tap resumes from the same spot
+  // (a long voice note used to restart from 0:00 every time).
   if(activePlaybackAudio && activePlaybackBtn === playBtn){
     activePlaybackAudio.pause();
     activePlaybackAudio = null;
@@ -8061,12 +8240,30 @@ document.addEventListener('click', (e)=>{
   }
   if(activePlaybackAudio){ activePlaybackAudio.pause(); activePlaybackBtn.textContent = '▶'; }
 
-  const audio = new Audio(url);
+  const noteEl = playBtn.closest('.voice-note');
+  const durEl = noteEl ? noteEl.querySelector('.dur') : null;
+  if(durEl && !durEl.dataset.total) durEl.dataset.total = durEl.textContent;
+  // The audio element is kept per file URL (not per button), so the spot is remembered even when the feed
+  // redraws its cards. The handlers are re-pointed at whichever button is on screen now.
+  const audio = vnGetAudio(url);
+  audio.ontimeupdate = ()=>{ if(!audio._vnFixing && noteEl && noteEl !== vnScrubbing) vnPaint(noteEl, audio); };
+  audio.onended = ()=>{
+    if(audio._vnFixing) return;
+    playBtn.textContent = '▶';
+    audio.currentTime = 0;
+    if(noteEl) vnPaint(noteEl, audio, 0);
+    if(activePlaybackAudio === audio){ activePlaybackAudio = null; activePlaybackBtn = null; }
+  };
+  if(noteEl && audio.currentTime > 0) vnPaint(noteEl, audio);
+  audio.preservesPitch = true; audio.mozPreservesPitch = true; audio.webkitPreservesPitch = true;
+  audio.defaultPlaybackRate = vnSpeed;
+  audio.playbackRate = vnSpeed;
   activePlaybackAudio = audio;
   activePlaybackBtn = playBtn;
   playBtn.textContent = '⏸';
-  audio.play();
-  audio.onended = ()=>{ playBtn.textContent = '▶'; activePlaybackAudio = null; activePlaybackBtn = null; };
+  vnStartTick();
+  const pr = audio.play();
+  if(pr && pr.catch) pr.catch(()=>{ playBtn.textContent = '▶'; if(activePlaybackAudio === audio){ activePlaybackAudio = null; activePlaybackBtn = null; } });
 });
 
 // One batched query for how many likes each post in a list has, instead
@@ -8137,7 +8334,8 @@ function postActionsHtml(postId, authorId, content, stickerUrl, audioUrl, durati
   const deleteHtml = isOwn ? `<span class="post-action delete-post-trigger" data-post-id="${postId}">Delete</span>` : '';
   // Share + delete live behind one "⋯" button so the action row stays quiet.
   const copyHtml = content ? `<span class="post-action copy-text-trigger" data-content="${escapeHtml(content)}">Copy text</span>` : '';
-  const moreItems = shareHtml + copyHtml + deleteHtml;
+  const forwardHtml = (includeShare && audioUrl) ? `<span class="post-action forward-vn-trigger" data-audio-url="${escapeHtml(audioUrl)}">Forward voice note</span>` : '';
+  const moreItems = shareHtml + forwardHtml + copyHtml + deleteHtml;
   const moreHtml = moreItems
     ? `<span class="post-more"><span class="post-action post-more-btn" role="button" aria-label="More" aria-haspopup="true">⋯</span><span class="post-more-menu">${moreItems}</span></span>`
     : '';
@@ -13644,7 +13842,7 @@ function trendGoTo(card, target){
     if(e.touches.length !== 1 || !e.target.closest) return;
     const c = e.target.closest('.post[data-trend-id]');
     if(!c || c.closest('#trend-view-feed')) return;
-    if(e.target.closest('.post-foot, .post-action, .like-btn, .sticker-tap, .voice-play-btn, .trend-chip, audio, video, input, textarea')) return;
+    if(e.target.closest('.post-foot, .post-action, .like-btn, .sticker-tap, .voice-play-btn, .vn-speed, .waveform, .trend-chip, audio, video, input, textarea')) return;
     card = c; sx = lx = e.touches[0].clientX; sy = e.touches[0].clientY; lt = Date.now(); vx = 0;
     width = c.offsetWidth || 320;
     if(!trendEntryReady(c.dataset.trendId)) trendLoad(c.dataset.trendId);   // last-chance warm-up: the swipe itself takes time
@@ -14675,16 +14873,20 @@ async function toggleRecording(){
     return;
   }
   try{
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1 } });
     recordedChunks = [];
-    mediaRecorder = new MediaRecorder(stream);
+    // Voice only needs ~24 kbps mono Opus: an 8 minute note is about 1.5 MB instead of ~8 MB, so it uploads in seconds.
+    const vnMime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'].find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || '';
+    mediaRecorder = new MediaRecorder(stream, vnMime ? { mimeType: vnMime, audioBitsPerSecond: 24000 } : { audioBitsPerSecond: 24000 });
+    const vnBlobType = (vnMime || 'audio/webm').split(';')[0];
     mediaRecorder.ondataavailable = (e)=>{ if(e.data.size > 0) recordedChunks.push(e.data); };
     mediaRecorder.onstop = ()=>{
       stream.getTracks().forEach(t => t.stop());
-      recordedBlob = new Blob(recordedChunks, { type: 'audio/webm' });
+      recordedBlob = new Blob(recordedChunks, { type: vnBlobType });
       recordedDurationSeconds = Math.round((Date.now() - recordingStartTime) / 1000);
       clearInterval(recordingTimerInterval);
       showRecordedPreview();
+      startVoicePreupload(recordedBlob);
     };
     mediaRecorder.start();
     recordingStartTime = Date.now();
@@ -14702,6 +14904,31 @@ async function toggleRecording(){
   }
 }
 
+// The upload starts the moment recording stops, while the person is still adding a caption, so Post is nearly instant.
+let voicePreuploadPromise = null, voicePreuploadFor = null;
+function startVoicePreupload(blob){
+  if(!blob) return;
+  dropVoicePreupload();
+  const mine = uploadVoiceNote(blob);
+  voicePreuploadPromise = mine; voicePreuploadFor = blob;
+  const statusEl = document.getElementById('compose-voice-status');
+  statusEl.textContent = `voice note · ${formatDuration(recordedDurationSeconds)} · uploading…`;
+  mine.then(url => {
+    if(voicePreuploadPromise !== mine) return;   // discarded or re-recorded meanwhile
+    statusEl.textContent = `voice note · ${formatDuration(recordedDurationSeconds)}` + (url ? ' · ready' : ' · will retry on post');
+  });
+}
+function dropVoicePreupload(){
+  const pending = voicePreuploadPromise;
+  voicePreuploadPromise = null; voicePreuploadFor = null;
+  // Nothing was posted, so remove the orphaned file (best effort).
+  if(pending) pending.then(url => {
+    if(!url) return;
+    const path = url.split('/voice-notes/')[1];
+    if(path) sb.storage.from('voice-notes').remove([decodeURIComponent(path.split('?')[0])]).catch(()=>{});
+  }).catch(()=>{});
+}
+
 function showRecordedPreview(){
   document.getElementById('compose-mic-btn').classList.remove('recording');
   document.getElementById('compose-mic-btn').textContent = '🎙';
@@ -14713,6 +14940,7 @@ function showRecordedPreview(){
 
 function discardRecording(){
   if(mediaRecorder && mediaRecorder.state === 'recording'){ mediaRecorder.stop(); }
+  dropVoicePreupload();
   recordedBlob = null;
   recordedChunks = [];
   recordedDurationSeconds = 0;
@@ -14732,6 +14960,37 @@ function formatDuration(totalSeconds){
 }
 
 document.getElementById('compose-mic-btn').addEventListener('click', toggleRecording);
+
+// Upload an existing audio file (mp3 etc.) instead of recording. From here it follows the voice-note path:
+// preview, early upload, then it posts as a normal playable voice note.
+const AUDIO_FILE_MAX_BYTES = 25 * 1024 * 1024;
+document.getElementById('compose-audio-btn').addEventListener('click', ()=>{
+  if(mediaRecorder && mediaRecorder.state === 'recording'){ showNavToast('Stop recording first.'); return; }
+  document.getElementById('compose-audio-input').click();
+});
+document.getElementById('compose-audio-input').addEventListener('change', (e)=>{
+  const input = e.target;
+  const file = input.files && input.files[0];
+  input.value = '';   // lets the same file be picked again later
+  if(!file) return;
+  const okType = /^audio\//i.test(file.type) || /\.(mp3|m4a|wav|ogg)$/i.test(file.name);
+  if(!okType){ showNavToast('Pick an audio file (mp3, m4a, wav).'); return; }
+  if(file.size > AUDIO_FILE_MAX_BYTES){ showNavToast('That file is over 25 MB. Pick a smaller one.'); return; }
+  const probe = new Audio();
+  const objUrl = URL.createObjectURL(file);
+  const finish = (secs)=>{
+    URL.revokeObjectURL(objUrl);
+    discardRecording();                 // clears any earlier recording or file and its early upload
+    recordedBlob = file;
+    recordedDurationSeconds = secs;
+    showRecordedPreview();
+    startVoicePreupload(file);
+  };
+  probe.preload = 'metadata';
+  probe.onloadedmetadata = ()=>{ finish(isFinite(probe.duration) ? Math.round(probe.duration) : 0); };
+  probe.onerror = ()=>{ URL.revokeObjectURL(objUrl); showNavToast('Couldn\'t read that audio file.'); };
+  probe.src = objUrl;
+});
 document.getElementById('compose-voice-discard').addEventListener('click', discardRecording);
 document.getElementById('compose-voice-preview-play').addEventListener('click', ()=>{
   if(!recordedBlob) return;
@@ -14742,8 +15001,19 @@ document.getElementById('compose-voice-preview-play').addEventListener('click', 
 });
 
 async function uploadVoiceNote(blob){
-  const path = `${currentUserId}/${Date.now()}.webm`;
-  const { error: uploadErr } = await sb.storage.from('voice-notes').upload(path, blob, { contentType: 'audio/webm', cacheControl: '31536000' });
+  const fname = (blob.name || '').toLowerCase();
+  const btype = (blob.type || '').toLowerCase();
+  let ext = 'webm', ctype = 'audio/webm';
+  if(/mpeg|mp3/.test(btype) || /\.mp3$/.test(fname)){ ext = 'mp3'; ctype = 'audio/mpeg'; }
+  else if(/mp4|m4a|aac/.test(btype) || /\.m4a$/.test(fname)){ ext = 'm4a'; ctype = 'audio/mp4'; }
+  else if(/wav/.test(btype) || /\.wav$/.test(fname)){ ext = 'wav'; ctype = 'audio/wav'; }
+  else if(/ogg/.test(btype) || /\.ogg$/.test(fname)){ ext = 'ogg'; ctype = 'audio/ogg'; }
+  const path = `${currentUserId}/${Date.now()}.${ext}`;
+  let { error: uploadErr } = await sb.storage.from('voice-notes').upload(path, blob, { contentType: ctype, cacheControl: '31536000' });
+  if(uploadErr){   // one quiet retry for a flaky connection
+    await new Promise(r => setTimeout(r, 1200));
+    ({ error: uploadErr } = await sb.storage.from('voice-notes').upload(path, blob, { contentType: ctype, cacheControl: '31536000', upsert: true }));
+  }
   if(uploadErr){ console.error('Voice note upload failed:', uploadErr); return null; }
   const { data } = sb.storage.from('voice-notes').getPublicUrl(path);
   return data.publicUrl;
@@ -14766,6 +15036,7 @@ document.getElementById('compose-submit-btn').addEventListener('click', async ()
     return;
   }
   const blobToUpload = recordedBlob;      // capture before closeComposeOverlay discards it
+  const preuploadToUse = (blobToUpload && voicePreuploadFor === blobToUpload) ? voicePreuploadPromise : null;
   const durationToUpload = recordedDurationSeconds;
   const stickerToUse = selectedStickerUrl; // same -- captured before closeComposeOverlay clears it
   const happeningToUse = selectedHappeningId; // same -- captured before discardHappening() clears it
@@ -14793,7 +15064,8 @@ document.getElementById('compose-submit-btn').addEventListener('click', async ()
   if(blobToUpload){
     toast.textContent = 'uploading voice note...';
     toast.classList.add('show');
-    const url = await uploadVoiceNote(blobToUpload);
+    let url = preuploadToUse ? await preuploadToUse : null;   // usually already finished
+    if(!url) url = await uploadVoiceNote(blobToUpload);      // pre-upload failed or never started
     toast.classList.remove('show');
     if(!url){
       toast.textContent = 'Voice note upload failed — try again.';
@@ -14801,6 +15073,7 @@ document.getElementById('compose-submit-btn').addEventListener('click', async ()
       return;
     }
     audio = { url, duration: durationToUpload };
+    voicePreuploadPromise = null; voicePreuploadFor = null;   // consumed: closing the compose box must not delete it
   }
 
   closeComposeOverlay();
