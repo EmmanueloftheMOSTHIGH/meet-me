@@ -136,6 +136,7 @@
     #phone{ width:100vw; height:100dvh; border-radius:0; padding:0; box-shadow:none; }
     #phone-screen{ border-radius:0; }
     #phone-notch{ display:none; }
+    html,body{ overflow:hidden; }   /* the app scrolls inside its own panels; the page itself must never move */
     /* Real device safe-area awareness: on an iPhone with a notch or
        Dynamic Island, this keeps the header below it and the bottom nav
        above the home-indicator bar, instead of sitting under either.
@@ -6123,7 +6124,11 @@ function openPrivateThreadDetail(otherId, otherName, rows){
   renderThreadMessages(rows || []);
   const input = document.getElementById('post-replies-thread-input');
   input.value = '';
-  setTimeout(()=>input.focus(), 250);
+  // Coming in from a notification the sheet is still sliding in; focusing now makes iOS scroll the whole
+  // app upward to "reveal" the field. So from a notification we let the person tap the field themselves.
+  if(!cameFromNotificationThread){
+    setTimeout(()=>{ try{ input.focus({ preventScroll:true }); }catch(e){ input.focus(); } }, 250);
+  }
 }
 
 function renderThreadMessages(rows){
@@ -11153,13 +11158,31 @@ function resetShiftAndPullHints(){
   window.scrollTo(0, 0);
   document.documentElement.scrollTop = 0;
   document.body.scrollTop = 0;
+  // iOS also scrolls overflow:hidden containers when it reveals a focused field, and nothing scrolls them
+  // back -- that is the "app nudged upward" look. Put every shell container back at 0.
+  ['phone','phone-screen','root','main'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el){ if(el.scrollTop) el.scrollTop = 0; if(el.scrollLeft) el.scrollLeft = 0; }
+  });
   ['feed-pull-indicator','orgs-pull-indicator','spill-pull-indicator'].forEach(id=>{
     const el = document.getElementById(id);
     if(el && !/refreshing/.test(el.textContent)) el.style.opacity = 0;
   });
 }
-window.addEventListener('pageshow', ()=>{ resetShiftAndPullHints(); setTimeout(resetShiftAndPullHints, 300); });
-document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) resetShiftAndPullHints(); });
+// Never fight the keyboard: only straighten things up while nobody is typing.
+function mmIsTyping(){
+  const a = document.activeElement;
+  return !!a && (/^(INPUT|TEXTAREA)$/.test(a.tagName) || a.isContentEditable);
+}
+function mmResetIfIdle(){ if(!mmIsTyping()) resetShiftAndPullHints(); }
+function mmResetSoon(){ [0, 60, 350, 900].forEach(ms => setTimeout(mmResetIfIdle, ms)); }
+window.addEventListener('pageshow', mmResetSoon);
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) mmResetSoon(); });
+window.addEventListener('focus', mmResetSoon);                 // app brought forward (e.g. tapping a notification)
+window.addEventListener('orientationchange', mmResetSoon);
+window.addEventListener('resize', mmResetIfIdle);
+document.addEventListener('focusout', mmResetSoon);            // keyboard closing / leaving a thread
+if(window.visualViewport){ window.visualViewport.addEventListener('resize', mmResetIfIdle); }
 document.addEventListener('touchcancel', resetShiftAndPullHints, { passive: true });
 resetShiftAndPullHints();
 
