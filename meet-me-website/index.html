@@ -1605,7 +1605,6 @@
   #profile-panel{ flex:0 0 auto; box-sizing:border-box; padding:14px 4px 120px; }
   #profile-header{ text-align:center; margin-bottom:20px; padding-bottom:18px; border-bottom:1px solid var(--card-border); }
   #profile-number{ font-family:'Fraunces',serif; font-size:19px; color:var(--ivory); margin-bottom:4px; }
-  #profile-since{ font-size:11.5px; color:var(--muted-dim); }
   .profile-row{
     display:flex; align-items:center; justify-content:space-between;
     padding:13px 2px;
@@ -2226,6 +2225,47 @@
   text-align:center; font-size:12px; letter-spacing:0.08em; text-transform:uppercase;
   color:var(--muted-dim); padding:8px; cursor:pointer;
 }
+
+/* ============ IDENTITY CARD (welcome, once) + REMINDER (every 14 days) ============ */
+#identity-overlay{ z-index:96; background:rgba(6,6,7,0.88); }
+.identity-panel{
+  width:100%; max-width:340px; text-align:center;
+  background:var(--bg-elevated); border:1px solid var(--gold-dim);
+  border-radius:22px; padding:44px 28px 30px;
+}
+#identity-logo{ width:28px; height:28px; display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; gap:3px; margin:0 auto 34px; }
+#identity-logo span{ display:block; transform:skewX(-14deg); }
+#identity-logo span:nth-child(1){ background:var(--sq1); } #identity-logo span:nth-child(2){ background:var(--sq2); }
+#identity-logo span:nth-child(3){ background:var(--sq3); } #identity-logo span:nth-child(4){ background:var(--sq4); }
+#identity-number{
+  font-family:'Fraunces',serif; font-weight:300; font-size:58px; line-height:1;
+  color:var(--gold-light); letter-spacing:0.005em; margin-bottom:26px;
+}
+#identity-rule{ width:28px; height:1px; background:var(--gold-dim); margin:0 auto 26px; }
+#identity-line{
+  font-family:'Fraunces',serif; font-style:italic; font-weight:400; font-size:16px; line-height:1.75;
+  color:var(--ivory); opacity:0.9; margin:0 auto 34px; max-width:240px;
+}
+#identity-ok{
+  display:inline-block; margin:0; padding:12px 38px; border-radius:999px;
+  font-size:13.5px; letter-spacing:0.03em; cursor:pointer;
+  border:1px solid var(--gold-dim); color:var(--gold-light);
+}
+#identity-ok:active{ background:rgba(212,168,87,0.1); }
+#identity-reminder{
+  position:absolute; left:50%; bottom:100px;
+  transform:translateX(-50%) translateY(10px);
+  width:max-content; max-width:calc(100vw - 48px); box-sizing:border-box;
+  background:var(--bg-elevated); border:1px solid var(--gold-dim);
+  border-radius:18px; padding:14px 22px;
+  font-family:'Fraunces',serif; font-style:italic; font-weight:400;
+  font-size:14.5px; line-height:1.5; color:var(--ivory); text-align:center;
+  box-shadow:0 4px 16px rgba(0,0,0,0.4);
+  opacity:0; pointer-events:none; cursor:pointer;
+  transition:opacity 0.4s ease, transform 0.4s ease; z-index:140;
+}
+#identity-reminder.show{ opacity:1; transform:translateX(-50%) translateY(0); pointer-events:auto; }
+@media (prefers-reduced-motion: reduce){ #identity-reminder{ transition:opacity 0.2s ease; transform:translateX(-50%); } }
 
 /* Admin dashboard reuses .account-overlay/.account-panel, but a data list
    (name + status + timestamp per row) doesn't fit the narrow 340px centered
@@ -2993,7 +3033,6 @@
     <div id="profile-panel">
       <div id="profile-header">
         <div id="profile-number">—</div>
-        <div id="profile-since">present since this year</div>
       </div>
       <div class="profile-row" id="profile-install-row">
         <span class="profile-row-label">Install Meet Me app</span>
@@ -3097,6 +3136,16 @@
   </div>
 
   <div id="toast"></div>
+  <div id="identity-overlay" class="account-overlay">
+    <div class="identity-panel">
+      <div id="identity-logo" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+      <div id="identity-number">Meet</div>
+      <div id="identity-rule"></div>
+      <div id="identity-line">If I were you, I'd keep that to myself. It's the only identity you'll have here.</div>
+      <div id="identity-ok" role="button" tabindex="0">Okay</div>
+    </div>
+  </div>
+  <div id="identity-reminder" role="status"></div>
 
   <div id="notif-overlay">
     <div id="notif-panel">
@@ -7316,7 +7365,88 @@ async function initUser(){
     ensureOrgs(true)
   ]);
   await maybeSendSecureNudgeNotification();
+  maybeShowIdentityCard();
 }
+
+
+/* ============================================================
+   IDENTITY CARD -- tells people their Meet number is the only
+   identity they get here. Welcome card once per person (existing
+   users included), then a one-line reminder every 14 days.
+   State lives in localStorage per user id, like the other
+   once-only flags in this app. A reminder counts as seen the moment
+   it appears, so it never repeats until the next 14 days pass.
+   ============================================================ */
+const IDENTITY_REMIND_EVERY_MS = 14 * 24 * 60 * 60 * 1000;
+const IDENTITY_REMINDER_LINES = [
+  'Your only identity here.',
+  'Nobody knows who {n} is. Keep it that way.',
+  'Just a number. That\'s all anyone gets.',
+  'Quiet by design.',
+  'Whoever you are, here you\'re {n}.',
+  'Real truth-sayers keep {n} to themselves.'
+];
+function identityKey(kind){ return 'mm_identity_' + kind + '_' + currentUserId; }
+function identityGet(kind){ try{ return localStorage.getItem(identityKey(kind)); }catch(e){ return null; } }
+function identitySet(kind, v){ try{ localStorage.setItem(identityKey(kind), String(v)); }catch(e){} }
+
+function identityCanShowNow(){
+  if(document.visibilityState !== 'visible') return false;
+  if(!userHasInteracted) return false;
+  if(document.querySelector('.account-overlay.show')) return false;
+  const m = document.getElementById('moment');
+  if(m && m.classList.contains('show')) return false;
+  return true;
+}
+
+function maybeShowIdentityCard(tries){
+  tries = tries || 0;
+  if(!currentUserId || !currentMeetNumber) return;
+  const welcomed = identityGet('welcome');
+  const lastRemind = parseInt(identityGet('remind') || '0', 10);
+  const welcomeDue = !welcomed;
+  const reminderDue = !!welcomed && (Date.now() - lastRemind) >= IDENTITY_REMIND_EVERY_MS;
+  if(!welcomeDue && !reminderDue) return;
+  // Wait for a calm moment instead of cutting in on something the person is doing.
+  if(!identityCanShowNow()){
+    if(tries < 40) setTimeout(()=>maybeShowIdentityCard(tries + 1), 4000);
+    return;
+  }
+  if(welcomeDue) showIdentityWelcome(); else showIdentityReminder();
+}
+
+function showIdentityWelcome(){
+  document.getElementById('identity-number').textContent = currentMeetNumber;
+  document.getElementById('identity-overlay').classList.add('show');
+}
+
+document.getElementById('identity-ok').addEventListener('keydown', (e)=>{ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); e.target.click(); } });
+document.getElementById('identity-ok').addEventListener('click', ()=>{
+  document.getElementById('identity-overlay').classList.remove('show');
+  if(currentUserId){
+    identitySet('welcome', '1');
+    identitySet('remind', Date.now());   // the 14-day clock starts here
+  }
+});
+
+let identityReminderTimer = null;
+function showIdentityReminder(){
+  const n = parseInt(identityGet('remind_n') || '0', 10) || 0;
+  const line = IDENTITY_REMINDER_LINES[n % IDENTITY_REMINDER_LINES.length].replace('{n}', currentMeetNumber);
+  // Counts as seen as soon as it's on screen.
+  identitySet('remind', Date.now());
+  identitySet('remind_n', n + 1);
+  const el = document.getElementById('identity-reminder');
+  el.textContent = line;
+  el.classList.add('show');
+  clearTimeout(identityReminderTimer);
+  identityReminderTimer = setTimeout(hideIdentityReminder, 8000);
+}
+function hideIdentityReminder(){
+  clearTimeout(identityReminderTimer);
+  document.getElementById('identity-reminder').classList.remove('show');
+}
+document.getElementById('identity-reminder').addEventListener('click', hideIdentityReminder);
 
 /* ============================================================
    DAILY OPENS -- one row per person per day (Lagos time), written by
