@@ -2254,6 +2254,12 @@
 
 /* ============ COMPOSE OVERLAY ============ */
 .compose-panel{ width:100%; max-width:360px; background:var(--bg-elevated); border:1px solid var(--card-border); border-radius:18px; padding:22px; }
+/* small compose card: never taller than the screen; scrolls inside itself, with Post + cancel pinned at the bottom */
+#compose-overlay:not(.compose-full) .compose-panel{ max-height:100%; overflow-y:auto; box-sizing:border-box; overscroll-behavior:contain; }
+#compose-overlay:not(.compose-full) #compose-dock{
+  position:sticky; bottom:-22px; z-index:2; margin:0 -22px -22px; padding:10px 22px 22px;
+  background:var(--bg-elevated); border-top:1px solid var(--card-border);
+}
 .compose-title{ font-family:'Fraunces',serif; font-size:17px; color:var(--ivory); margin-bottom:14px; }
 #compose-textarea{
   width:100%; min-height:120px; background:var(--card); border:1px solid var(--card-border);
@@ -13199,11 +13205,11 @@ document.getElementById('compose-expand-btn').addEventListener('keydown', e=>{
   if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); e.target.click(); }
 });
 
-/* keep the full-screen composer inside the part of the screen the keyboard leaves free, so Post is never covered */
+/* keep the composer (small card or full screen) inside the part of the screen the keyboard leaves free, so Post is never covered */
 function composeFitToKeyboard(){
   const ov = document.getElementById('compose-overlay');
   const vv = window.visualViewport;
-  if(!vv || !ov.classList.contains('compose-full') || !ov.classList.contains('show')){ ov.style.top = ''; ov.style.bottom = ''; return; }
+  if(!vv || !ov.classList.contains('show')){ ov.style.top = ''; ov.style.bottom = ''; return; }
   const kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
   if(kb > 80){ ov.style.top = Math.round(vv.offsetTop) + 'px'; ov.style.bottom = kb + 'px'; }
   else { ov.style.top = ''; ov.style.bottom = ''; }
