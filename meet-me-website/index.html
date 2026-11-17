@@ -1076,6 +1076,8 @@
     transition:color .2s ease, border-color .2s ease, background .2s ease; -webkit-tap-highlight-color:transparent;
   }
   .spill-lock .lock-closed{ display:none; }
+  .spill-lock.nudge{ animation:spillLockNudge .6s ease; }
+  @keyframes spillLockNudge{ 0%,100%{ transform:none; } 20%{ transform:translateX(-4px) scale(1.12); } 40%{ transform:translateX(4px) scale(1.12); } 60%{ transform:translateX(-3px); } 80%{ transform:translateX(3px); } }
   .spill-lock.on{ color:var(--gold-light); border-color:var(--gold-dim); background:rgba(212,168,87,0.10); }
   .spill-lock.on .lock-closed{ display:inline; }
   .spill-lock.on .lock-open{ display:none; }
@@ -5489,13 +5491,29 @@ document.addEventListener('load', (e)=>{ if(e.target && e.target.closest && e.ta
 window.addEventListener('resize', ()=>{ fitSpillStack(); });
 if(document.fonts && document.fonts.ready) document.fonts.ready.then(()=>{ fitSpillStack(); });
 
+// Locked and the person tries to move the cards: tell them why nothing happened.
+function spillLockedNotice(){
+  const now = Date.now();
+  if(now - (window.__spillLockedNoticeAt || 0) < 2500) return;   // one message per attempt, not one per finger twitch
+  window.__spillLockedNoticeAt = now;
+  try{
+    toast.textContent = 'Spill is locked. Tap the lock to unlock it.';
+    toast.classList.add('show');
+    clearTimeout(window.__spillLockToastTimer);
+    window.__spillLockToastTimer = setTimeout(()=>{ toast.classList.remove('show'); }, 2200);
+  }catch(e){}
+  document.querySelectorAll('.spill-lock').forEach(b=>{
+    b.classList.remove('nudge'); void b.offsetWidth; b.classList.add('nudge');
+    setTimeout(()=>b.classList.remove('nudge'), 700);
+  });
+}
 function spillNext(){
-  if(spillLocked) return;
+  if(spillLocked){ spillLockedNotice(); return; }
   const total = document.querySelectorAll('.spill-card').length;
   if(spillIndex < total-1){ spillIndex++; layoutSpillCards(); }
 }
 function spillPrev(){
-  if(spillLocked) return;
+  if(spillLocked){ spillLockedNotice(); return; }
   if(spillIndex > 0){ spillIndex--; layoutSpillCards(); }
 }
 
@@ -5509,10 +5527,16 @@ function setupSpillSwipes(){
   const stack = document.getElementById('spill-stack');
   if (!stack || stack.dataset.swipesBound) return;
   stack.dataset.swipesBound = 'true';
-  let touchStartX = null;
-  stack.addEventListener('touchstart', (e)=>{ touchStartX = e.touches[0].clientX; }, {passive:true});
+  let touchStartX = null, touchStartY = null;
+  stack.addEventListener('touchstart', (e)=>{ touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY; }, {passive:true});
   stack.addEventListener('touchend', (e)=>{
-    if(spillLocked){ touchStartX = null; return; }   // locked: a swipe doesn't move the cards
+    if(spillLocked){   // locked: a swipe doesn't move the cards, but we say why
+      if(touchStartX !== null && !selectingText() && !e.target.closest('.post-action, .like-btn, .user-link, .sticker-tap, .spill-lock, .q-open')){
+        const sdx = e.changedTouches[0].clientX - touchStartX, sdy = e.changedTouches[0].clientY - (touchStartY ?? 0);
+        if(Math.abs(sdx) > 40 && Math.abs(sdx) > Math.abs(sdy)) spillLockedNotice();
+      }
+      touchStartX = null; return;
+    }
     if(selectingText()){ touchStartX = null; return; }   // selecting text: dragging the handles must not turn the page
     if(e.target.closest('.post-action, .like-btn, .user-link, .sticker-tap, .spill-lock, .q-open')) return; // don't page the stack when tapping an action, a name, a sticker or the lock
     if(touchStartX===null) return;
@@ -11434,7 +11458,7 @@ let spillCursor = null, spillHasMore = false, spillLoadingMore = false;
 async function loadSpills(beforeIso){
   // Newest first, for everyone: your own Spills sit in time order with the
   // rest instead of being pushed to the front. Curated stories are included.
-  const baseCols = 'id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, inspired_by_post_id, door_question_id, as_founder, story_number';
+  const baseCols = 'id, user_id, content, audio_url, duration_seconds, sticker_url, created_at, inspired_by_post_id, door_question_id, as_founder, story_number, edited_at';
   const build = (cols)=>{
     let q = sb.from('posts').select(cols + ', users!posts_user_id_fkey(meet_number)')
       .eq('post_type', 'spill').order('created_at', { ascending: false }).limit(SPILL_BATCH);
@@ -11538,12 +11562,16 @@ async function renderSpills(spills, append){
         ${bodyHtml}
       </div>
       <div class="spill-card-foot">
-      <div class="spill-card-time">${formatRelativeTime(spill.created_at)}</div>
+      <div class="spill-card-time">${formatRelativeTime(spill.created_at)}${spill.edited_at ? ' (edited)' : ''}</div>
       <div class="spill-card-actions" style="display:flex; gap:14px; margin-top:10px; flex-wrap:wrap;">
         ${postActionsHtml(spill.id, ((isStory && !isOwnStory) || (isFounder && !isOwn)) ? null : (isOwnStory ? currentUserId : spill.user_id), spill.content, spill.sticker_url, spill.audio_url, spill.duration_seconds, displayName, 'Spill', userLiked, undefined, undefined, null, false, (isStory && !isOwnStory) ? { ownerId: spill.user_id, number: spill.story_number } : null)}
         ${spill.is_question ? questionActionsHtml(spill, isOwn || isOwnStory, answerCounts[spill.id] || 0, displayName) : ''}
       </div>
       </div>`;
+    if(isOwn && !spill.is_question && !spill.answer_to_post_id){   // your own plain Spill: add Edit to its ⋯ menu
+      const menu = card.querySelector('.post-more-menu');
+      if(menu) menu.insertAdjacentHTML('afterbegin', `<span class="post-action edit-post-trigger" data-post-id="${spill.id}" data-content="${escapeHtml(spill.content || '')}" data-header="" data-org="">Edit</span>`);
+    }
     stack.appendChild(card);
   });
 
@@ -14296,6 +14324,7 @@ let editPostId = null, editPostOriginal = { content:'', header:'' }, editPostIsO
 function editErrorMessage(err){
   const m = (err && err.message) || '';
   if(m.includes('edit_window_closed')) return 'Organisation posts can only be edited for 24 hours after posting.';
+  if(m.includes('edit_not_allowed')) return 'This kind of post cannot be edited.';
   if(m.includes('edit_empty')) return 'A post needs some text.';
   if(m.includes('edit_too_long')) return 'That is too long. Keep it under 5000 characters.';
   if(m.includes('org_header_required')) return 'This organisation needs a header.';
@@ -14351,6 +14380,7 @@ document.getElementById('edit-post-save').addEventListener('click', async ()=>{
   if(typeof reloadTrendViewIfOpen === 'function') reloadTrendViewIfOpen();
   if(currentScreenKey === 'orgs') await loadOrgsFeed(true);
   else if(currentScreenKey === 'twin' && currentTwinMode === 'rant') await loadFeed();
+  else if(currentScreenKey === 'twin' && currentTwinMode === 'spill'){ const spills = await loadSpills(); cachedSpills = spills; await renderSpills(spills); }
   if(typeof yourpostsOverlay !== 'undefined' && yourpostsOverlay.classList.contains('show')) await loadYourPosts();
 });
 
