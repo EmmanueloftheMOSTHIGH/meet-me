@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
 <title>Meet Me</title>
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#0c0c0e">
@@ -3975,6 +3975,7 @@
         </div>
       </div>
       <div id="post-replies-thread-view">
+        <div id="post-replies-thread-context" style="display:none; background:rgba(0,0,0,0.18); border-left:3px solid #d4a857; border-radius:8px; padding:8px 12px; margin-bottom:10px; color:#f4ede1; font-size:12.5px; line-height:1.4; flex-shrink:0;"></div>
         <div id="post-replies-thread-messages"></div>
         <div id="post-replies-thread-input-row">
           <input id="post-replies-thread-input" type="text" placeholder="reply privately…">
@@ -6171,8 +6172,24 @@ document.getElementById('post-replies-replies-list').addEventListener('click', (
   openPrivateThreadDetail(otherId, thread.name || 'Someone', thread.rows);
 });
 
+async function loadThreadPostContext(postId){
+  const box = document.getElementById('post-replies-thread-context');
+  if(!box) return;
+  box.style.display = 'none';
+  if(!postId) return;
+  try{
+    const { data } = await sb.from('posts').select('content').eq('id', postId).maybeSingle();
+    if(data && data.content && currentRepliesPostId === postId){
+      const t = String(data.content).trim();
+      box.innerHTML = '<span style="opacity:.65;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;">Replying about</span><br>' + escapeHtml(t.length > 140 ? t.slice(0,137) + '...' : t);
+      box.style.display = 'block';
+    }
+  }catch(e){}
+}
+
 function openPrivateThreadDetail(otherId, otherName, rows){
   currentThreadOtherId = otherId;
+  loadThreadPostContext(currentRepliesPostId);
   postRepliesSheet.classList.add('thread-open');
   document.getElementById('post-replies-thread-back').style.display = 'inline-block';
   document.getElementById('post-replies-title').textContent = otherName;
@@ -6223,7 +6240,7 @@ async function sendPrivateReply(postId, receiverId, content){
     // Answering a person who replied to a curated story: saved under the hidden story account, never as Meet 8.
     const { data: storyReplyId, error: storyErr } = await sb.rpc('story_reply_back', { p_post_id: postId, p_receiver_id: receiverId, p_content: content });
     if(storyErr){ console.error('Error answering story reply:', storyErr); return null; }
-    sendPushTo(receiverId, currentThreadStoryNumber ? ('Meet ' + currentThreadStoryNumber) : 'Meet Me', content.length > 80 ? content.slice(0, 77) + '...' : content, '/');
+    sendPushTo(receiverId, currentThreadStoryNumber ? ('Meet ' + currentThreadStoryNumber) : 'Meet Me', content.length > 80 ? content.slice(0, 77) + '...' : content, '/?post=' + postId + '&from=' + currentUserId + '&t=rb');
     return { id: storyReplyId };
   }
   const { data: postRows } = await sb.from('posts').select('user_id').eq('id', postId);
@@ -6235,7 +6252,7 @@ async function sendPrivateReply(postId, receiverId, content){
     const notifType = (currentUserId === ownerId) ? 'reply_back' : 'reply';
     await createNotification(receiverId, notifType, postId);
     const pushBody = content.length > 80 ? content.slice(0, 77) + '...' : content;
-    sendPushTo(receiverId, pushSenderName(), pushBody, '/');
+    sendPushTo(receiverId, pushSenderName(), pushBody, '/?post=' + postId + '&from=' + currentUserId + '&t=' + (notifType === 'reply_back' ? 'rb' : 'r'));
   }
   return data;
 }
@@ -6260,13 +6277,18 @@ document.getElementById('post-replies-thread-input').addEventListener('keydown',
 // 'reply_back' notification -- they aren't the post owner, so there's
 // no list of threads to show, just the one conversation with the
 // owner. Opens straight into the thread detail view.
-async function openPrivateThreadFromNotification(postId){
+async function openPrivateThreadFromNotification(postId, actorId){
   if(!postId || !currentUserId) return;
   threadMeId = null; currentThreadStoryOwnerId = null;
   const { data: postRow, error: postErr } = await sb.from('posts').select('user_id, story_number, users:user_id(meet_number)').eq('id', postId).single();
   if(postErr || !postRow) return;
   const ownerId = postRow.user_id;
-  if(ownerId === currentUserId || (isMeet8 && postRow.story_number)){ await openPostRepliesSheet(postId, true); return; }
+  if(ownerId === currentUserId || (isMeet8 && postRow.story_number)){
+    await openPostRepliesSheet(postId, true);
+    const t = actorId && currentRepliesThreads[actorId];
+    if(t) openPrivateThreadDetail(actorId, t.name || 'Someone', t.rows);
+    return;
+  }
 
   const { data: rows, error } = await sb.from('replies')
     .select('id, content, sticker_url, created_at, sender_id, receiver_id')
@@ -12010,7 +12032,7 @@ async function toggleLike(postId, likeBtnEl){
       const ownerId = postRows && postRows[0]?.user_id;
       if(ownerId && ownerId !== currentUserId){
         await createNotification(ownerId, 'like', postId);
-        sendPushTo(ownerId, pushSenderName(), 'liked your post.', '/');
+        sendPushTo(ownerId, pushSenderName(), 'liked your post.', '/?post=' + postId);
         const likedName = likeBtnEl?.dataset.name || 'them';
         toast.textContent = `you liked ${likedName}'s post.`;
         toast.classList.add('show'); setTimeout(()=>{ toast.classList.remove('show'); }, 2000);
@@ -12222,14 +12244,33 @@ const SHARED_POST_ID = (()=>{
   try{ const v = new URLSearchParams(location.search).get('post'); return (v && /^\d{1,18}$/.test(v)) ? v : null; }
   catch(e){ return null; }
 })();
+// Where a tapped push should land. t=r: a private reply to you, t=rb: the post owner answered you.
+async function openFromPushParams(params){
+  const post = params.get('post');
+  if(!post || !/^\d{1,18}$/.test(post)) return;
+  const from = params.get('from') || null;
+  const t = params.get('t');
+  if(t === 'rb') return openPrivateThreadFromNotification(post, from);
+  if(t === 'r') return NOTIF_NAV.reply({ reference_id: post, actor_id: from });
+  return navigateToPost(post);
+}
+// App already open: the service worker focuses this window and hands us the link, so nothing reloads or leaves the app.
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.addEventListener('message', (e)=>{
+    const d = e.data || {};
+    if(d.type !== 'mm-open' || !d.url) return;
+    try{ openFromPushParams(new URL(d.url, location.origin).searchParams); }catch(err){}
+  });
+}
 async function openSharedPost(){
   if(!SHARED_POST_ID) return;
+  const _pushParams = new URLSearchParams(location.search);
   try{ history.replaceState(null, '', location.pathname); }catch(e){}   // so a refresh doesn't jump there again
   await new Promise(resolve => {   // let the splash finish first
     const t = setInterval(()=>{ if(splash.style.display === 'none'){ clearInterval(t); resolve(); } }, 150);
     setTimeout(()=>{ clearInterval(t); resolve(); }, 9000);
   });
-  await navigateToPost(SHARED_POST_ID);
+  await openFromPushParams(_pushParams);
 }
 
 async function navigateToPost(postId){
@@ -12367,17 +12408,24 @@ const NOTIF_NAV = {
     if(isMeet8){
       // A reply to one of the curated stories: open its replies directly.
       const { data: sp } = await sb.from('posts').select('story_number').eq('id', n.reference_id).maybeSingle();
-      if(sp && sp.story_number) return openPostRepliesSheet(n.reference_id, true);
+      if(sp && sp.story_number){
+        await openPostRepliesSheet(n.reference_id, true);
+        const oid = n._otherId || n.actor_id;
+        const t = oid && currentRepliesThreads[oid];
+        if(t) openPrivateThreadDetail(oid, t.name || 'Someone', t.rows);
+        return;
+      }
     }
-    if(n._otherId){
+    if(n._otherId || n.actor_id){
       await openPostRepliesSheet(n.reference_id);
-      const t = currentRepliesThreads[n._otherId];
-      if(t) openPrivateThreadDetail(n._otherId, t.name || 'Someone', t.rows);
-      return;
+      const oid = n._otherId || n.actor_id;
+      const t = currentRepliesThreads[oid];
+      if(t){ openPrivateThreadDetail(oid, t.name || 'Someone', t.rows); return; }
+      if(!n._otherId) return;
     }
     return navigateToPost(n.reference_id);
   },
-  reply_back: (n)=>{ notifOverlay.classList.remove('show'); return openPrivateThreadFromNotification(n.reference_id); },
+  reply_back: (n)=>{ notifOverlay.classList.remove('show'); return openPrivateThreadFromNotification(n.reference_id, n.actor_id); },
   friend_request: async ()=>{ notifOverlay.classList.remove('show'); await goToScreen('chat'); },
   friend_accept: async ()=>{ notifOverlay.classList.remove('show'); await goToScreen('chat'); },
   room_ready: async ()=>{ notifOverlay.classList.remove('show'); await goToScreen('chat'); },
@@ -13348,6 +13396,34 @@ if(window.visualViewport){
   window.visualViewport.addEventListener('resize', composeFitToKeyboard);
   window.visualViewport.addEventListener('scroll', composeFitToKeyboard);
 }
+
+/* Private reply sheet + chat/community threads: keep the input row above the keyboard */
+const KB_FIT_IDS = ['post-replies-sheet','chat-thread-overlay','community-thread-overlay'];
+function fitOverlaysToKeyboard(){
+  const vv = window.visualViewport;
+  const kb = vv ? Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) : 0;
+  KB_FIT_IDS.forEach(id=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    if(vv && kb > 80){ el.style.top = Math.round(vv.offsetTop) + 'px'; el.style.bottom = kb + 'px'; }
+    else { el.style.top = ''; el.style.bottom = ''; }
+  });
+  if(kb > 80){
+    const a = document.activeElement;
+    if(a && /^(INPUT|TEXTAREA)$/.test(a.tagName) && a.closest(KB_FIT_IDS.map(i=>'#'+i).join(','))){
+      const msgs = a.closest('#post-replies-thread-view, #chat-thread-overlay, #community-thread-overlay')
+        ?.querySelector('#post-replies-thread-messages, #chat-thread-messages, #community-thread-messages');
+      if(msgs) msgs.scrollTop = msgs.scrollHeight;
+      setTimeout(()=>{ try{ a.scrollIntoView({ block:'nearest' }); }catch(e){} }, 50);
+    }
+  }
+}
+if(window.visualViewport){
+  window.visualViewport.addEventListener('resize', fitOverlaysToKeyboard);
+  window.visualViewport.addEventListener('scroll', fitOverlaysToKeyboard);
+}
+document.addEventListener('focusin', ()=> setTimeout(fitOverlaysToKeyboard, 300));
+document.addEventListener('focusout', ()=> setTimeout(fitOverlaysToKeyboard, 300));
 
 function openComposeOverlay(){
   const title = document.getElementById('compose-title');
@@ -17298,6 +17374,30 @@ installRow.addEventListener('click', async ()=>{
 document.getElementById('install-close').addEventListener('click', ()=>{
   document.getElementById('install-overlay').classList.remove('show');
 });
+
+// One-time nudge for people using the site in the browser or via an old home-screen shortcut:
+// only the real installed app opens notifications inside the app instead of Chrome.
+(function installNudge(){
+  const KEY = 'mm_install_nudge_ts';
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+  if(!isMobile || isInstalled()) return;
+  try{ const last = +localStorage.getItem(KEY) || 0; if(Date.now() - last < 7 * 24 * 3600 * 1000) return; }catch(e){}
+  setTimeout(()=>{
+    if(isInstalled() || document.getElementById('install-nudge')) return;
+    const bar = document.createElement('div');
+    bar.id = 'install-nudge';
+    bar.style.cssText = 'position:fixed; left:12px; right:12px; bottom:calc(12px + env(safe-area-inset-bottom, 0px)); z-index:95; background:var(--bg-elevated); color:var(--ivory); border:1px solid var(--card-border); border-radius:16px; padding:14px 16px; box-shadow:0 8px 28px rgba(0,0,0,0.45); font-family:Karla,sans-serif; font-size:13px; line-height:1.45;';
+    bar.innerHTML = '<div style="font-family:Fraunces,serif; font-size:15px; margin-bottom:4px;">Get the Meet Me app</div>'
+      + '<div style="color:var(--muted); margin-bottom:12px;">Notifications open straight inside the app, not Chrome. If you added Meet Me to your home screen before, delete that old icon first, then install.</div>'
+      + '<div style="display:flex; gap:10px; justify-content:flex-end;">'
+      + '<span id="install-nudge-later" style="padding:8px 12px; color:var(--muted); cursor:pointer;">Not now</span>'
+      + '<span id="install-nudge-go" style="padding:8px 16px; border-radius:20px; background:#d4a857; color:#1a1408; font-weight:500; cursor:pointer;">Install</span></div>';
+    document.body.appendChild(bar);
+    const close = ()=>{ try{ localStorage.setItem(KEY, String(Date.now())); }catch(e){} bar.remove(); };
+    document.getElementById('install-nudge-later').addEventListener('click', close);
+    document.getElementById('install-nudge-go').addEventListener('click', ()=>{ close(); installRow.click(); });
+  }, 8000);
+})();
 
 const BACK_LAYERS = [
   ['sticker-viewer-overlay','sticker-viewer-close'], ['logo-viewer-overlay','logo-viewer-close'], ['text-viewer-overlay','text-viewer-close'],
