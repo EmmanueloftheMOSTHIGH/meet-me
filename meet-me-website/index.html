@@ -9133,7 +9133,9 @@ async function loadSheetAnswers(postId){
 // The Door tag: posts written from the door carry door_question_id; look up
 // the question text once per id and keep it, so every feed can show it.
 const doorQuestionTextById = {};
+const doorQidByPostId = {};   // post id -> the door question it answered (or null), so Share can put the question on the card
 async function fetchDoorQuestionTexts(posts){
+  (posts || []).forEach(p => { if(p && p.id) doorQidByPostId[p.id] = p.door_question_id || null; });
   const ids = [...new Set((posts || []).filter(p => p.door_question_id && !(p.door_question_id in doorQuestionTextById)).map(p => p.door_question_id))];
   if(!ids.length) return;
   const { data, error } = await sb.from('door_questions').select('id, question').in('id', ids);
@@ -9144,6 +9146,24 @@ function doorTagHtml(post){
   const q = post.door_question_id && doorQuestionTextById[post.door_question_id];
   if(!q) return '';
   return `<div class="door-tag"><div class="door-tag-head"><svg class="door-tag-glyph" viewBox="0 0 60 84" fill="none" aria-hidden="true"><path class="dg-leaf" d="M8 6 H44 V80 H8 Z" /><rect x="6" y="4" width="48" height="78" rx="3" /></svg><span>daily question</span></div><div class="door-tag-q">${escapeHtml(q)}</div></div>`;
+}
+
+// The door question a post answered, or null. Uses what the feed already loaded; asks the database only if this post was never seen.
+async function doorQuestionForPost(postId){
+  if(!postId) return null;
+  try{
+    if(!(postId in doorQidByPostId)){
+      const { data } = await sb.from('posts').select('door_question_id').eq('id', postId).maybeSingle();
+      doorQidByPostId[postId] = (data && data.door_question_id) || null;
+    }
+    const qid = doorQidByPostId[postId];
+    if(!qid) return null;
+    if(!(qid in doorQuestionTextById)){
+      const { data } = await sb.from('door_questions').select('id, question').eq('id', qid).maybeSingle();
+      if(data) doorQuestionTextById[data.id] = data.question;
+    }
+    return doorQuestionTextById[qid] || null;
+  }catch(err){ console.error('Door question for share card failed (non-fatal):', err); return null; }
 }
 
 // Batch-fetches display names for a set of "inspired by" source posts,
@@ -11639,6 +11659,7 @@ let doorPick = null;
 let doorBusy = false;
 let doorMyDays = new Set();
 let doorTodayMood = null;                 // today's mood pick if they already checked in (so a late question doesn't ask for it again)
+let doorAnswerTextByQ = {};               // question id -> what this person answered (for the Door share card)
 let doorAnsweredIds = new Set();          // question ids this person has already answered (from their own posts)
 const DOOR_MOODS = [null, 'rough', 'low', 'okay', 'good', 'great'];
 const DOOR_LVL = [0, 0.14, 0.32, 0.52, 0.76, 1];
@@ -11681,8 +11702,8 @@ async function loadDoorQuestion(){
     doorUsedToday = doorMyDays.has(today);
     // Has this person already answered today's question? (Their own post carries the question id.)
     if(q){
-      const { data: mineAns } = await sb.from('posts').select('id').eq('user_id', currentUserId).eq('door_question_id', q.id).limit(1);
-      if(mineAns && mineAns.length) doorAnsweredIds.add(q.id);
+      const { data: mineAns } = await sb.from('posts').select('id, content').eq('user_id', currentUserId).eq('door_question_id', q.id).order('created_at', { ascending:false }).limit(1);
+      if(mineAns && mineAns.length){ doorAnsweredIds.add(q.id); if(mineAns[0].content) doorAnswerTextByQ[q.id] = mineAns[0].content; }
     }
   }
   updateDoorEntries();
@@ -11839,7 +11860,7 @@ function scoreDoorRouting(text){
 
 async function postDoorLine(content){
   const qid = currentDoorRowIsToday ? currentDoorQuestionId : null;
-  if(qid) doorAnsweredIds.add(qid);
+  if(qid){ doorAnsweredIds.add(qid); doorAnswerTextByQ[qid] = content; }
   const { score } = scoreDoorRouting(content);
   if(score >= 3){
     await saveSpill(content, null, null, null, qid, score);
@@ -11931,21 +11952,67 @@ async function shareDoorCard(){
   tint.addColorStop(0, 'rgba(212,168,87,0.10)'); tint.addColorStop(1, 'rgba(212,168,87,0)');
   g.fillStyle = tint; g.fillRect(0, 0, W, 520);
 
+  // With an answer on file, the card also carries today's question and the person's answer, so the door is smaller.
+  const doorQ = currentDoorRowIsToday ? currentDoorQuestionText : null;
+  const doorA = (doorQ && currentDoorQuestionId) ? (doorAnswerTextByQ[currentDoorQuestionId] || '') : '';
+  const hasQA = !!(doorQ && doorA);
+
   // door: plain frame, light behind a leaf that is slightly ajar
-  const dx = W/2 - 100, dy = 250, dw = 200, dh = 320;
-  g.fillStyle = '#d4a857'; g.fillRect(dx+8, dy+8, dw-16, dh-16);
-  g.fillStyle = '#17171b'; g.fillRect(dx+8, dy+8, (dw-16)*0.9, dh-16);
-  g.strokeStyle = '#c99a4e'; g.lineWidth = 7; g.lineJoin = 'round';
+  const k = hasQA ? 0.6 : 1;
+  const dw = 200*k, dh = 320*k, dx = W/2 - dw/2, dy = hasQA ? 90 : 250, ins = 8*k;
+  g.fillStyle = '#d4a857'; g.fillRect(dx+ins, dy+ins, dw-2*ins, dh-2*ins);
+  g.fillStyle = '#17171b'; g.fillRect(dx+ins, dy+ins, (dw-2*ins)*0.9, dh-2*ins);
+  g.strokeStyle = '#c99a4e'; g.lineWidth = 7*k; g.lineJoin = 'round';
   g.strokeRect(dx, dy, dw, dh);
-  g.fillStyle = '#c99a4e'; g.beginPath(); g.arc(dx+dw*0.7, dy+dh*0.56, 9, 0, Math.PI*2); g.fill();
+  g.fillStyle = '#c99a4e'; g.beginPath(); g.arc(dx+dw*0.7, dy+dh*0.56, 9*k, 0, Math.PI*2); g.fill();
 
   g.textAlign = 'center';
-  g.fillStyle = '#c99a4e'; g.font = '700 30px Karla, sans-serif';
-  g.fillText('D A I L Y   C H E C K - I N', W/2, 690);
-  g.fillStyle = '#f0e6d2'; g.font = '700 150px Karla, sans-serif';
-  g.fillText('Day ' + computeDoorStreak(), W/2, 860);
-  g.fillStyle = '#d4a857'; g.font = '600 62px Karla, sans-serif';
-  g.fillText('my day is ' + DOOR_MOODS[doorPick], W/2, 990);
+  if(!hasQA){
+    g.fillStyle = '#c99a4e'; g.font = '700 30px Karla, sans-serif';
+    g.fillText('D A I L Y   C H E C K - I N', W/2, 690);
+    g.fillStyle = '#f0e6d2'; g.font = '700 150px Karla, sans-serif';
+    g.fillText('Day ' + computeDoorStreak(), W/2, 860);
+    g.fillStyle = '#d4a857'; g.font = '600 62px Karla, sans-serif';
+    g.fillText('my day is ' + DOOR_MOODS[doorPick], W/2, 990);
+  } else {
+    g.fillStyle = '#c99a4e'; g.font = '700 26px Karla, sans-serif';
+    g.fillText('D A I L Y   C H E C K - I N', W/2, 345);
+    g.fillStyle = '#f0e6d2'; g.font = '700 84px Karla, sans-serif';
+    g.fillText('Day ' + computeDoorStreak(), W/2, 435);
+    g.fillStyle = '#d4a857'; g.font = '600 44px Karla, sans-serif';
+    g.fillText('my day is ' + DOOR_MOODS[doorPick], W/2, 500);
+
+    g.save(); g.globalAlpha = 0.3; g.strokeStyle = '#8a8578'; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(190, 550); g.lineTo(W-190, 550); g.stroke(); g.restore();
+
+    const maxW = 800;
+    g.fillStyle = '#c99a4e'; g.font = '700 24px Karla, sans-serif';
+    g.fillText("T O D A Y ' S   Q U E S T I O N", W/2, 605);
+    g.font = 'italic 44px Georgia, serif';
+    let qLines = canvasWrapLines(g, doorQ, maxW);
+    if(qLines.length > 3){ qLines = qLines.slice(0, 3); qLines[2] = canvasTrimLine(g, qLines[2], maxW); }
+    g.fillStyle = '#d4a857';
+    qLines.forEach((ln, n) => g.fillText(ln, W/2, 670 + n * 58));
+    const qEnd = 670 + (qLines.length - 1) * 58;
+
+    g.fillStyle = '#c99a4e'; g.font = '700 24px Karla, sans-serif';
+    g.fillText('M Y   A N S W E R', W/2, qEnd + 85);
+    const aTop = qEnd + 150, aBottom = 1160;
+    const sizes = [44, 40, 36, 32];
+    for(let i = 0; i < sizes.length; i++){
+      const size = sizes[i], lh = Math.round(size * 1.35);
+      g.font = size + 'px Georgia, serif';
+      const lines = canvasWrapLines(g, doorA, maxW);
+      const maxLines = Math.floor((aBottom - aTop) / lh) + 1;
+      if(lines.length <= maxLines || i === sizes.length - 1){
+        const cut = lines.length > maxLines;
+        const shown = cut ? lines.slice(0, maxLines) : lines;
+        g.fillStyle = '#f0e6d2';
+        shown.forEach((ln, n) => g.fillText((cut && n === shown.length - 1) ? canvasTrimLine(g, ln, maxW) : ln, W/2, aTop + n * lh));
+        break;
+      }
+    }
+  }
   g.fillStyle = '#8a8578'; g.font = '500 34px Karla, sans-serif';
   g.fillText('Meet Me', W/2, 1230);
 
@@ -15807,7 +15874,7 @@ function drawCardCaption(ctx, palette, lines, x, bottom){
   lines.forEach((ln, n) => ctx.fillText(ln, x, first + n * 44));
 }
 
-async function buildShareCanvas(content, name, spaceLabel, style, stickerUrl, audioUrl, durationSeconds, shareUrl){
+async function buildShareCanvas(content, name, spaceLabel, style, stickerUrl, audioUrl, durationSeconds, shareUrl, doorQuestion){
   stickerUrl = stickerUrlList(stickerUrl)[0] || null;   // the share card shows the first picture only
   style = style || 'dark';
   const isGold = style === 'gold';
@@ -15845,10 +15912,31 @@ async function buildShareCanvas(content, name, spaceLabel, style, stickerUrl, au
   ctx.font = '32px Karla, sans-serif';
   ctx.fillText('MEET ME · ' + spaceLabel.toUpperCase(), lx, ly + sq*2 + gap + 50);
 
-  const contentTop = ly + sq*2 + gap + 150;
+  let contentTop = ly + sq*2 + gap + 150;
   const contentBottom = canvas.height - pad - 180;
   const contentLeft = pad + 60;
   const contentWidth = canvas.width - pad*2 - 120;
+
+  // A post that answered the Door's daily question carries that question on the card, above the answer.
+  if(doorQuestion){
+    ctx.fillStyle = palette.label;
+    ctx.font = '26px Karla, sans-serif';
+    ctx.fillText('DAILY QUESTION', contentLeft, contentTop - 10);
+    ctx.font = 'italic 40px Georgia, serif';
+    let qLines = canvasWrapLines(ctx, doorQuestion, contentWidth);
+    if(qLines.length > 3){ qLines = qLines.slice(0, 3); qLines[2] = canvasTrimLine(ctx, qLines[2], contentWidth); }
+    ctx.fillStyle = palette.body;
+    qLines.forEach((ln, n) => ctx.fillText(ln, contentLeft, contentTop + 40 + n * 52));
+    const qEnd = contentTop + 40 + (qLines.length - 1) * 52;
+    ctx.save();
+    ctx.globalAlpha = 0.35; ctx.strokeStyle = palette.label; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(contentLeft, qEnd + 36); ctx.lineTo(contentLeft + contentWidth, qEnd + 36); ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = palette.label;
+    ctx.font = '26px Karla, sans-serif';
+    ctx.fillText('ANSWER', contentLeft, qEnd + 90);
+    contentTop = qEnd + 160;
+  }
 
   const capLines = cardCaptionLines(ctx, content, contentWidth);
   const capH = capLines.length ? capLines.length * 44 + 24 : 0;
@@ -15943,10 +16031,12 @@ async function copyText(text){
     ta.remove(); return ok;
   }catch(e){ return false; }
 }
+let currentShareDoorQuestion = null;
 let currentShareContent = null, currentShareName = null, currentShareSpace = null, currentShareStyle = 'dark', currentShareStickerUrl = null, currentShareAudioUrl = null, currentShareDuration = null;
 
-async function openShareCard(content, name, spaceLabel, stickerUrl, audioUrl, durationSeconds, postId){
+async function openShareCard(content, name, spaceLabel, stickerUrl, audioUrl, durationSeconds, postId, doorQuestion){
   currentShareUrl = postShareUrl(postId);
+  currentShareDoorQuestion = doorQuestion || null;
   const linkRow = document.getElementById('share-card-link-row');
   linkRow.style.display = currentShareUrl ? 'flex' : 'none';
   document.getElementById('share-card-link-text').textContent = currentShareUrl ? currentShareUrl.replace(/^https?:\/\//, '') : '';
@@ -16051,7 +16141,7 @@ function setupOriginalMediaRow(){
 }
 
 async function renderShareCard(){
-  const canvas = await buildShareCanvas(currentShareContent, currentShareName, currentShareSpace, currentShareStyle, currentShareStickerUrl, currentShareAudioUrl, currentShareDuration, currentShareUrl);
+  const canvas = await buildShareCanvas(currentShareContent, currentShareName, currentShareSpace, currentShareStyle, currentShareStickerUrl, currentShareAudioUrl, currentShareDuration, currentShareUrl, currentShareDoorQuestion);
   const dataUrl = canvas.toDataURL('image/png');
   document.getElementById('share-card-image').src = dataUrl;
 
@@ -16101,10 +16191,11 @@ document.getElementById('share-card-overlay').addEventListener('click', (e)=>{
   if(e.target.id === 'share-card-overlay') closeShareCard();
 });
 
-document.addEventListener('click', (e)=>{
+document.addEventListener('click', async (e)=>{
   const shareBtn = e.target.closest('.share-trigger');
   if(shareBtn){
     e.stopPropagation();
+    const doorQ = await doorQuestionForPost(shareBtn.dataset.shareId || null);
     openShareCard(
       shareBtn.dataset.content,
       shareBtn.dataset.name,
@@ -16112,7 +16203,8 @@ document.addEventListener('click', (e)=>{
       shareBtn.dataset.stickerUrl || null,
       shareBtn.dataset.audioUrl || null,
       shareBtn.dataset.duration ? Number(shareBtn.dataset.duration) : null,
-      shareBtn.dataset.shareId || null
+      shareBtn.dataset.shareId || null,
+      doorQ
     );
   }
 });
