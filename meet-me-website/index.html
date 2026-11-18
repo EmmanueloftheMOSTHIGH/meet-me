@@ -391,6 +391,26 @@
   #door-share-btn{ margin-top:20px; width:100%; padding:13px; box-sizing:border-box; font-size:13.5px; font-weight:600; color:var(--gold-text); cursor:pointer; border:1px solid var(--gold-dim); border-radius:12px; }
   #door-share-btn:active{ background:rgba(212,168,87,0.12); }
 
+  /* The Door entry points: the moment-bar nudge, and the "Your Doors" archive page */
+  #depth-bar.bar-door #depth-bar-text{ color:var(--gold-light); font-style:normal; font-weight:400; }
+  #doors-overlay{ position:absolute; inset:0; background:var(--bg); z-index:79; opacity:0; pointer-events:none; transition:opacity 0.3s ease; display:flex; flex-direction:column; }
+  #doors-overlay.show{ opacity:1; pointer-events:auto; }
+  #doors-body{ flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:14px 16px 90px; display:flex; flex-direction:column; gap:10px; }
+  #doors-body::-webkit-scrollbar{ display:none; }
+  .dr-card{ background:var(--card); border:1px solid var(--card-border); border-radius:14px; padding:14px 15px; }
+  .dr-card.missed{ opacity:.55; }
+  .dr-top{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:7px; }
+  .dr-date{ font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:var(--gold-text); }
+  .dr-chip{ font-size:10.5px; font-weight:600; letter-spacing:0.04em; text-transform:capitalize; color:var(--gold-text); border:1px solid var(--gold-dim); border-radius:10px; padding:2px 8px; }
+  .dr-chip.dim{ color:var(--muted-dim); border-color:var(--card-border); text-transform:none; font-weight:500; }
+  .dr-q{ font-family:'Fraunces',serif; font-size:14.5px; line-height:1.45; color:var(--ivory); overflow-wrap:anywhere; }
+  .dr-a{ margin-top:10px; padding-top:10px; border-top:1px solid var(--card-border); }
+  .dr-a-label{ font-size:10px; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted-dim); margin-bottom:4px; }
+  .dr-a-text{ font-size:13.5px; line-height:1.5; color:var(--muted); white-space:pre-wrap; overflow-wrap:anywhere; }
+  .dr-open{ margin-top:12px; padding:11px; text-align:center; border-radius:12px; background:var(--gold); color:#1a1408; font-weight:700; font-size:13.5px; cursor:pointer; }
+  .dr-more, .dr-empty{ text-align:center; padding:14px; font-size:12.5px; color:var(--muted-dim); }
+  .dr-more{ cursor:pointer; color:var(--gold-text); }
+
   #feed{ flex:1; overflow-y:auto; padding:2px 16px 90px; display:flex; flex-direction:column; gap:14px; -webkit-overflow-scrolling:touch; position:relative; }
   #feed::-webkit-scrollbar{ width:0; }
   /* ===== ORGANISATIONS PILLAR (landing page) ===== */
@@ -2871,7 +2891,7 @@
 
   /* ================= FULL-PAGE OVERLAYS: stay to the right of the sidebar ================= */
   #root > #yourposts-overlay, #root > #search-overlay, #root > #user-profile-overlay, #root > #bookmarks-overlay,
-  #root > #yourreplies-overlay, #root > #orgposts-overlay, #root > #yourweek-overlay, #root > #happening-view-overlay, #root > #trend-view-overlay, #root > #answers-overlay,
+  #root > #yourreplies-overlay, #root > #orgposts-overlay, #root > #yourweek-overlay, #root > #doors-overlay, #root > #happening-view-overlay, #root > #trend-view-overlay, #root > #answers-overlay,
   #root > #anon-overlay, #root > #game-overlay, #root > #room-overlay,
   #root > #chat-thread-overlay, #root > #community-thread-overlay{ left:var(--mm-sb); }
   /* chat conversation opens as the right-hand pane while you're on Chat */
@@ -2880,7 +2900,7 @@
 
   /* keep reading width comfortable inside those pages (borders still run edge to edge) */
   #yourposts-overlay > *, #search-overlay > *, #user-profile-overlay > *, #bookmarks-overlay > *, #yourreplies-overlay > *,
-  #orgposts-overlay > *, #yourweek-overlay > *, #happening-view-overlay > *, #trend-view-overlay > *, #answers-overlay > *, #anon-overlay > *, #game-overlay > *,
+  #orgposts-overlay > *, #yourweek-overlay > *, #doors-overlay > *, #happening-view-overlay > *, #trend-view-overlay > *, #answers-overlay > *, #anon-overlay > *, #game-overlay > *,
   #chat-thread-overlay > *, #community-thread-overlay > *{
     padding-left:max(18px, calc((100% - var(--mm-read)) / 2)); padding-right:max(18px, calc((100% - var(--mm-read)) / 2)); }
   #main:has(#screen-chat.active) ~ #chat-thread-overlay > *,
@@ -3036,6 +3056,10 @@
       <div id="profile-header">
         <div id="profile-number">—</div>
       </div>
+      <div class="profile-row" id="profile-door-today-row" style="display:none;">
+        <span class="profile-row-label">Today's Door</span>
+        <span class="profile-row-value">still open ›</span>
+      </div>
       <div class="profile-row" id="profile-install-row">
         <span class="profile-row-label">Install Meet Me app</span>
         <span class="profile-row-value" id="profile-install-value">install ›</span>
@@ -3050,6 +3074,10 @@
       </div>
       <div class="profile-row" id="profile-yourweek-row">
         <span class="profile-row-label">Your week</span>
+        <span class="profile-row-value">›</span>
+      </div>
+      <div class="profile-row" id="profile-doors-row">
+        <span class="profile-row-label">Your Doors</span>
         <span class="profile-row-value">›</span>
       </div>
       <div class="profile-row" id="profile-bookmarks-row">
@@ -3359,6 +3387,17 @@
       </div>
     </div>
     <div id="yourweek-body"></div>
+  </div>
+
+  <div id="doors-overlay">
+    <div class="overlay-header">
+      <div id="doors-back" class="yourposts-style-back">‹</div>
+      <div>
+        <div style="font-family:'Fraunces',serif; font-size:16px; color:var(--ivory);">Your Doors</div>
+        <div style="font-size:11px; color:var(--muted-dim); margin-top:2px;">Every daily question, and what you said. Only you see this.</div>
+      </div>
+    </div>
+    <div id="doors-body"></div>
   </div>
 
   <div id="delete-account-overlay" class="account-overlay">
@@ -5666,7 +5705,7 @@ document.getElementById('feed').addEventListener('click', async (e)=>{
    ============================================================ */
 const depthBar = document.getElementById('depth-bar');
 const toast = document.getElementById('toast');
-depthBar.addEventListener('click', ()=>{ if(gameBarLive && gameBarNightId){ openBarEvent(); } else { openMoment(); } });
+depthBar.addEventListener('click', ()=>{ if(gameBarLive && gameBarNightId){ openBarEvent(); } else if(depthBar.classList.contains('bar-door')){ openDoorFromEntry(); } else { openMoment(); } });
 
 /* ============================================================
    MOMENT BAR — AGGREGATE ONLINE COUNT
@@ -11593,6 +11632,7 @@ async function renderSpills(spills, append){
 let currentDoorQuestionId = null;
 let currentDoorQuestionText = null;
 let currentDoorRowIsToday = false;
+let doorLoadedDay = null, doorLoadedAt = 0;   // when today's question was last fetched, so a new day or a stale copy gets refreshed
 let doorUsedToday = false;
 let doorSkippedThisSession = false;
 let doorPick = null;
@@ -11623,6 +11663,7 @@ async function loadDoorQuestion(){
   currentDoorRowIsToday = !!q;
   currentDoorQuestionId = q ? q.id : null;
   currentDoorQuestionText = q ? q.question : null;
+  doorLoadedDay = today; doorLoadedAt = Date.now();
 
   doorMyDays = new Set();
   doorUsedToday = false;
@@ -11632,6 +11673,7 @@ async function loadDoorQuestion(){
     (mine || []).forEach(r => doorMyDays.add(String(r.day).slice(0,10)));
     doorUsedToday = doorMyDays.has(today);
   }
+  updateDoorEntries();
 }
 
 const doorFront = document.getElementById('door-front');
@@ -11640,7 +11682,13 @@ function maybeShowDoorFront(){
   if(document.documentElement.classList.contains('mm-resume')) return; // just popped back in -- don't interrupt
   if(getComputedStyle(splash).display !== 'none'){ setTimeout(maybeShowDoorFront, 300); return; }
   if(!currentUserId || doorUsedToday || doorSkippedThisSession) return;
+  showDoorFront();
+}
 
+// Opens the Door itself. maybeShowDoorFront() decides *whether* to pop it up on its own;
+// the Profile row and the moment-bar nudge call openDoorFromEntry() -> this directly.
+function showDoorFront(){
+  if(doorFront.classList.contains('show')) return;
   doorPick = null; doorBusy = false;
   document.querySelectorAll('.door-orb').forEach(o => o.classList.remove('on'));
   document.getElementById('door-orbs').classList.remove('has-pick');
@@ -11670,6 +11718,8 @@ function hideDoorFront(){
   doorFront.classList.remove('show');
   document.body.classList.remove('door-open');
   if(typeof updateComposeVisibility === 'function') updateComposeVisibility();
+  updateDoorEntries();
+  if(typeof refreshDoorsArchiveIfOpen === 'function') refreshDoorsArchiveIfOpen();
 }
 
 function doorLineKey(){ return 'door-line-handled-' + localDayStr(); }
@@ -11821,6 +11871,7 @@ document.getElementById('door-front-submit').addEventListener('click', async ()=
   }
   doorMyDays.add(today);
   doorUsedToday = true;
+  updateDoorEntries();
 
   doorFront.classList.add('opening');
   setTimeout(async ()=>{
@@ -11876,6 +11927,131 @@ async function shareDoorCard(){
 document.getElementById('door-share-btn').addEventListener('click', shareDoorCard);
 
 /* ============================================================
+   DOOR ENTRY POINTS + "YOUR DOORS" ARCHIVE
+   Someone who misses the Door on a given day (dismissed it, or the app stayed open
+   and never refreshed) can still reach that day's Door, once, from two places:
+   the moment bar (rotates in "Today's Door is still open") and a Profile row.
+   Both disappear the moment they check in, and on the next day the Door is gone.
+   "Your Doors" in Profile is the private archive: every past question, what they
+   answered, and how their day was. Days they missed show the question only.
+   ============================================================ */
+function barOwnedByNight(){ try{ return !!gameBarLive; }catch(e){ return false; } }
+// The bar nudge yields to Game Night / Anonymous Night; the Profile row carries the Door on those days.
+function doorNudgeOn(){
+  return !!currentUserId && !doorUsedToday && !doorFront.classList.contains('show') && !barOwnedByNight();
+}
+function updateDoorEntries(){
+  const row = document.getElementById('profile-door-today-row');
+  if(row) row.style.display = (currentUserId && !doorUsedToday) ? 'flex' : 'none';
+  if(momentQuestionReady) refreshMomentBarText();
+}
+function openDoorFromEntry(){
+  if(!currentUserId) return;
+  if(doorUsedToday){ showNavToast("You've already checked in today."); updateDoorEntries(); return; }
+  doorSkippedThisSession = false;
+  showDoorFront();
+}
+document.getElementById('profile-door-today-row').addEventListener('click', openDoorFromEntry);
+
+// Pick up a new day (or a question the admin changed) without needing a full reload.
+async function refreshDoorIfNeeded(opts){
+  if(!currentUserId || !doorLoadedDay) return;
+  const dayChanged = doorLoadedDay !== localDayStr();
+  const stale = Date.now() - doorLoadedAt > 20 * 60 * 1000;
+  if(!dayChanged && !(stale && !(opts && opts.dayOnly))) return;
+  try{
+    await loadDoorQuestion();
+    if(dayChanged){ doorSkippedThisSession = false; maybeShowDoorFront(); }
+  }catch(err){ console.error('Door refresh failed (non-fatal):', err); }
+}
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) refreshDoorIfNeeded(); });
+setInterval(()=>{ refreshDoorIfNeeded({ dayOnly:true }); }, 5 * 60 * 1000);   // an app left open across midnight
+
+const doorsOverlay = document.getElementById('doors-overlay');
+const doorsBody = document.getElementById('doors-body');
+const DOORS_PAGE = 30;
+let doorsRows = [], doorsHasMore = false, doorsLoading = false;
+
+function doorDayLabel(str){
+  const p = String(str).slice(0,10).split('-').map(Number);
+  return new Date(p[0], p[1]-1, p[2]).toLocaleDateString([], { weekday:'short', day:'numeric', month:'short' });
+}
+async function loadDoorsArchive(reset){
+  if(doorsLoading || !currentUserId) return;
+  doorsLoading = true;
+  try{
+    const today = localDayStr();
+    let q = sb.from('door_questions').select('id, question, active_date').lte('active_date', today)
+      .order('active_date', { ascending:false }).limit(DOORS_PAGE);
+    if(!reset && doorsRows.length) q = q.lt('active_date', doorsRows[doorsRows.length - 1].day);
+    const { data: qs, error } = await q;
+    if(error) throw error;
+    const list = qs || [];
+    const ids = list.map(r => r.id);
+    const days = list.map(r => String(r.active_date).slice(0,10));
+    const [pulsesRes, postsRes] = list.length ? await Promise.all([
+      sb.from('door_pulses').select('day, mood').eq('user_id', currentUserId).in('day', days),
+      sb.from('posts').select('id, content, audio_url, sticker_url, post_type, created_at, door_question_id').eq('user_id', currentUserId).in('door_question_id', ids).order('created_at', { ascending:true })
+    ]) : [{ data: [] }, { data: [] }];
+    const moodByDay = {};
+    (pulsesRes.data || []).forEach(r => { moodByDay[String(r.day).slice(0,10)] = r.mood; });
+    const answersByQ = {};
+    (postsRes.data || []).forEach(r => { (answersByQ[r.door_question_id] = answersByQ[r.door_question_id] || []).push(r); });
+    const rows = list.map(r => ({ id:r.id, question:r.question, day:String(r.active_date).slice(0,10), mood:moodByDay[String(r.active_date).slice(0,10)] || null, answers:answersByQ[r.id] || [] }));
+    doorsRows = reset ? rows : doorsRows.concat(rows);
+    doorsHasMore = list.length === DOORS_PAGE;
+  }catch(err){
+    console.error('Loading your Doors failed:', err);
+    if(reset) doorsRows = [];
+    showNavToast("Couldn't load your Doors. Try again.");
+  }
+  doorsLoading = false;
+  renderDoorsArchive();
+}
+function renderDoorsArchive(){
+  if(!doorsRows.length){ doorsBody.innerHTML = '<div class="dr-empty">No Doors yet. Come back after the first one.</div>'; return; }
+  const today = localDayStr();
+  let html = '';
+  doorsRows.forEach(r => {
+    const isToday = r.day === today;
+    const answered = r.answers.length > 0;
+    const missed = !r.mood && !answered && !isToday;
+    let chip = '';
+    if(r.mood) chip = '<span class="dr-chip">' + escapeHtml(DOOR_MOODS[r.mood] || '') + '</span>';
+    else if(answered) chip = '<span class="dr-chip dim">answered</span>';
+    else if(missed) chip = '<span class="dr-chip dim">missed</span>';
+    let ans = '';
+    r.answers.forEach(a => {
+      const where = a.post_type === 'spill' ? 'Spill' : 'Rant';
+      const text = a.content ? escapeHtml(a.content) : (a.audio_url ? 'Voice note' : (a.sticker_url ? 'Picture' : ''));
+      ans += '<div class="dr-a"><div class="dr-a-label">Your answer · ' + where + '</div><div class="dr-a-text">' + text + '</div></div>';
+    });
+    const open = (isToday && !doorUsedToday) ? '<div class="dr-open" data-act="open-today">Open today\'s Door</div>' : '';
+    html += '<div class="dr-card' + (missed ? ' missed' : '') + '"><div class="dr-top"><span class="dr-date">' + (isToday ? 'Today' : doorDayLabel(r.day)) + '</span>' + chip + '</div>'
+      + '<div class="dr-q">' + escapeHtml(r.question) + '</div>' + ans + open + '</div>';
+  });
+  if(doorsHasMore) html += '<div class="dr-more" data-act="more">Show older</div>';
+  doorsBody.innerHTML = html;
+}
+function refreshDoorsArchiveIfOpen(){
+  if(doorsOverlay.classList.contains('show')) loadDoorsArchive(true);
+}
+document.getElementById('profile-doors-row').addEventListener('click', ()=>{
+  closeProfile();
+  setTimeout(()=>{
+    doorsOverlay.classList.add('show');
+    loadDoorsArchive(true);
+  }, 250);
+});
+document.getElementById('doors-back').addEventListener('click', ()=>{ doorsOverlay.classList.remove('show'); });
+doorsBody.addEventListener('click', (e)=>{
+  const act = e.target.closest('[data-act]');
+  if(!act) return;
+  if(act.dataset.act === 'open-today') openDoorFromEntry();
+  else if(act.dataset.act === 'more') loadDoorsArchive(false);
+});
+
+/* ============================================================
    MOMENT QUESTION (admin-editable)
    Single-row settings table (moment_settings, id=1) --
    Moment has always shown one
@@ -11890,6 +12066,9 @@ let currentMomentQuestion = DEFAULT_MOMENT_QUESTION;
 // in the admin screen changes both. Skipped while Game Night owns the bar or the online-count flash is up.
 let barAnnouncement = null;   // { text, starts, ends } while the admin has one set
 let barShowAnn = true;        // which of the two lines the bar is showing right now
+let momentQuestionReady = false;   // the Door code must not repaint the bar (and overwrite the cached question) before the real Moment question has loaded
+let barShowDoor = false;      // true while the bar is showing the "Today's Door is still open" nudge
+const DOOR_BAR_TEXT = "Today's Door is still open";
 function barAnnouncementActive(){
   if(!barAnnouncement || !barAnnouncement.text) return false;
   const now = Date.now();
@@ -11900,18 +12079,26 @@ function refreshMomentBarText(){
   const bar = document.getElementById('depth-bar');
   if(!el) return;
   try{ localStorage.setItem('momentQuestionCache', currentMomentQuestion); }catch(e){}
-  if(gameBarLive || el.classList.contains('online-count-flash')){ if(bar) bar.classList.remove('bar-ann'); return; }
+  if(gameBarLive || el.classList.contains('online-count-flash')){ if(bar){ bar.classList.remove('bar-ann'); bar.classList.remove('bar-door'); } return; }
   const showAnn = barAnnouncementActive() && barShowAnn;
-  const t = showAnn ? barAnnouncement.text : currentMomentQuestion;
+  const showDoor = !showAnn && doorNudgeOn() && barShowDoor;
+  const t = showAnn ? barAnnouncement.text : showDoor ? DOOR_BAR_TEXT : currentMomentQuestion;
   if(el.textContent !== t){
     el.textContent = t;
     el.classList.remove('bar-text-swap'); void el.offsetWidth; el.classList.add('bar-text-swap');
   }
-  if(bar) bar.classList.toggle('bar-ann', showAnn);
+  if(bar){ bar.classList.toggle('bar-ann', showAnn); bar.classList.toggle('bar-door', showDoor); }
 }
 // While an announcement is live the bar alternates: announcement, question, announcement...
+let barPhase = 0;
 setInterval(()=>{
-  if(barAnnouncementActive()) barShowAnn = !barShowAnn; else barShowAnn = true;
+  // The bar rotates between the Moment question, a live announcement and (only while you haven't checked in) the Door nudge.
+  const lines = ['q'];
+  if(barAnnouncementActive()) lines.push('ann');
+  if(doorNudgeOn()) lines.push('door');
+  barPhase = (barPhase + 1) % lines.length;
+  barShowAnn = lines[barPhase] === 'ann';
+  barShowDoor = lines[barPhase] === 'door';
   refreshMomentBarText();
 }, 6000);
 // Show last time's question instantly on open, so the old line never flashes before the fetch lands.
@@ -11922,6 +12109,7 @@ async function loadMomentQuestion(){
     .select('question, announcement_text, announcement_starts_at, announcement_ends_at').eq('id', 1).single();
   if(error){ ({ data } = await sb.from('moment_settings').select('question').eq('id', 1).single()); }  // never lose the question
   currentMomentQuestion = (data && data.question) ? data.question : DEFAULT_MOMENT_QUESTION;
+  momentQuestionReady = true;
   barAnnouncement = (data && data.announcement_text && data.announcement_ends_at)
     ? { text: data.announcement_text,
         starts: data.announcement_starts_at ? Date.parse(data.announcement_starts_at) : 0,
@@ -17447,7 +17635,7 @@ const BACK_LAYERS = [
   ['game-overlay','game-back'], ['room-overlay','room-back'], ['chat-thread-overlay','chat-thread-back'],
   ['community-thread-overlay','community-thread-back'],
   ['happening-view-overlay','happening-view-back'], ['user-profile-overlay','user-profile-back'],
-  ['bookmarks-overlay','bookmarks-back'], ['yourreplies-overlay','yourreplies-back'], ['yourweek-overlay','yourweek-back'], ['orgposts-overlay','orgposts-back'], ['org-page','orgpage-back'], ['strip-viewer','strip-close'], ['org-manage','manage-back'],
+  ['bookmarks-overlay','bookmarks-back'], ['yourreplies-overlay','yourreplies-back'], ['yourweek-overlay','yourweek-back'], ['doors-overlay','doors-back'], ['orgposts-overlay','orgposts-back'], ['org-page','orgpage-back'], ['strip-viewer','strip-close'], ['org-manage','manage-back'],
   ['yourposts-overlay','yourposts-back'], ['search-overlay','search-back'], ['answers-overlay','answers-back']
 ];
 

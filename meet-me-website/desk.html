@@ -39,7 +39,7 @@ button{cursor:pointer;background:none;border:0;padding:0}
 .btn.danger{background:var(--red);color:#fff;box-shadow:none}
 .field{display:block;margin-bottom:16px}
 .field span{display:block;font-size:14px;color:var(--mute);margin-bottom:6px}
-input[type=text],input[type=email],input[type=password],input[type=number],textarea{width:100%;background:none;border:1px solid var(--line);border-radius:10px;padding:12px 14px;min-height:46px}
+input[type=text],input[type=email],input[type=password],input[type=number],input[type=date],textarea{width:100%;background:none;border:1px solid var(--line);border-radius:10px;padding:12px 14px;min-height:46px}
 textarea{resize:vertical;line-height:1.45}
 input::placeholder,textarea::placeholder{color:rgba(143,137,117,.7)}
 .orgs{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin-bottom:18px;scrollbar-width:none}
@@ -91,6 +91,12 @@ dialog::backdrop{background:rgba(0,0,0,.78)}
 .modes{display:flex;gap:6px;margin-bottom:20px;padding:4px;border:1px solid var(--line);border-radius:999px}
 .mode{flex:1;min-height:42px;border-radius:999px;color:var(--mute);padding:0 6px;font-size:14px;white-space:nowrap}
 .mode[aria-pressed=true]{background:rgba(212,175,55,.14);color:var(--ink)}
+.modes{overflow-x:auto;scrollbar-width:none}
+.modes::-webkit-scrollbar{display:none}
+.mode{flex:1 0 auto;padding:0 14px}
+.gap{padding:14px 0;border-bottom:1px dashed var(--line);color:var(--mute)}
+.dtag{display:inline-block;margin-left:8px;padding:1px 9px;border:1px solid var(--gold);border-radius:999px;font:600 12px/1.6 var(--sans);color:var(--gold);vertical-align:middle}
+.lock{font-size:14px;color:var(--mute);margin-top:4px}
 .nums{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 6px}
 .num{display:inline-flex;align-items:baseline;gap:6px;padding:4px 12px;border:1px solid var(--line);border-radius:999px;font-size:14px}
 .num small{color:var(--mute);font-size:12px}
@@ -137,7 +143,8 @@ const state = {
   orgQuery: "", notice: null, draft: "", firstLineHeader: true, batch: 3, loginError: "",
   single: blankSingle(),
   mode: "orgs", storyTab: "drafts", stories: [], published: [], reserved: [], storyForm: blankStory(), storyPaste: "", pubSel: new Set(), pubFilter: "",
-  rantPublished: [], rantForm: { text: "", number: "" }, rantSel: new Set(), rantFilter: ""
+  rantPublished: [], rantForm: { text: "", number: "" }, rantSel: new Set(), rantFilter: "",
+  doors: [], doorCounts: {}, doorTab: "upcoming", doorForm: { text: "", start: "" }, doorsErr: ""
 };
 
 const $app = document.getElementById("app");
@@ -1338,6 +1345,227 @@ function viewRants() {
   return root;
 }
 
+/* ---------- Doors: schedule the daily Door question ahead of time ---------- */
+/* The app shows the question whose active_date is the user's own "today". Dates here are Lagos days. */
+function lagosToday() { return new Date(Date.now() + 3600000).toISOString().slice(0, 10); }
+function addDays(str, n) { const [y, m, d] = str.split("-").map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); }
+function daysBetween(a, b) { const t = (x) => { const [y, m, d] = x.split("-").map(Number); return Date.UTC(y, m - 1, d); }; return Math.round((t(b) - t(a)) / 86400000); }
+function fmtDay(str) { return new Date(str + "T12:00:00Z").toLocaleDateString([], { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }); }
+function fmtShort(str) { return new Date(str + "T12:00:00Z").toLocaleDateString([], { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }); }
+
+async function loadDoors() {
+  state.doorsErr = "";
+  const today = lagosToday();
+  const { data, error } = await sb.from("door_questions").select("id, question, active_date")
+    .gte("active_date", addDays(today, -60)).order("active_date", { ascending: true });
+  if (error) { state.doorsErr = error.message; return; }
+  state.doors = data || [];
+  state.doorCounts = {};
+  const ids = state.doors.filter((d) => d.active_date <= today).map((d) => d.id);
+  if (ids.length) {
+    const { data: ps } = await sb.from("posts").select("door_question_id").in("door_question_id", ids);
+    (ps || []).forEach((p) => { state.doorCounts[p.door_question_id] = (state.doorCounts[p.door_question_id] || 0) + 1; });
+  }
+}
+/* Past days are never editable (the archive must show what people really saw). Today is editable until someone answers. */
+function doorLockReason(d) {
+  const today = lagosToday();
+  if (d.active_date < today) return "This day has passed, so it stays as people saw it.";
+  const n = state.doorCounts[d.id] || 0;
+  if (d.active_date === today && n > 0) return n + (n === 1 ? " person has" : " people have") + " already answered this one, so it is locked.";
+  return "";
+}
+function doorFriendly(error) {
+  const m = (error && error.message) || "";
+  if (error && error.code === "23505") return "Another question is already set for one of those dates.";
+  if (/row-level security|permission/i.test(m)) return "Could not save. Is this account marked as admin?";
+  return m || "Something went wrong.";
+}
+function defaultDoorStart() {
+  const today = lagosToday();
+  const up = state.doors.filter((d) => d.active_date >= today);
+  return up.length ? addDays(up[up.length - 1].active_date, 1) : today;
+}
+/* One question per line. Leading bullets and "1." numbering are removed; "A." is left alone because it can be part of a question. */
+function parseDoorLines(text) {
+  const seen = new Set(); const out = []; let dupes = 0;
+  for (const raw of text.replace(/\r\n?/g, "\n").split("\n")) {
+    const q = raw.trim().replace(/^(?:[-*\u2022]\s+|\d{1,3}[.)]\s+)/, "").trim();
+    if (!q) continue;
+    const k = q.toLowerCase();
+    if (seen.has(k)) { dupes++; continue; }
+    seen.add(k); out.push(q);
+  }
+  return { questions: out, dupes };
+}
+/* Hand the questions to free days from the start date on. Days that already have a question are skipped, never overwritten. */
+function planDoors(questions, start) {
+  const taken = new Set(state.doors.map((d) => d.active_date));
+  const rows = []; const skipped = []; let day = start;
+  for (const q of questions) {
+    while (taken.has(day)) { skipped.push(day); day = addDays(day, 1); }
+    rows.push({ question: q, active_date: day });
+    day = addDays(day, 1);
+  }
+  return { rows, skipped };
+}
+
+function viewDoorUpcoming() {
+  const today = lagosToday();
+  const up = state.doors.filter((d) => d.active_date >= today);
+  const root = h("div", {});
+  if (!up.length) { root.append(h("div", { class: "empty" }, "Nothing is scheduled from today on.")); return root; }
+  const byDate = new Map(up.map((d) => [d.active_date, d]));
+  const last = up[up.length - 1].active_date;
+  const span = Math.min(daysBetween(today, last), 180);
+  let day = today;
+  for (let i = 0; i <= span; i++, day = addDays(day, 1)) {
+    const d = byDate.get(day);
+    if (!d) {
+      let end = day;
+      while (!byDate.has(addDays(end, 1)) && addDays(end, 1) <= last) end = addDays(end, 1);
+      const n = daysBetween(day, end) + 1;
+      const from = day;
+      root.append(h("div", { class: "gap" },
+        h("div", {}, (n === 1 ? fmtShort(from) : fmtShort(from) + " to " + fmtShort(end) + " (" + n + " days)") + ": no question"),
+        h("div", { class: "acts" }, h("button", { class: "link", onclick: () => { state.doorForm = { text: "", start: from }; state.doorTab = "add"; note(""); render(); } }, n === 1 ? "Add one" : "Fill these days"))));
+      i += n - 1; day = end;
+      continue;
+    }
+    const lock = doorLockReason(d);
+    const answered = state.doorCounts[d.id] || 0;
+    root.append(h("div", { class: "item" },
+      h("div", { class: "who-num" }, fmtShort(d.active_date), d.active_date === today ? h("span", { class: "dtag" }, "Today") : null),
+      h("div", { class: "story-text" }, d.question),
+      answered ? h("div", { class: "stats" }, answered + (answered === 1 ? " answer so far" : " answers so far")) : null,
+      lock ? h("div", { class: "lock" }, lock) : h("div", { class: "acts" },
+        h("button", { class: "link", onclick: () => openDoorEdit(d) }, "Edit"),
+        h("button", { class: "link", style: "color:var(--red)", onclick: () =>
+          openConfirm("Delete this day's question?", fmtDay(d.active_date) + " will have no question.", d.question.slice(0, 160), "Delete question", "Keep it", () => removeDoor(d)) }, "Delete"))));
+  }
+  return root;
+}
+function viewDoorPast() {
+  const today = lagosToday();
+  const past = state.doors.filter((d) => d.active_date < today).reverse();
+  if (!past.length) return h("div", { class: "empty" }, "No past Doors in the last 60 days.");
+  const root = h("div", {});
+  root.append(h("p", { class: "mute small" }, "Past days are read-only. The last 60 days are shown."));
+  for (const d of past) {
+    const n = state.doorCounts[d.id] || 0;
+    root.append(h("div", { class: "item" },
+      h("div", { class: "who-num" }, fmtShort(d.active_date)),
+      h("div", { class: "story-text" }, d.question),
+      h("div", { class: "stats" }, n + (n === 1 ? " answer" : " answers"))));
+  }
+  return root;
+}
+function viewDoorAdd() {
+  const today = lagosToday();
+  const f = state.doorForm;
+  if (!f.start) f.start = defaultDoorStart();
+  const ta = h("textarea", { rows: 10, placeholder: "One question per line.\nWhat is the most misunderstood thing about you?\nSeyi Vibez or Asake?", oninput: (e) => { f.text = e.target.value; update(); } }, f.text);
+  const date = h("input", { type: "date", value: f.start, min: today, "aria-label": "First day", onchange: (e) => { f.start = e.target.value; update(); } });
+  const preview = h("div", { class: "stats", style: "margin:0 0 16px" });
+  const go = h("button", { class: "btn", disabled: true }, "Schedule");
+  let rows = [];
+  function update() {
+    const { questions, dupes } = parseDoorLines(f.text);
+    rows = []; go.disabled = true; go.textContent = "Schedule";
+    if (!questions.length) { preview.textContent = "Nothing to schedule yet."; return; }
+    if (!f.start || f.start < today) { preview.textContent = "Pick today or a later day to start from."; return; }
+    const plan = planDoors(questions, f.start);
+    rows = plan.rows;
+    const long = questions.filter((q) => q.length > 240).length;
+    preview.textContent = questions.length + (questions.length === 1 ? " question" : " questions") + ": " + fmtShort(rows[0].active_date)
+      + (rows.length > 1 ? " to " + fmtShort(rows[rows.length - 1].active_date) : "") + "."
+      + (plan.skipped.length ? " Skipping " + plan.skipped.length + (plan.skipped.length === 1 ? " day" : " days") + " that already have a question." : "")
+      + (dupes ? " " + dupes + " repeated " + (dupes === 1 ? "line was" : "lines were") + " left out." : "")
+      + (long ? " " + long + (long === 1 ? " question is" : " questions are") + " over 240 characters and will look long on the Door." : "");
+    go.disabled = state.busy; go.textContent = "Schedule " + rows.length + (rows.length === 1 ? " question" : " questions");
+  }
+  go.addEventListener("click", async () => {
+    if (!rows.length || state.busy) return;
+    state.busy = true; go.disabled = true;
+    let err = null;
+    for (let i = 0; i < rows.length && !err; i += 200) {
+      const { error } = await sb.from("door_questions").insert(rows.slice(i, i + 200));
+      if (error) err = error;
+    }
+    state.busy = false;
+    if (err) { await loadDoors(); note(doorFriendly(err) + " Some of the questions may already be saved, so check the Upcoming tab.", true); render(); return; }
+    const through = rows[rows.length - 1].active_date;
+    state.doorForm = { text: "", start: "" }; state.doorTab = "upcoming";
+    await loadDoors();
+    note("Scheduled " + rows.length + (rows.length === 1 ? " question" : " questions") + " through " + fmtDay(through) + ".");
+    render();
+  });
+  update();
+  return h("div", {},
+    h("h2", {}, "Schedule questions"),
+    h("p", { class: "mute small" }, "Paste as many as you like. They go to consecutive days from the start date. Days that already have a question are skipped, so nothing is overwritten."),
+    h("label", { class: "field" }, h("span", {}, "Questions"), ta),
+    h("label", { class: "field" }, h("span", {}, "First day"), date),
+    preview,
+    h("div", { class: "dlg-acts", style: "margin-top:0" }, go));
+}
+function openDoorEdit(d) {
+  const today = lagosToday();
+  const ta = h("textarea", { rows: 5 }, d.question);
+  const date = h("input", { type: "date", value: d.active_date, min: today });
+  const err = h("div", { class: "err", style: "display:none" });
+  $dlg.replaceChildren(
+    h("h2", {}, "Edit Door question"),
+    h("p", { class: "mute small" }, "Change the wording, or move it to another day. A day can only have one question."),
+    h("label", { class: "field" }, h("span", {}, "Day"), date),
+    h("label", { class: "field" }, h("span", {}, "Question"), ta),
+    err,
+    h("div", { class: "dlg-acts" },
+      h("button", { class: "btn", onclick: async (e) => {
+        const q = ta.value.trim();
+        const fail = (m) => { err.textContent = m; err.style.display = "block"; e.target.disabled = false; };
+        if (!q) return fail("Write the question first.");
+        if (!date.value || date.value < lagosToday()) return fail("Pick today or a later day.");
+        e.target.disabled = true;
+        const { data, error } = await sb.from("door_questions").update({ question: q, active_date: date.value }).eq("id", d.id).select("id");
+        if (error) return fail(doorFriendly(error));
+        if (!data || !data.length) return fail("Could not save. Is this account marked as admin?");
+        $dlg.close(); await loadDoors(); note("Door question updated."); render();
+      } }, "Save changes"),
+      h("button", { class: "btn ghost", onclick: () => $dlg.close() }, "Cancel")));
+  $dlg.showModal();
+}
+async function removeDoor(d) {
+  const { data, error } = await sb.from("door_questions").delete().eq("id", d.id).select("id");
+  await loadDoors();
+  if (error || !data || !data.length) note(error ? doorFriendly(error) : "Could not delete. Is this account marked as admin?", true);
+  else note("Question deleted.");
+  render();
+}
+function viewDoors() {
+  const today = lagosToday();
+  const up = state.doors.filter((d) => d.active_date >= today);
+  const root = h("div", {});
+  const info = [];
+  if (state.doorsErr) info.push(h("div", { class: "notice bad", role: "status" }, "Could not load the Doors: " + state.doorsErr));
+  else {
+    if (!up.some((d) => d.active_date === today)) info.push(h("div", { class: "notice bad", role: "status" }, "Today has no question. The Door will still open, with just the mood check-in."));
+    if (up.length) {
+      const last = up[up.length - 1].active_date;
+      const ahead = daysBetween(today, last);
+      info.push(h("div", { class: "notice" + (ahead < 7 ? " bad" : ""), role: "status" },
+        "Scheduled through " + fmtDay(last) + (ahead < 7 ? ". Only " + ahead + (ahead === 1 ? " day" : " days") + " left, so add more soon." : " (" + ahead + " days ahead).")));
+    } else if (up.length === 0 && state.doors.length) info.push(h("div", { class: "notice bad", role: "status" }, "Nothing is scheduled ahead."));
+  }
+  root.append(...info);
+  const tabs = [["upcoming", "Upcoming (" + up.length + ")"], ["add", "Add"], ["past", "Past"]];
+  root.append(h("div", { class: "tabs", role: "tablist" },
+    tabs.map(([k, label]) => h("button", { class: "tab", role: "tab", "aria-selected": String(state.doorTab === k), onclick: () => { state.doorTab = k; note(""); render(); } }, label))));
+  if (state.notice) root.append(h("div", { class: "notice" + (state.notice.bad ? " bad" : ""), role: "status" }, state.notice.text));
+  root.append(state.doorTab === "add" ? viewDoorAdd() : state.doorTab === "past" ? viewDoorPast() : viewDoorUpcoming());
+  return root;
+}
+
 /* ---------- organisation search ---------- */
 function orgChipButton(o) {
   return h("button", { class: "chip", "aria-pressed": String(o.id === state.orgId), onclick: async () => {
@@ -1380,11 +1608,12 @@ function viewDesk() {
         h("a", { class: "link", href: "/", style: "display:inline-flex;align-items:center" }, "Back to Meet Me"),
         h("button", { class: "link", onclick: signOut }, "Sign out"))),
     h("div", { class: "modes", role: "group", "aria-label": "Desk section" },
-      [["orgs", "Organisations"], ["stories", "Spill stories"], ["rants", "Rant numbers"]].map(([k, label]) =>
-        h("button", { class: "mode", "aria-pressed": String(state.mode === k), onclick: () => { stopActiveRec(); state.mode = k; note(""); render(); } }, label)))
+      [["orgs", "Organisations"], ["stories", "Spill stories"], ["rants", "Rant numbers"], ["doors", "Doors"]].map(([k, label]) =>
+        h("button", { class: "mode", "aria-pressed": String(state.mode === k), onclick: () => { stopActiveRec(); state.mode = k; note(""); render(); if (k === "doors") loadDoors().then(render); } }, label)))
   );
   if (state.mode === "stories") { root.append(viewStories()); return root; }
   if (state.mode === "rants") { root.append(viewRants()); return root; }
+  if (state.mode === "doors") { root.append(viewDoors()); return root; }
   if (!org) {
     root.append(h("p", {}, "This account does not own an organisation yet."),
       h("p", { class: "mute small" }, "Create one and claim it with its invite code in the app, then reopen this page."));
