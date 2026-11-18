@@ -11638,6 +11638,8 @@ let doorSkippedThisSession = false;
 let doorPick = null;
 let doorBusy = false;
 let doorMyDays = new Set();
+let doorTodayMood = null;                 // today's mood pick if they already checked in (so a late question doesn't ask for it again)
+let doorAnsweredIds = new Set();          // question ids this person has already answered (from their own posts)
 const DOOR_MOODS = [null, 'rough', 'low', 'okay', 'good', 'great'];
 const DOOR_LVL = [0, 0.14, 0.32, 0.52, 0.76, 1];
 
@@ -11667,11 +11669,21 @@ async function loadDoorQuestion(){
 
   doorMyDays = new Set();
   doorUsedToday = false;
+  doorTodayMood = null;
   if(currentUserId){
-    const { data: mine, error } = await sb.from('door_pulses').select('day').eq('user_id', currentUserId).order('day', { ascending:false }).limit(400);
+    const { data: mine, error } = await sb.from('door_pulses').select('day, mood').eq('user_id', currentUserId).order('day', { ascending:false }).limit(400);
     if(error) console.error('Loading door pulses failed:', error);
-    (mine || []).forEach(r => doorMyDays.add(String(r.day).slice(0,10)));
+    (mine || []).forEach(r => {
+      const d = String(r.day).slice(0,10);
+      doorMyDays.add(d);
+      if(d === today) doorTodayMood = r.mood;
+    });
     doorUsedToday = doorMyDays.has(today);
+    // Has this person already answered today's question? (Their own post carries the question id.)
+    if(q){
+      const { data: mineAns } = await sb.from('posts').select('id').eq('user_id', currentUserId).eq('door_question_id', q.id).limit(1);
+      if(mineAns && mineAns.length) doorAnsweredIds.add(q.id);
+    }
   }
   updateDoorEntries();
 }
@@ -11681,7 +11693,7 @@ const doorFront = document.getElementById('door-front');
 function maybeShowDoorFront(){
   if(document.documentElement.classList.contains('mm-resume')) return; // just popped back in -- don't interrupt
   if(getComputedStyle(splash).display !== 'none'){ setTimeout(maybeShowDoorFront, 300); return; }
-  if(!currentUserId || doorUsedToday || doorSkippedThisSession) return;
+  if(!currentUserId || doorSkippedThisSession || !doorPending()) return;
   showDoorFront();
 }
 
@@ -11696,7 +11708,8 @@ function showDoorFront(){
   document.getElementById('door-front-textarea').value = '';
   document.getElementById('door-line-next').classList.add('disabled');
   document.getElementById('door-front-submit').classList.add('disabled');
-  document.getElementById('door-eyebrow').textContent = 'Daily check-in';
+  const lineDue = currentDoorRowIsToday && !doorQuestionHandled();
+  document.getElementById('door-eyebrow').textContent = (doorUsedToday && lineDue) ? "Today's question" : 'Daily check-in';
   const streak = computeDoorStreak();
   document.getElementById('door-streak').textContent = streak > 0 ? (streak + (streak === 1 ? ' day in a row' : ' days in a row')) : '';
   doorFront.classList.remove('stepped','opening','stage-pick');
@@ -11704,7 +11717,7 @@ function showDoorFront(){
   // The question comes first. If today's question isn't set, or this
   // person already answered/skipped it earlier today, go straight to the
   // brightness pick.
-  if(currentDoorRowIsToday && !doorLineHandledToday()){
+  if(lineDue){
     document.getElementById('door-line-title').textContent = currentDoorQuestionText;
   } else {
     doorFront.classList.add('stage-pick');
@@ -11722,9 +11735,30 @@ function hideDoorFront(){
   if(typeof refreshDoorsArchiveIfOpen === 'function') refreshDoorsArchiveIfOpen();
 }
 
-function doorLineKey(){ return 'door-line-handled-' + localDayStr(); }
-function doorLineHandledToday(){ try{ return localStorage.getItem(doorLineKey()) === '1'; }catch(e){ return false; } }
+// Answered or skipped, per question (not per day), so a question set or changed later in the day is still offered.
+function doorLineKey(){ return 'door-line-handled-' + (currentDoorQuestionId || localDayStr()); }
+function doorQuestionHandled(){
+  if(!currentDoorQuestionId) return true;
+  if(doorAnsweredIds.has(currentDoorQuestionId)) return true;
+  try{ return localStorage.getItem(doorLineKey()) === '1'; }catch(e){ return false; }
+}
+function doorLineHandledToday(){ return doorQuestionHandled(); }
 function markDoorLineHandled(){ try{ localStorage.setItem(doorLineKey(), '1'); }catch(e){} }
+// Something is still waiting for them today: the mood check-in, or a question they haven't answered.
+function doorQuestionPending(){ return !!currentDoorRowIsToday && !doorQuestionHandled(); }
+function doorPending(){ return !!currentUserId && (!doorUsedToday || doorQuestionPending()); }
+// After the question step: carry on to the mood pick, or, if they already checked in earlier, straight to today's result.
+function afterDoorLine(){
+  updateDoorEntries();
+  if(doorUsedToday){
+    doorPick = doorTodayMood;
+    doorFront.classList.add('stage-pick','stepped');
+    document.getElementById('door-eyebrow').textContent = 'Checked in';
+    renderDoorResult();
+  } else {
+    doorFront.classList.add('stage-pick');
+  }
+}
 
 document.getElementById('door-front-textarea').addEventListener('input', (e)=>{
   document.getElementById('door-line-next').classList.toggle('disabled', !e.target.value.trim());
@@ -11734,11 +11768,11 @@ document.getElementById('door-line-next').addEventListener('click', ()=>{
   if(!line) return;
   markDoorLineHandled();
   postDoorLine(line).catch(err => console.error('Door line failed:', err));
-  doorFront.classList.add('stage-pick');
+  afterDoorLine();
 });
 document.getElementById('door-line-skip').addEventListener('click', ()=>{
   markDoorLineHandled();
-  doorFront.classList.add('stage-pick');
+  afterDoorLine();
 });
 
 document.querySelectorAll('.door-orb').forEach(orb => {
@@ -11805,6 +11839,7 @@ function scoreDoorRouting(text){
 
 async function postDoorLine(content){
   const qid = currentDoorRowIsToday ? currentDoorQuestionId : null;
+  if(qid) doorAnsweredIds.add(qid);
   const { score } = scoreDoorRouting(content);
   if(score >= 3){
     await saveSpill(content, null, null, null, qid, score);
@@ -11938,16 +11973,16 @@ document.getElementById('door-share-btn').addEventListener('click', shareDoorCar
 function barOwnedByNight(){ try{ return !!gameBarLive; }catch(e){ return false; } }
 // The bar nudge yields to Game Night / Anonymous Night; the Profile row carries the Door on those days.
 function doorNudgeOn(){
-  return !!currentUserId && !doorUsedToday && !doorFront.classList.contains('show') && !barOwnedByNight();
+  return doorPending() && !doorFront.classList.contains('show') && !barOwnedByNight();
 }
 function updateDoorEntries(){
   const row = document.getElementById('profile-door-today-row');
-  if(row) row.style.display = (currentUserId && !doorUsedToday) ? 'flex' : 'none';
+  if(row) row.style.display = doorPending() ? 'flex' : 'none';
   if(momentQuestionReady) refreshMomentBarText();
 }
 function openDoorFromEntry(){
   if(!currentUserId) return;
-  if(doorUsedToday){ showNavToast("You've already checked in today."); updateDoorEntries(); return; }
+  if(!doorPending()){ showNavToast("You've already done today's Door."); updateDoorEntries(); return; }
   doorSkippedThisSession = false;
   showDoorFront();
 }
@@ -12026,7 +12061,7 @@ function renderDoorsArchive(){
       const text = a.content ? escapeHtml(a.content) : (a.audio_url ? 'Voice note' : (a.sticker_url ? 'Picture' : ''));
       ans += '<div class="dr-a"><div class="dr-a-label">Your answer · ' + where + '</div><div class="dr-a-text">' + text + '</div></div>';
     });
-    const open = (isToday && !doorUsedToday) ? '<div class="dr-open" data-act="open-today">Open today\'s Door</div>' : '';
+    const open = (isToday && doorPending()) ? '<div class="dr-open" data-act="open-today">Open today\'s Door</div>' : '';
     html += '<div class="dr-card' + (missed ? ' missed' : '') + '"><div class="dr-top"><span class="dr-date">' + (isToday ? 'Today' : doorDayLabel(r.day)) + '</span>' + chip + '</div>'
       + '<div class="dr-q">' + escapeHtml(r.question) + '</div>' + ans + open + '</div>';
   });
@@ -12069,6 +12104,8 @@ let barShowAnn = true;        // which of the two lines the bar is showing right
 let momentQuestionReady = false;   // the Door code must not repaint the bar (and overwrite the cached question) before the real Moment question has loaded
 let barShowDoor = false;      // true while the bar is showing the "Today's Door is still open" nudge
 const DOOR_BAR_TEXT = "Today's Door is still open";
+// Once they've checked in, the only thing left is the question, so the bar shows the question itself.
+function doorBarText(){ return (doorUsedToday && currentDoorQuestionText) ? ("Today's Door: " + currentDoorQuestionText) : DOOR_BAR_TEXT; }
 function barAnnouncementActive(){
   if(!barAnnouncement || !barAnnouncement.text) return false;
   const now = Date.now();
@@ -12082,7 +12119,7 @@ function refreshMomentBarText(){
   if(gameBarLive || el.classList.contains('online-count-flash')){ if(bar){ bar.classList.remove('bar-ann'); bar.classList.remove('bar-door'); } return; }
   const showAnn = barAnnouncementActive() && barShowAnn;
   const showDoor = !showAnn && doorNudgeOn() && barShowDoor;
-  const t = showAnn ? barAnnouncement.text : showDoor ? DOOR_BAR_TEXT : currentMomentQuestion;
+  const t = showAnn ? barAnnouncement.text : showDoor ? doorBarText() : currentMomentQuestion;
   if(el.textContent !== t){
     el.textContent = t;
     el.classList.remove('bar-text-swap'); void el.offsetWidth; el.classList.add('bar-text-swap');
