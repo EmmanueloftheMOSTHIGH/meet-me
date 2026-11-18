@@ -397,8 +397,30 @@
   #doors-overlay.show{ opacity:1; pointer-events:auto; }
   #doors-body{ flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:14px 16px 90px; display:flex; flex-direction:column; gap:10px; }
   #doors-body::-webkit-scrollbar{ display:none; }
-  /* a back-and-forth: posts that answer each other sit together, oldest first */
-  .post.thread-in:not(.thread-last){ margin-bottom:6px; }
+  /* a back-and-forth: posts that answer each other form ONE joined block with a gold rail down the left.
+     #feed has a 14px gap between children, so members pull together with a -14px bottom margin. */
+  .post.thread-in{ border-left:2px solid var(--gold-dim); }
+  .post.thread-in:not(.thread-last){ margin-bottom:-14px; }
+  .post.thread-first{ border-bottom-left-radius:0; border-bottom-right-radius:0; }
+  .post.thread-in:not(.thread-first){ border-top-width:0; border-top-left-radius:0; border-top-right-radius:0; }
+  .post.thread-in:not(.thread-first):not(.thread-last){ border-radius:0; }
+  .post.thread-in:not(.thread-first) .post-head{ margin-bottom:8px; }
+  /* inside a thread the "inspired by" card is just a quiet one-line pointer, not a second card */
+  .post.thread-in .inspired-source-link{ border:none; background:none; border-radius:0; padding:0; margin-bottom:8px !important; }
+  .post.thread-in .inspired-source-link .insp-quote{ -webkit-line-clamp:1; margin-top:2px; font-size:12.5px; }
+  /* the daily question is shown once, on the post that answered it; replies inside an argument answer a post, not the question */
+  .post.thread-in:not(.thread-first) .door-tag, .post.thread-in:has(.inspired-source-link) .door-tag{ display:none; }
+  /* a long argument (more than 3 posts): only the oldest shows, the rest fold underneath it */
+  .post.thread-collapsed{ display:none; }
+  .thread-toggle{ display:flex; align-items:center; justify-content:center; gap:9px; min-height:44px; box-sizing:border-box; margin:0;
+    padding:0 14px; font-size:12.5px; font-weight:500; letter-spacing:0.02em; color:var(--gold-text); cursor:pointer; user-select:none; -webkit-user-select:none;
+    background:var(--bg-elevated); border:1px solid var(--card-border); border-top-width:0; border-left:2px solid var(--gold-dim);
+    border-radius:0 0 14px 14px; }
+  .thread-toggle[data-open="1"]{ margin-bottom:-14px; border-radius:0; }
+  .thread-toggle:active{ background:rgba(212,168,87,0.12); }
+  .thread-toggle .tt-caret{ width:7px; height:7px; border-right:1.7px solid currentColor; border-bottom:1.7px solid currentColor; transform:rotate(45deg) translate(-2px,-2px); transition:transform .2s ease; }
+  .thread-toggle[data-open="1"] .tt-caret{ transform:rotate(225deg) translate(-2px,-2px); }
+  @media (prefers-reduced-motion: reduce){ .thread-toggle .tt-caret{ transition:none; } }
   /* requote card: the post this one answers, shown as a small card inside the new post */
   .inspired-source-link{ font-size:11px; color:var(--muted-dim); border:1px solid var(--card-border); border-radius:12px; padding:9px 12px 10px; background:rgba(255,255,255,0.02); cursor:pointer; }
   .inspired-source-link .insp-name{ letter-spacing:0.02em; color:var(--muted); }
@@ -9174,6 +9196,21 @@ async function doorQuestionForPost(postId){
   }catch(err){ console.error('Door question for share card failed (non-fatal):', err); return null; }
 }
 
+// The post an "inspired by" post answers ({ name, text }), or null. Used so Share can put the original on the card as its headline.
+async function inspiredSourceForPost(postId){
+  if(!postId) return null;
+  try{
+    const { data } = await sb.from('posts').select('inspired_by_post_id').eq('id', postId).maybeSingle();
+    const sid = data && data.inspired_by_post_id;
+    if(!sid) return null;
+    const labels = await fetchInspirationLabels([{ inspired_by_post_id: sid }]);
+    const name = labels[sid];
+    const text = inspirationPreviewById[sid];
+    if(!name || !text) return null;      // original removed: the card is just the post itself
+    return { name, text };
+  }catch(err){ console.error('Inspired-by source for share card failed (non-fatal):', err); return null; }
+}
+
 // Batch-fetches display names for a set of "inspired by" source posts,
 // so feeds can show "↻ inspired by Meet ####" without a query per post.
 // A short quote of the post an "inspired by" post answers, so the card makes sense on its own.
@@ -10488,7 +10525,9 @@ function renderFeedBoundary(){
 
 // Keeps an argument together. Posts that requote each other (A, B answering A, A answering B...)
 // are pulled into one group, newest first (same direction as the feed), placed where the group's newest post would have been.
+// A long argument (more than 3 posts) is shown oldest first, with everything after the oldest post folded underneath it.
 // Only posts in the same loaded batch can group; trend posts are left where they are.
+const THREAD_COLLAPSE_OVER = 3;
 function groupConversations(posts){
   const byId = new Map(posts.map(p => [p.id, p]));
   const rootOf = (p)=>{
@@ -10508,18 +10547,46 @@ function groupConversations(posts){
   });
   const out = [];
   groups.forEach(list => {
-    if(list.length > 1) list.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-    list.forEach((p, i) => out.push({ post: p, thread: list.length > 1 ? { first: i === 0, last: i === list.length - 1 } : null }));
+    const long = list.length > THREAD_COLLAPSE_OVER;
+    if(list.length > 1) list.sort((a, b) => long ? new Date(a.created_at) - new Date(b.created_at) : new Date(b.created_at) - new Date(a.created_at));
+    list.forEach((p, i) => out.push({ post: p, thread: list.length > 1
+      ? { first: i === 0, last: i === list.length - 1, key: long ? list[0].id : null, collapsed: long && i > 0, hiddenCount: long ? list.length - 1 : 0 }
+      : null }));
   });
   return out;
+}
+function setThreadToggleLabel(t, open){
+  t.innerHTML = '<span>' + (open ? 'Hide argument' : (t.dataset.count + ' more in this argument')) + '</span><span class="tt-caret" aria-hidden="true"></span>';
 }
 function markThread(el, thread){
   if(!thread) return el;
   el.classList.add('thread-in');
   if(thread.first) el.classList.add('thread-first');
   if(thread.last) el.classList.add('thread-last');
+  if(thread.key){ el.dataset.threadKey = thread.key; if(thread.collapsed) el.classList.add('thread-collapsed'); }
   return el;
 }
+// Puts a feed post in place; under the oldest post of a long argument it also adds the "show more" button.
+function placeThreadPost(feed, el, thread, before){
+  const put = n => before ? feed.insertBefore(n, before) : feed.appendChild(n);
+  put(markThread(el, thread));
+  if(thread && thread.key && thread.first){
+    const t = document.createElement('div');
+    t.className = 'thread-toggle'; t.setAttribute('role', 'button'); t.tabIndex = 0; t.setAttribute('aria-expanded', 'false');
+    t.dataset.threadKey = thread.key; t.dataset.count = thread.hiddenCount;
+    setThreadToggleLabel(t, false);
+    put(t);
+  }
+}
+document.addEventListener('click', (e)=>{
+  const t = e.target.closest && e.target.closest('.thread-toggle');
+  if(!t) return;
+  const open = t.dataset.open === '1';
+  document.querySelectorAll('.post[data-thread-key="' + t.dataset.threadKey + '"]:not(.thread-first)').forEach(el => el.classList.toggle('thread-collapsed', open));
+  t.dataset.open = open ? '' : '1';
+  t.setAttribute('aria-expanded', open ? 'false' : 'true');
+  setThreadToggleLabel(t, !open);
+});
 
 async function loadFeed(){
   feedOffset = 0;
@@ -10554,10 +10621,10 @@ async function loadFeed(){
   // Only clear rendered posts + the boundary marker -- the pull indicator
   // and "new posts" banner are fixed UI chrome, not feed content, so a
   // reload shouldn't touch them.
-  feed.querySelectorAll('.post, #boundary-marker').forEach(el => el.remove());
+  feed.querySelectorAll('.post, .thread-toggle, #boundary-marker').forEach(el => el.remove());
   if(isNewAccount()) feed.appendChild(tutorialCardEl('rant'));
   groupConversations(posts).forEach(({ post, thread }) => {
-    feed.appendChild(markThread(renderRantPost(post, likedIds.has(post.id), likeCounts[post.id] || 0, inspirationLabels), thread));
+    placeThreadPost(feed, renderRantPost(post, likedIds.has(post.id), likeCounts[post.id] || 0, inspirationLabels), thread, null);
   });
 
   const boundary = document.createElement('div');
@@ -10610,7 +10677,7 @@ async function loadMoreFeed(){
     const feed = document.getElementById('feed');
     const boundaryEl = document.getElementById('boundary-marker');
     groupConversations(posts).forEach(({ post, thread }) => {
-      feed.insertBefore(markThread(renderRantPost(post, likedIds.has(post.id), likeCounts[post.id] || 0, inspirationLabels), thread), boundaryEl);
+      placeThreadPost(feed, renderRantPost(post, likedIds.has(post.id), likeCounts[post.id] || 0, inspirationLabels), thread, boundaryEl);
     });
   }
   renderFeedBoundary();
@@ -16023,132 +16090,186 @@ function drawCardCaption(ctx, palette, lines, x, bottom){
   lines.forEach((ln, n) => ctx.fillText(ln, x, first + n * 44));
 }
 
-async function buildShareCanvas(content, name, spaceLabel, style, stickerUrl, audioUrl, durationSeconds, shareUrl, doorQuestion){
+async function buildShareCanvas(content, name, spaceLabel, style, stickerUrl, audioUrl, durationSeconds, shareUrl, doorQuestion, inspired){
   stickerUrl = stickerUrlList(stickerUrl)[0] || null;   // the share card shows the first picture only
   style = style || 'dark';
-  const isGold = style === 'gold';
-  const canvas = document.createElement('canvas');
-  canvas.width = 1080;
-  canvas.height = 1350;
-  const ctx = canvas.getContext('2d');
+  try{
+    await Promise.all([ document.fonts.load('600 56px Fraunces'), document.fonts.load('500 36px Fraunces'),
+      document.fonts.load('600 26px Karla'), document.fonts.load('400 36px Karla') ]);
+  }catch(e){}
 
-  const palette = isGold
-    ? { bg: '#d9a94a', panel: '#f3e0ab', border: 'rgba(40,28,4,0.16)', label: '#3d3115', body: '#160f04', name: '#3d3115', mantra: '#5c4a22' }
-    : { bg: '#0c0c0e', panel: '#17171b', border: 'rgba(240,230,210,0.08)', label: '#8a8578', body: '#f0e6d2', name: '#8a8578', mantra: '#5c584f' };
+  // Same look as the "Your Doors" card in the app: TODAY-style label + chip, a serif headline, a divider,
+  // then a small "ANSWER" label and the answer in the muted body colour.
+  const W = 1080, H = 1350;
+  const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
+  const g = canvas.getContext('2d');
+  const T = style === 'gold'
+    ? { bg:'#d9a94a', card:'#f3e0ab', border:'rgba(40,28,4,0.16)', goldDim:'rgba(46,34,8,0.6)', goldText:'#3d2c08', ivory:'#160f04', muted:'#3d3115', mutedDim:'#5c4a22' }
+    : { bg:'#0c0c0e', card:'#17171b', border:'rgba(240,230,210,0.07)', goldDim:'rgba(212,168,87,0.5)', goldText:'#c99a4e', ivory:'#f0e6d2', muted:'#8a8578', mutedDim:'#5c584f' };
+  const setSpacing = px => { if('letterSpacing' in g) g.letterSpacing = px + 'px'; };
+  g.fillStyle = T.bg; g.fillRect(0, 0, W, H);
 
-  ctx.fillStyle = palette.bg;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  // What goes on the card
+  const hasInsp = !doorQuestion && !!(inspired && inspired.text);          // an "inspired by" post: the original is the headline
+  const headingText = doorQuestion || (hasInsp ? inspired.text : null);
+  const hasMedia = !!(stickerUrl || audioUrl);
+  const isVoice = !stickerUrl && !!audioUrl;
+  const topLabel = doorQuestion ? 'DAILY QUESTION' : hasInsp ? ('INSPIRED BY ' + String(inspired.name || '').toUpperCase()).trim() : 'MEET ME';
+  const answerWord = doorQuestion ? 'ANSWER' : 'RESPONSE';
 
-  // card panel
-  const pad = 70;
-  ctx.fillStyle = palette.panel;
-  roundRect(ctx, pad, pad, canvas.width - pad*2, canvas.height - pad*2, 32);
-  ctx.fill();
-  ctx.strokeStyle = palette.border;
-  ctx.lineWidth = 2;
-  roundRect(ctx, pad, pad, canvas.width - pad*2, canvas.height - pad*2, 32);
-  ctx.stroke();
-
-  // logo squares (same gold family in both styles -- it's the brand mark)
-  const sq = 26, gap = 8, lx = pad + 60, ly = pad + 70;
-  const colors = isGold ? ['#8a6a1a', '#6e5414', '#a5822a', '#5c4a10'] : ['#e8c04a', '#d9a63c', '#f0cf6a', '#c9962e'];
-  ctx.fillStyle = colors[0]; ctx.fillRect(lx, ly, sq, sq);
-  ctx.fillStyle = colors[1]; ctx.fillRect(lx+sq+gap, ly, sq, sq);
-  ctx.fillStyle = colors[2]; ctx.fillRect(lx, ly+sq+gap, sq, sq);
-  ctx.fillStyle = colors[3]; ctx.fillRect(lx+sq+gap, ly+sq+gap, sq, sq);
-
-  ctx.fillStyle = palette.label;
-  ctx.font = '32px Karla, sans-serif';
-  ctx.fillText('MEET ME · ' + spaceLabel.toUpperCase(), lx, ly + sq*2 + gap + 50);
-
-  let contentTop = ly + sq*2 + gap + 150;
-  const contentBottom = canvas.height - pad - 180;
-  const contentLeft = pad + 60;
-  const contentWidth = canvas.width - pad*2 - 120;
-
-  // A post that answered the Door's daily question carries that question on the card, above the answer.
-  if(doorQuestion){
-    ctx.fillStyle = palette.label;
-    ctx.font = '26px Karla, sans-serif';
-    ctx.fillText('DAILY QUESTION', contentLeft, contentTop - 10);
-    ctx.font = 'italic 40px Georgia, serif';
-    let qLines = canvasWrapLines(ctx, doorQuestion, contentWidth);
-    if(qLines.length > 3){ qLines = qLines.slice(0, 3); qLines[2] = canvasTrimLine(ctx, qLines[2], contentWidth); }
-    ctx.fillStyle = palette.body;
-    qLines.forEach((ln, n) => ctx.fillText(ln, contentLeft, contentTop + 40 + n * 52));
-    const qEnd = contentTop + 40 + (qLines.length - 1) * 52;
-    ctx.save();
-    ctx.globalAlpha = 0.35; ctx.strokeStyle = palette.label; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(contentLeft, qEnd + 36); ctx.lineTo(contentLeft + contentWidth, qEnd + 36); ctx.stroke();
-    ctx.restore();
-    ctx.fillStyle = palette.label;
-    ctx.font = '26px Karla, sans-serif';
-    ctx.fillText('ANSWER', contentLeft, qEnd + 90);
-    contentTop = qEnd + 160;
+  // A picture / clip: load it first so the card can be sized around it.
+  let picMedia = null;
+  if(stickerUrl){
+    try{ picMedia = isVideoStickerUrl(stickerUrl) ? await loadVideoStickerForCanvas(stickerUrl) : await loadImageForCanvas(stickerUrl); }
+    catch(err){ console.error('Could not draw sticker onto share card (a plain line is shown instead):', err); }
   }
 
-  const capLines = cardCaptionLines(ctx, content, contentWidth);
-  const capH = capLines.length ? capLines.length * 44 + 24 : 0;
+  // Geometry
+  const cx = 110, cw = W - 220, pad = 64, ix = cx + pad, iw = cw - pad * 2;
+  const labelSize = 24, topRowH = 64, gapAfterTop = 34, gapAfterHead = 44;
+  const maxCardH = 960;
+  const topBlock = pad + topRowH + gapAfterTop;
 
-  if(stickerUrl){
-    const isVid = isVideoStickerUrl(stickerUrl);
-    try{
-      const media = isVid ? await loadVideoStickerForCanvas(stickerUrl) : await loadImageForCanvas(stickerUrl);
-      const naturalW = media.videoWidth || media.naturalWidth || media.width;
-      const naturalH = media.videoHeight || media.naturalHeight || media.height;
-      const maxW = contentWidth, maxH = contentBottom - contentTop - capH;
-      // Video stills and stickers are small files; let them grow to fill the card (stickers up to 3x, video stills to full width)
-      const scale = Math.min(maxW / naturalW, maxH / naturalH, isVid ? Infinity : 3);
-      const w = naturalW * scale, h = naturalH * scale;
-      const x = contentLeft + (maxW - w) / 2;
-      const y = contentTop + (maxH - h) / 2;
-      ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(media, x, y, w, h);
-    } catch(err){
-      // The picture could not be drawn onto the card (almost always: the media host is not sending CORS headers,
-      // so the browser refuses to let a canvas use it). Show a neutral tile instead of a blank card.
-      console.error('Could not draw sticker onto share card, falling back to a tile:', err);
-      const bs = Math.min(460, contentBottom - contentTop - capH - 20);
-      const bx = contentLeft + contentWidth/2 - bs/2, by = contentTop + 20;
-      ctx.fillStyle = palette.bg; roundRect(ctx, bx, by, bs, bs, 28); ctx.fill();
-      const cx = bx + bs/2, cy = by + bs/2;
-      if(isVid){
-        ctx.fillStyle = isGold ? '#2e2208' : '#d4a857';
-        ctx.beginPath(); ctx.arc(cx, cy, 70, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle = isGold ? '#f3e0ab' : '#0c0c0e';
-        ctx.beginPath(); ctx.moveTo(cx-18, cy-30); ctx.lineTo(cx-18, cy+30); ctx.lineTo(cx+34, cy); ctx.closePath(); ctx.fill();
-      } else {
-        ctx.fillStyle = palette.label; ctx.font = '34px Karla, sans-serif';
-        const tw = ctx.measureText('sticker').width; ctx.fillText('sticker', cx - tw/2, cy + 12);
+  // --- measure: headline ---
+  let headLines = [], headSize = 56, headLH = 74, headCut = false;
+  if(headingText){
+    g.font = '600 ' + headSize + 'px Fraunces, Georgia, serif';
+    headLines = canvasWrapLines(g, headingText, iw);
+    if(headLines.length > 5){ headLines = headLines.slice(0, 5); headLines[4] = canvasTrimLine(g, headLines[4], iw); }
+  } else if(!hasMedia && content){
+    // a plain post: its own words are the headline, stepping down in size when long
+    const sizes = [56, 50, 44, 38];
+    for(let i = 0; i < sizes.length; i++){
+      headSize = sizes[i]; headLH = Math.round(headSize * 1.32);
+      g.font = '600 ' + headSize + 'px Fraunces, Georgia, serif';
+      const lines = canvasWrapLines(g, content, iw);
+      const maxLines = Math.floor((maxCardH - topBlock - pad - 60) / headLH);
+      if(lines.length <= maxLines || i === sizes.length - 1){
+        headCut = lines.length > maxLines;
+        headLines = headCut ? lines.slice(0, maxLines) : lines;
+        if(headCut) headLines[headLines.length - 1] = canvasTrimLine(g, headLines[headLines.length - 1], iw);
+        break;
       }
     }
-    drawCardCaption(ctx, palette, capLines, contentLeft, contentBottom);
-  } else if(audioUrl){
-    ctx.fillStyle = palette.label;
-    ctx.font = '30px Karla, sans-serif';
-    ctx.fillText('🎙 VOICE NOTE', contentLeft, contentTop + 10);
-    drawVoiceNoteVisual(ctx, palette, contentLeft, contentTop + 40, contentWidth, contentBottom - contentTop - 40 - capH, durationSeconds);
-    drawCardCaption(ctx, palette, capLines, contentLeft, contentBottom);
-  } else if(content){
-    drawCardText(ctx, palette, content, contentLeft, contentTop, contentBottom, contentWidth);
+  }
+  const headBlockH = headLines.length * headLH;
+  const afterHeadH = headingText ? gapAfterHead : (headCut ? 70 : 0);
+
+  // --- measure: answer / media ---
+  const labelBlockH = headingText ? (2 + 40 + labelSize + 22) : (hasMedia ? 42 : 0);   // divider, gap, label, gap
+  const fixedH = topBlock + headBlockH + afterHeadH + pad;
+  let ansLines = [], ansSize = 38, ansLH = 57, ansBlockH = 0, picW = 0, picH = 0;
+  const voiceH = 270;
+  if(hasMedia){
+    ansSize = 34; ansLH = 50;
+    g.font = '400 ' + ansSize + 'px Karla, sans-serif';
+    let cap = content ? canvasWrapLines(g, content, iw) : [];
+    if(!picMedia && !isVoice && !cap.length) cap = ['Picture'];
+    if(cap.length > 3){ cap = cap.slice(0, 3); cap[2] = canvasTrimLine(g, cap[2], iw); }
+    ansLines = cap;
+    const capH = cap.length ? cap.length * ansLH + 24 : 0;
+    const room = maxCardH - fixedH - labelBlockH;
+    if(picMedia){
+      const nw = picMedia.videoWidth || picMedia.naturalWidth || picMedia.width;
+      const nh = picMedia.videoHeight || picMedia.naturalHeight || picMedia.height;
+      const maxPicH = Math.min(600, room - capH);
+      const sc = Math.min(iw / nw, maxPicH / nh, isVideoStickerUrl(stickerUrl) ? Infinity : 3);
+      picW = nw * sc; picH = nh * sc;
+      ansBlockH = labelBlockH + picH + capH;
+    } else if(isVoice){
+      ansBlockH = labelBlockH + voiceH + capH;
+    } else {
+      ansBlockH = labelBlockH + capH - 24;
+    }
+  } else if(headingText){
+    const room = maxCardH - fixedH - labelBlockH;
+    const sizes = [40, 36, 32, 28];
+    const answerText = content || '';
+    for(let i = 0; i < sizes.length; i++){
+      ansSize = sizes[i]; ansLH = Math.round(ansSize * 1.5);
+      g.font = '400 ' + ansSize + 'px Karla, sans-serif';
+      const lines = canvasWrapLines(g, answerText, iw);
+      const maxLines = Math.max(1, Math.floor(room / ansLH));
+      if(lines.length <= maxLines || i === sizes.length - 1){
+        ansLines = lines.length > maxLines ? lines.slice(0, maxLines) : lines;
+        if(lines.length > maxLines) ansLines[ansLines.length - 1] = canvasTrimLine(g, ansLines[ansLines.length - 1], iw);
+        break;
+      }
+    }
+    ansBlockH = labelBlockH + ansLines.length * ansLH;
+  }
+  const ch = Math.min(maxCardH, fixedH + ansBlockH);
+  const cy = Math.round((H - ch) / 2) - 60;
+
+  // --- card ---
+  g.fillStyle = T.card; roundRect(g, cx, cy, cw, ch, 36); g.fill();
+  g.strokeStyle = T.border; g.lineWidth = 2; roundRect(g, cx, cy, cw, ch, 36); g.stroke();
+  g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+  let y = cy + pad;
+
+  // top row: LABEL ....... [space chip]
+  const chipLabel = String(spaceLabel || '');
+  let chipW = 0;
+  g.font = '600 28px Karla, sans-serif'; setSpacing(1);
+  if(chipLabel) chipW = g.measureText(chipLabel).width + 56;
+  setSpacing(0);
+  g.fillStyle = T.goldText; g.font = '500 ' + labelSize + 'px Karla, sans-serif'; setSpacing(4);
+  const labelMax = iw - chipW - 30;
+  g.fillText(g.measureText(topLabel).width > labelMax ? canvasTrimLine(g, topLabel, labelMax) : topLabel, ix, y + 38);
+  setSpacing(0);
+  if(chipLabel){
+    const chipH = 56, chipX = ix + iw - chipW, chipY = y - 2;
+    g.strokeStyle = T.goldDim; g.lineWidth = 2.5; roundRect(g, chipX, chipY, chipW, chipH, chipH / 2); g.stroke();
+    g.fillStyle = T.goldText; g.font = '600 28px Karla, sans-serif'; setSpacing(1);
+    g.fillText(chipLabel, chipX + 28, chipY + 38); setSpacing(0);
+  }
+  y += topRowH + gapAfterTop;
+
+  // headline
+  g.fillStyle = T.ivory; g.font = '600 ' + headSize + 'px Fraunces, Georgia, serif';
+  headLines.forEach((ln, n) => g.fillText(ln, ix, y + headSize * 0.85 + n * headLH));
+  y += headBlockH;
+  if(headCut){
+    g.fillStyle = T.mutedDim; g.font = 'italic 28px Georgia, serif';
+    g.fillText('Read the rest in Meet Me', ix, y + 40);
+  }
+  y += afterHeadH;
+
+  if(headingText || hasMedia){
+    // divider
+    g.fillStyle = T.border; g.fillRect(ix, y, iw, 2);
+    y += 2 + 40;
+    if(headingText){
+      g.fillStyle = T.mutedDim; g.font = '500 ' + labelSize + 'px Karla, sans-serif'; setSpacing(3);
+      g.fillText(answerWord + (spaceLabel ? ' · ' + String(spaceLabel).toUpperCase() : ''), ix, y + labelSize);
+      setSpacing(0);
+      y += labelSize + 22;
+    }
+    if(picMedia){
+      const px = ix + (iw - picW) / 2;
+      g.save(); roundRect(g, px, y, picW, picH, 20); g.clip();
+      g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+      g.drawImage(picMedia, px, y, picW, picH);
+      g.restore();
+      y += picH + (ansLines.length ? 24 : 0);
+    } else if(isVoice){
+      drawVoiceNoteVisual(g, { body: T.goldText, mantra: T.mutedDim }, ix, y, iw, voiceH, durationSeconds);
+      y += voiceH + (ansLines.length ? 24 : 0);
+    }
+    g.fillStyle = T.muted; g.font = '400 ' + ansSize + 'px Karla, sans-serif';
+    ansLines.forEach((ln, n) => g.fillText(ln, ix, y + ansSize + n * ansLH));
   }
 
-  ctx.fillStyle = palette.name;
-  ctx.font = '30px Karla, sans-serif';
-  ctx.fillText(name, pad + 60, canvas.height - pad - 110);
-
-  ctx.fillStyle = palette.mantra;
-  ctx.font = 'italic 30px Georgia, serif';
-  ctx.fillText('Not for everyone. But you.', pad + 60, canvas.height - pad - 60);
-
-  // the link to this exact post, printed on the card so it survives being shared as a picture
-  if(shareUrl){
-    ctx.fillStyle = palette.label;
-    ctx.font = '26px Karla, sans-serif';
-    ctx.textAlign = 'right';
-    ctx.fillText(shareUrl.replace(/^https?:\/\//, ''), canvas.width - pad - 60, canvas.height - pad - 110);
-    ctx.textAlign = 'left';
-  }
+  // brand, author and the link to this exact post (printed so it survives being shared as a picture)
+  g.textAlign = 'center';
+  g.fillStyle = T.muted; g.font = '500 36px Fraunces, Georgia, serif';
+  g.fillText('Meet Me', W / 2, cy + ch + 80);
+  g.fillStyle = T.mutedDim; g.font = 'italic 28px Georgia, serif';
+  g.fillText('Not for everyone. But you.', W / 2, cy + ch + 124);
+  g.font = '400 24px Karla, sans-serif';
+  if(name) g.fillText(name, W / 2, cy + ch + 172);
+  if(shareUrl) g.fillText(shareUrl.replace(/^https?:\/\//, ''), W / 2, cy + ch + (name ? 206 : 172));
+  g.textAlign = 'left';
 
   return canvas;
 }
@@ -16181,11 +16302,13 @@ async function copyText(text){
   }catch(e){ return false; }
 }
 let currentShareDoorQuestion = null;
+let currentShareInspired = null;
 let currentShareContent = null, currentShareName = null, currentShareSpace = null, currentShareStyle = 'dark', currentShareStickerUrl = null, currentShareAudioUrl = null, currentShareDuration = null;
 
-async function openShareCard(content, name, spaceLabel, stickerUrl, audioUrl, durationSeconds, postId, doorQuestion){
+async function openShareCard(content, name, spaceLabel, stickerUrl, audioUrl, durationSeconds, postId, doorQuestion, inspired){
   currentShareUrl = postShareUrl(postId);
   currentShareDoorQuestion = doorQuestion || null;
+  currentShareInspired = inspired || null;
   const linkRow = document.getElementById('share-card-link-row');
   linkRow.style.display = currentShareUrl ? 'flex' : 'none';
   document.getElementById('share-card-link-text').textContent = currentShareUrl ? currentShareUrl.replace(/^https?:\/\//, '') : '';
@@ -16290,7 +16413,7 @@ function setupOriginalMediaRow(){
 }
 
 async function renderShareCard(){
-  const canvas = await buildShareCanvas(currentShareContent, currentShareName, currentShareSpace, currentShareStyle, currentShareStickerUrl, currentShareAudioUrl, currentShareDuration, currentShareUrl, currentShareDoorQuestion);
+  const canvas = await buildShareCanvas(currentShareContent, currentShareName, currentShareSpace, currentShareStyle, currentShareStickerUrl, currentShareAudioUrl, currentShareDuration, currentShareUrl, currentShareDoorQuestion, currentShareInspired);
   const dataUrl = canvas.toDataURL('image/png');
   document.getElementById('share-card-image').src = dataUrl;
 
@@ -16345,6 +16468,7 @@ document.addEventListener('click', async (e)=>{
   if(shareBtn){
     e.stopPropagation();
     const doorQ = await doorQuestionForPost(shareBtn.dataset.shareId || null);
+    const insp = doorQ ? null : await inspiredSourceForPost(shareBtn.dataset.shareId || null);
     openShareCard(
       shareBtn.dataset.content,
       shareBtn.dataset.name,
@@ -16353,7 +16477,8 @@ document.addEventListener('click', async (e)=>{
       shareBtn.dataset.audioUrl || null,
       shareBtn.dataset.duration ? Number(shareBtn.dataset.duration) : null,
       shareBtn.dataset.shareId || null,
-      doorQ
+      doorQ,
+      insp
     );
   }
 });
@@ -17094,7 +17219,7 @@ function saveSnapshot(){
     try{ snap = JSON.parse(localStorage.getItem('mm_snap') || '{}') || {}; }catch(e){}
     const feedEl = document.getElementById('feed');
     const snapHtml = (el)=>{ const c = el.cloneNode(true); c.querySelectorAll('.post-insight, .rm-toggle').forEach(x => x.remove()); c.querySelectorAll('[data-rm]').forEach(x => { x.removeAttribute('data-rm'); x.removeAttribute('data-rm-open'); x.classList.remove('rm-clamp', 'rm-cut'); x.style.removeProperty('--rm-lines'); }); return c.outerHTML; };
-    const posts = Array.from(feedEl.querySelectorAll('.post')).slice(0, 15).map(snapHtml).join('');
+    const posts = Array.from(feedEl.querySelectorAll('.post:not(.thread-collapsed)')).slice(0, 15).map(snapHtml).join('');
     if(posts){ snap.feed = posts; snap.feedScroll = feedEl.scrollTop; }
     const chatEl = document.getElementById('chat-list');
     if(chatEl.querySelector('.chat-row') && chatPreviewsLoaded){ snap.chat = chatEl.innerHTML; snap.chatV = 2; }
