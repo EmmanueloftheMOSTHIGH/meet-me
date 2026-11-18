@@ -397,6 +397,13 @@
   #doors-overlay.show{ opacity:1; pointer-events:auto; }
   #doors-body{ flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:14px 16px 90px; display:flex; flex-direction:column; gap:10px; }
   #doors-body::-webkit-scrollbar{ display:none; }
+  /* a back-and-forth: posts that answer each other sit together, oldest first */
+  .post.thread-in:not(.thread-last){ margin-bottom:6px; }
+  /* requote card: the post this one answers, shown as a small card inside the new post */
+  .inspired-source-link{ font-size:11px; color:var(--muted-dim); border:1px solid var(--card-border); border-radius:12px; padding:9px 12px 10px; background:rgba(255,255,255,0.02); cursor:pointer; }
+  .inspired-source-link .insp-name{ letter-spacing:0.02em; color:var(--muted); }
+  .inspired-source-link .insp-quote{ margin-top:5px; font-size:13px; line-height:1.45; color:var(--muted); overflow-wrap:anywhere; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+  .inspired-source-link .insp-gone{ margin-top:5px; font-size:12.5px; font-style:italic; color:var(--muted-dim); }
   .dr-card{ background:var(--card); border:1px solid var(--card-border); border-radius:14px; padding:14px 15px; }
   .dr-card.missed{ opacity:.55; }
   .dr-top{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:7px; }
@@ -8931,6 +8938,7 @@ document.addEventListener('click', (e)=>{
   const sourceLink = e.target.closest('.inspired-source-link');
   if(sourceLink){
     e.stopPropagation();
+    if(sourceLink.dataset.gone === '1') return;   // nothing to open
     navigateToPost(sourceLink.dataset.sourceId);
   }
 });
@@ -9168,15 +9176,34 @@ async function doorQuestionForPost(postId){
 
 // Batch-fetches display names for a set of "inspired by" source posts,
 // so feeds can show "↻ inspired by Meet ####" without a query per post.
+// A short quote of the post an "inspired by" post answers, so the card makes sense on its own.
+const inspirationPreviewById = {};
+function inspirationPreviewText(p){
+  const t = String(p.content || '').replace(/\s+/g, ' ').trim();
+  if(t) return t.length > 110 ? t.slice(0, 110).replace(/\s+\S*$/, '') + '…' : t;
+  if(p.audio_url) return 'Voice note';
+  if(p.sticker_url) return 'Picture';
+  return '';
+}
+function inspiredLineHtml(sourceId, name, bottomPx){
+  if(!sourceId) return '';
+  const gone = !name;   // the original was deleted or removed: say so, instead of a broken link
+  const prev = gone ? '' : inspirationPreviewById[sourceId];
+  return `<div class="post-action inspired-source-link" data-source-id="${sourceId}" data-gone="${gone ? '1' : ''}" style="margin-bottom:${bottomPx + 2}px;">`
+    + `<div class="insp-name">↻ inspired by ${gone ? 'a post' : escapeHtml(name)}</div>`
+    + (gone ? `<div class="insp-gone">Original removed</div>` : (prev ? `<div class="insp-quote">${escapeHtml(prev)}</div>` : ''))
+    + `</div>`;
+}
 async function fetchInspirationLabels(posts){
   await fetchDoorQuestionTexts(posts);
   const ids = [...new Set(posts.filter(p => p.inspired_by_post_id).map(p => p.inspired_by_post_id))];
   if(!ids.length) return {};
-  const { data } = await sb.from('posts').select('id, user_id, community_id, organization_id, as_founder, story_number, users!posts_user_id_fkey(meet_number), communities(name)').in('id', ids);
+  const { data } = await sb.from('posts').select('id, user_id, content, audio_url, sticker_url, community_id, organization_id, as_founder, story_number, users!posts_user_id_fkey(meet_number), communities(name)').in('id', ids);
   // A post made as an organisation is credited to that organisation, not to the person running it.
   if((data || []).some(p => p.organization_id)){ try{ await ensureOrgs(); }catch(e){} }
   const map = {};
   (data || []).forEach(p => {
+    inspirationPreviewById[p.id] = inspirationPreviewText(p);
     map[p.id] = p.community_id ? (p.communities?.name || 'a community')
       : p.organization_id ? orgInfo(p.organization_id).name
       : p.story_number ? ('Meet ' + p.story_number)
@@ -10402,8 +10429,7 @@ function renderRantPost(post, userLiked, likeCount, inspirationLabels, opts){
       : (post.users?.meet_number || ('Meet ' + post.user_id.slice(0,6)));
   const vidLink = isOrg ? extractVideoLink(post.content) : null;   // organisation posts only
   const bodyHtml = postBodyHtml(vidLink ? Object.assign({}, post, { content: vidLink.rest }) : post, 'post-body', 150, false, isOrg) + (vidLink ? videoLinkCardHtml(vidLink, post) : '');
-  const inspiredLine = post.inspired_by_post_id && inspirationLabels[post.inspired_by_post_id]
-    ? `<div class="post-action inspired-source-link" data-source-id="${post.inspired_by_post_id}" style="font-size:11px; color:var(--muted-dim); margin-bottom:8px;">↻ inspired by ${escapeHtml(inspirationLabels[post.inspired_by_post_id])}</div>` : '';
+  const inspiredLine = inspiredLineHtml(post.inspired_by_post_id, inspirationLabels[post.inspired_by_post_id], 10);
   const fresh = isOrg && (Date.now() - new Date(post.created_at).getTime() < ORG_FRESH_MS) && !orgSeenSet().has(String(post.id));
   const headHtml = isCommunity
     ? escapeHtml(displayName) + ' <span class="org-badge">community</span>'
@@ -10460,6 +10486,41 @@ function renderFeedBoundary(){
   boundary.textContent = feedHasMore ? 'scroll for more' : "that's every rant — you're all caught up";
 }
 
+// Keeps an argument together. Posts that requote each other (A, B answering A, A answering B...)
+// are pulled into one group, oldest first, placed where the group's newest post would have been.
+// Only posts in the same loaded batch can group; trend posts are left where they are.
+function groupConversations(posts){
+  const byId = new Map(posts.map(p => [p.id, p]));
+  const rootOf = (p)=>{
+    const seen = new Set();
+    let cur = p;
+    while(cur.inspired_by_post_id && byId.has(cur.inspired_by_post_id) && !seen.has(cur.id)){
+      seen.add(cur.id);
+      cur = byId.get(cur.inspired_by_post_id);
+    }
+    return cur.id;
+  };
+  const groups = new Map();
+  posts.forEach(p => {
+    const key = p.trend_id ? ('solo-' + p.id) : rootOf(p);
+    if(!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(p);
+  });
+  const out = [];
+  groups.forEach(list => {
+    if(list.length > 1) list.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    list.forEach((p, i) => out.push({ post: p, thread: list.length > 1 ? { first: i === 0, last: i === list.length - 1 } : null }));
+  });
+  return out;
+}
+function markThread(el, thread){
+  if(!thread) return el;
+  el.classList.add('thread-in');
+  if(thread.first) el.classList.add('thread-first');
+  if(thread.last) el.classList.add('thread-last');
+  return el;
+}
+
 async function loadFeed(){
   feedOffset = 0;
   feedHasMore = true;
@@ -10495,8 +10556,8 @@ async function loadFeed(){
   // reload shouldn't touch them.
   feed.querySelectorAll('.post, #boundary-marker').forEach(el => el.remove());
   if(isNewAccount()) feed.appendChild(tutorialCardEl('rant'));
-  posts.forEach(post => {
-    feed.appendChild(renderRantPost(post, likedIds.has(post.id), likeCounts[post.id] || 0, inspirationLabels));
+  groupConversations(posts).forEach(({ post, thread }) => {
+    feed.appendChild(markThread(renderRantPost(post, likedIds.has(post.id), likeCounts[post.id] || 0, inspirationLabels), thread));
   });
 
   const boundary = document.createElement('div');
@@ -10548,8 +10609,8 @@ async function loadMoreFeed(){
     const inspirationLabels = await fetchInspirationLabels(posts);
     const feed = document.getElementById('feed');
     const boundaryEl = document.getElementById('boundary-marker');
-    posts.forEach(post => {
-      feed.insertBefore(renderRantPost(post, likedIds.has(post.id), likeCounts[post.id] || 0, inspirationLabels), boundaryEl);
+    groupConversations(posts).forEach(({ post, thread }) => {
+      feed.insertBefore(markThread(renderRantPost(post, likedIds.has(post.id), likeCounts[post.id] || 0, inspirationLabels), thread), boundaryEl);
     });
   }
   renderFeedBoundary();
@@ -11605,8 +11666,7 @@ async function renderSpills(spills, append){
     const isFounder = !!spill.as_founder && !isStory;
     const displayName = isStory ? ('Meet ' + spill.story_number) : isFounder ? ('Meet Founder' + (isOwn ? ' (you)' : '')) : ((spill.users?.meet_number || ('Meet ' + spill.user_id.slice(0,6))) + (isOwn ? ' (you)' : ''));
     const bodyHtml = postBodyHtml(spill, 'spill-card-body', 150);
-    const inspiredLine = spill.inspired_by_post_id && inspirationLabels[spill.inspired_by_post_id]
-      ? `<div class="post-action inspired-source-link" data-source-id="${spill.inspired_by_post_id}" style="font-size:11px; color:var(--muted-dim); margin-bottom:6px;">↻ inspired by ${escapeHtml(inspirationLabels[spill.inspired_by_post_id])}</div>` : '';
+    const inspiredLine = inspiredLineHtml(spill.inspired_by_post_id, inspirationLabels[spill.inspired_by_post_id], 8);
     const card = document.createElement('div');
     card.className = 'spill-card split';
     card.dataset.postId = spill.id;
@@ -11659,6 +11719,8 @@ let doorPick = null;
 let doorBusy = false;
 let doorMyDays = new Set();
 let doorTodayMood = null;                 // today's mood pick if they already checked in (so a late question doesn't ask for it again)
+let doorAnswerWhereByQ = {};              // question id -> 'Spill' or 'Rant' (for the Door share card label)
+let doorAnswerMediaByQ = {};              // question id -> { pic, audio } when the answer was a picture or a voice note
 let doorAnswerTextByQ = {};               // question id -> what this person answered (for the Door share card)
 let doorAnsweredIds = new Set();          // question ids this person has already answered (from their own posts)
 const DOOR_MOODS = [null, 'rough', 'low', 'okay', 'good', 'great'];
@@ -11702,8 +11764,8 @@ async function loadDoorQuestion(){
     doorUsedToday = doorMyDays.has(today);
     // Has this person already answered today's question? (Their own post carries the question id.)
     if(q){
-      const { data: mineAns } = await sb.from('posts').select('id, content').eq('user_id', currentUserId).eq('door_question_id', q.id).order('created_at', { ascending:false }).limit(1);
-      if(mineAns && mineAns.length){ doorAnsweredIds.add(q.id); if(mineAns[0].content) doorAnswerTextByQ[q.id] = mineAns[0].content; }
+      const { data: mineAns } = await sb.from('posts').select('id, content, post_type, sticker_url, audio_url').eq('user_id', currentUserId).eq('door_question_id', q.id).order('created_at', { ascending:false }).limit(1);
+      if(mineAns && mineAns.length){ doorAnsweredIds.add(q.id); if(mineAns[0].content) doorAnswerTextByQ[q.id] = mineAns[0].content; doorAnswerWhereByQ[q.id] = mineAns[0].post_type === 'spill' ? 'Spill' : 'Rant'; const pic0 = stickerUrlList(mineAns[0].sticker_url)[0] || null; if(pic0 || mineAns[0].audio_url) doorAnswerMediaByQ[q.id] = { pic: pic0, audio: !!mineAns[0].audio_url }; }
     }
   }
   updateDoorEntries();
@@ -11862,6 +11924,7 @@ async function postDoorLine(content){
   const qid = currentDoorRowIsToday ? currentDoorQuestionId : null;
   if(qid){ doorAnsweredIds.add(qid); doorAnswerTextByQ[qid] = content; }
   const { score } = scoreDoorRouting(content);
+  if(qid) doorAnswerWhereByQ[qid] = score >= 3 ? 'Spill' : 'Rant';
   if(score >= 3){
     await saveSpill(content, null, null, null, qid, score);
     if(currentTwinMode === 'spill'){ const spills = await loadSpills(); cachedSpills = spills; await renderSpills(spills); }
@@ -11938,83 +12001,169 @@ document.getElementById('door-front-submit').addEventListener('click', async ()=
 
 document.getElementById('door-enter-btn').addEventListener('click', hideDoorFront);
 
-// Share card: a plain image people can post to a status.
+// Share card: a plain image people can post to a status. It copies the "Your Doors" card
+// (TODAY + mood chip, the question, a divider, YOUR ANSWER) and takes every colour from the
+// theme that is on screen, so it matches Dark, White & Gold, Gold and both Aurora looks.
 async function shareDoorCard(){
-  try{ await document.fonts.load('700 150px Karla'); await document.fonts.load('600 62px Karla'); }catch(e){}
+  try{
+    await Promise.all([ document.fonts.load('600 54px Fraunces'), document.fonts.load('500 36px Fraunces'),
+      document.fonts.load('600 26px Karla'), document.fonts.load('400 36px Karla') ]);
+  }catch(e){}
   const W = 1080, H = 1350;
   const c = document.createElement('canvas'); c.width = W; c.height = H;
   const g = c.getContext('2d');
-  g.fillStyle = '#0c0c0e'; g.fillRect(0,0,W,H);
-  // faint dot grid + soft top tint (flat, no glow)
-  g.fillStyle = 'rgba(140,140,140,0.16)';
-  for(let x = 20; x < W; x += 44){ for(let y = 20; y < H; y += 44){ g.fillRect(x, y, 2, 2); } }
-  const tint = g.createLinearGradient(0, 0, 0, 520);
-  tint.addColorStop(0, 'rgba(212,168,87,0.10)'); tint.addColorStop(1, 'rgba(212,168,87,0)');
-  g.fillStyle = tint; g.fillRect(0, 0, W, 520);
 
-  // With an answer on file, the card also carries today's question and the person's answer, so the door is smaller.
+  const cs = getComputedStyle(document.getElementById('root'));
+  const v = (n, fb) => (cs.getPropertyValue(n) || '').trim() || fb;
+  const T = {
+    bg: v('--bg', '#0c0c0e'), card: v('--card', '#17171b'), border: v('--card-border', 'rgba(240,230,210,0.07)'),
+    gold: v('--gold', '#d4a857'), goldDim: v('--gold-dim', 'rgba(212,168,87,0.5)'), goldText: v('--gold-text', '#c99a4e'),
+    ivory: v('--ivory', '#f0e6d2'), muted: v('--muted', '#8a8578'), mutedDim: v('--muted-dim', '#5c584f')
+  };
+  const setSpacing = px => { if('letterSpacing' in g) g.letterSpacing = px + 'px'; };
+
+  g.fillStyle = T.bg; g.fillRect(0, 0, W, H);
+
+  // What goes on the card
   const doorQ = currentDoorRowIsToday ? currentDoorQuestionText : null;
   const doorA = (doorQ && currentDoorQuestionId) ? (doorAnswerTextByQ[currentDoorQuestionId] || '') : '';
-  const hasQA = !!(doorQ && doorA);
+  const where = (currentDoorQuestionId && doorAnswerWhereByQ[currentDoorQuestionId]) || '';
+  const media = (doorQ && currentDoorQuestionId) ? doorAnswerMediaByQ[currentDoorQuestionId] : null;
+  const picUrl = media && media.pic ? media.pic : null;
+  const hasAudio = !!(media && media.audio);
+  const hasQA = !!(doorQ && (doorA || picUrl || hasAudio));
+  // A picture answer: load it first so the card can be sized around it. If the host blocks it, a plain "Picture" line is shown instead.
+  let picMedia = null;
+  if(hasQA && picUrl){
+    try{ picMedia = isVideoStickerUrl(picUrl) ? await loadVideoStickerForCanvas(picUrl) : await loadImageForCanvas(picUrl); }
+    catch(err){ console.error('Could not draw the Door answer picture onto the share card:', err); }
+  }
+  // The mood pick: use the one just chosen, else today's saved one. If there is none, the chip is left out
+  // (never "undefined" on the card).
+  const pick = doorPick || doorTodayMood || null;
+  const mood = (pick && DOOR_MOODS[pick]) ? DOOR_MOODS[pick] : null;
 
-  // door: plain frame, light behind a leaf that is slightly ajar
-  const k = hasQA ? 0.6 : 1;
-  const dw = 200*k, dh = 320*k, dx = W/2 - dw/2, dy = hasQA ? 90 : 250, ins = 8*k;
-  g.fillStyle = '#d4a857'; g.fillRect(dx+ins, dy+ins, dw-2*ins, dh-2*ins);
-  g.fillStyle = '#17171b'; g.fillRect(dx+ins, dy+ins, (dw-2*ins)*0.9, dh-2*ins);
-  g.strokeStyle = '#c99a4e'; g.lineWidth = 7*k; g.lineJoin = 'round';
-  g.strokeRect(dx, dy, dw, dh);
-  g.fillStyle = '#c99a4e'; g.beginPath(); g.arc(dx+dw*0.7, dy+dh*0.56, 9*k, 0, Math.PI*2); g.fill();
+  // Card geometry
+  const cx = 110, cw = W - 220, pad = 64, ix = cx + pad, iw = cw - pad * 2;
+  const qSize = 56, qLH = 74;
+  const labelSize = 24;
 
-  g.textAlign = 'center';
-  if(!hasQA){
-    g.fillStyle = '#c99a4e'; g.font = '700 30px Karla, sans-serif';
-    g.fillText('D A I L Y   C H E C K - I N', W/2, 690);
-    g.fillStyle = '#f0e6d2'; g.font = '700 150px Karla, sans-serif';
-    g.fillText('Day ' + computeDoorStreak(), W/2, 860);
-    g.fillStyle = '#d4a857'; g.font = '600 62px Karla, sans-serif';
-    g.fillText('my day is ' + DOOR_MOODS[doorPick], W/2, 990);
-  } else {
-    g.fillStyle = '#c99a4e'; g.font = '700 26px Karla, sans-serif';
-    g.fillText('D A I L Y   C H E C K - I N', W/2, 345);
-    g.fillStyle = '#f0e6d2'; g.font = '700 84px Karla, sans-serif';
-    g.fillText('Day ' + computeDoorStreak(), W/2, 435);
-    g.fillStyle = '#d4a857'; g.font = '600 44px Karla, sans-serif';
-    g.fillText('my day is ' + DOOR_MOODS[doorPick], W/2, 500);
+  // --- measure ---
+  g.font = '600 ' + qSize + 'px Fraunces, Georgia, serif';
+  const titleText = doorQ || 'Daily check-in';
+  let qLines = canvasWrapLines(g, titleText, iw);
+  if(qLines.length > 5){ qLines = qLines.slice(0, 5); qLines[4] = canvasTrimLine(g, qLines[4], iw); }
 
-    g.save(); g.globalAlpha = 0.3; g.strokeStyle = '#8a8578'; g.lineWidth = 2;
-    g.beginPath(); g.moveTo(190, 550); g.lineTo(W-190, 550); g.stroke(); g.restore();
+  const topRowH = 64;                       // TODAY + chip
+  const qBlockH = qLines.length * qLH;
+  const gapAfterTop = 34, gapAfterQ = 44;
 
-    const maxW = 800;
-    g.fillStyle = '#c99a4e'; g.font = '700 24px Karla, sans-serif';
-    g.fillText("T O D A Y ' S   Q U E S T I O N", W/2, 605);
-    g.font = 'italic 44px Georgia, serif';
-    let qLines = canvasWrapLines(g, doorQ, maxW);
-    if(qLines.length > 3){ qLines = qLines.slice(0, 3); qLines[2] = canvasTrimLine(g, qLines[2], maxW); }
-    g.fillStyle = '#d4a857';
-    qLines.forEach((ln, n) => g.fillText(ln, W/2, 670 + n * 58));
-    const qEnd = 670 + (qLines.length - 1) * 58;
-
-    g.fillStyle = '#c99a4e'; g.font = '700 24px Karla, sans-serif';
-    g.fillText('M Y   A N S W E R', W/2, qEnd + 85);
-    const aTop = qEnd + 150, aBottom = 1160;
-    const sizes = [44, 40, 36, 32];
-    for(let i = 0; i < sizes.length; i++){
-      const size = sizes[i], lh = Math.round(size * 1.35);
-      g.font = size + 'px Georgia, serif';
-      const lines = canvasWrapLines(g, doorA, maxW);
-      const maxLines = Math.floor((aBottom - aTop) / lh) + 1;
-      if(lines.length <= maxLines || i === sizes.length - 1){
-        const cut = lines.length > maxLines;
-        const shown = cut ? lines.slice(0, maxLines) : lines;
-        g.fillStyle = '#f0e6d2';
-        shown.forEach((ln, n) => g.fillText((cut && n === shown.length - 1) ? canvasTrimLine(g, ln, maxW) : ln, W/2, aTop + n * lh));
-        break;
+  let ansLines = [], ansSize = 38, ansLH = 56, ansBlockH = 0, picW = 0, picH = 0;
+  const maxCardH = 1020;
+  const fixedH = pad + topRowH + gapAfterTop + qBlockH + gapAfterQ + pad;
+  if(hasQA){
+    const labelBlockH = 2 + 40 + labelSize + 22;           // divider, gap, label, gap
+    const room = maxCardH - fixedH - labelBlockH;
+    // text shown with the answer: what they wrote, or a short note when it was only a voice note / a picture that could not load
+    const answerText = doorA || (picMedia ? '' : (picUrl ? 'Picture' : (hasAudio ? 'Voice note' : '')));
+    let textRoom = room;
+    if(picMedia){
+      // picture first, then at most three lines of caption underneath
+      ansSize = 34; ansLH = 50;
+      g.font = '400 ' + ansSize + 'px Karla, sans-serif';
+      let cap = answerText ? canvasWrapLines(g, answerText, iw) : [];
+      if(cap.length > 3){ cap = cap.slice(0, 3); cap[2] = canvasTrimLine(g, cap[2], iw); }
+      ansLines = cap;
+      const capH = cap.length ? cap.length * ansLH + 24 : 0;
+      const nw = picMedia.videoWidth || picMedia.naturalWidth || picMedia.width;
+      const nh = picMedia.videoHeight || picMedia.naturalHeight || picMedia.height;
+      const maxPicH = Math.min(600, room - capH);
+      const sc = Math.min(iw / nw, maxPicH / nh, isVideoStickerUrl(picUrl) ? Infinity : 3);
+      picW = nw * sc; picH = nh * sc;
+      ansBlockH = labelBlockH + picH + capH;
+    } else {
+      const sizes = [40, 36, 32, 28];
+      for(let i = 0; i < sizes.length; i++){
+        ansSize = sizes[i]; ansLH = Math.round(ansSize * 1.5);
+        g.font = '400 ' + ansSize + 'px Karla, sans-serif';
+        const lines = canvasWrapLines(g, answerText, iw);
+        const maxLines = Math.max(1, Math.floor(textRoom / ansLH));
+        if(lines.length <= maxLines || i === sizes.length - 1){
+          ansLines = lines.length > maxLines ? lines.slice(0, maxLines) : lines;
+          if(lines.length > maxLines) ansLines[ansLines.length - 1] = canvasTrimLine(g, ansLines[ansLines.length - 1], iw);
+          break;
+        }
       }
+      ansBlockH = labelBlockH + ansLines.length * ansLH;
+    }
+  } else {
+    ansBlockH = 2 + 56 + 150 + 70;                          // divider, gap, "Day N", mood line
+  }
+  const ch = Math.min(maxCardH, fixedH + ansBlockH);
+  const cy = Math.round((H - ch) / 2) - 30;
+
+  // --- card ---
+  g.fillStyle = T.card; roundRect(g, cx, cy, cw, ch, 36); g.fill();
+  g.strokeStyle = T.border; g.lineWidth = 2; roundRect(g, cx, cy, cw, ch, 36); g.stroke();
+
+  g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+  let y = cy + pad;
+
+  // top row: TODAY ....... [mood chip]
+  g.fillStyle = T.goldText; g.font = '500 ' + labelSize + 'px Karla, sans-serif'; setSpacing(4);
+  g.fillText(doorQ ? 'TODAY' : 'DAILY CHECK-IN', ix, y + 38);
+  setSpacing(0);
+  if(mood){
+    const label = mood.charAt(0).toUpperCase() + mood.slice(1);
+    g.font = '600 28px Karla, sans-serif'; setSpacing(1);
+    const tw = g.measureText(label).width; setSpacing(0);
+    const chipW = tw + 56, chipH = 56, chipX = ix + iw - chipW, chipY = y - 2;
+    g.strokeStyle = T.goldDim; g.lineWidth = 2.5; roundRect(g, chipX, chipY, chipW, chipH, chipH / 2); g.stroke();
+    g.fillStyle = T.goldText; setSpacing(1);
+    g.fillText(label, chipX + 28, chipY + 38); setSpacing(0);
+  }
+  y += topRowH + gapAfterTop;
+
+  // question
+  g.fillStyle = T.ivory; g.font = '600 ' + qSize + 'px Fraunces, Georgia, serif';
+  qLines.forEach((ln, n) => g.fillText(ln, ix, y + qSize * 0.85 + n * qLH));
+  y += qBlockH + gapAfterQ;
+
+  // divider
+  g.fillStyle = T.border; g.fillRect(ix, y, iw, 2);
+  y += 2 + 40;
+
+  if(hasQA){
+    g.fillStyle = T.mutedDim; g.font = '500 ' + labelSize + 'px Karla, sans-serif'; setSpacing(3);
+    g.fillText('YOUR ANSWER' + (where ? ' · ' + where.toUpperCase() : ''), ix, y + labelSize);
+    setSpacing(0);
+    y += labelSize + 22;
+    if(picMedia){
+      const px = ix + (iw - picW) / 2;
+      g.save(); roundRect(g, px, y, picW, picH, 20); g.clip();
+      g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+      g.drawImage(picMedia, px, y, picW, picH);
+      g.restore();
+      y += picH + (ansLines.length ? 24 : 0);
+    }
+    g.fillStyle = T.muted; g.font = '400 ' + ansSize + 'px Karla, sans-serif';
+    ansLines.forEach((ln, n) => g.fillText(ln, ix, y + ansSize + n * ansLH));
+  } else {
+    // checked in without an answer: the streak and the mood take the answer's place
+    g.fillStyle = T.ivory; g.font = '600 120px Fraunces, Georgia, serif';
+    g.fillText('Day ' + computeDoorStreak(), ix, y + 110);
+    if(mood){
+      g.fillStyle = T.goldText; g.font = '500 40px Karla, sans-serif';
+      g.fillText('my day is ' + mood, ix, y + 110 + 62);
     }
   }
-  g.fillStyle = '#8a8578'; g.font = '500 34px Karla, sans-serif';
-  g.fillText('Meet Me', W/2, 1230);
+
+  // brand
+  g.textAlign = 'center';
+  g.fillStyle = T.muted; g.font = '500 36px Fraunces, Georgia, serif';
+  g.fillText('Meet Me', W / 2, cy + ch + 90);
+  g.fillStyle = T.mutedDim; g.font = 'italic 28px Georgia, serif';
+  g.fillText('Not for everyone. But you.', W / 2, cy + ch + 138);
 
   const blob = await new Promise(res => c.toBlob(res, 'image/png'));
   if(!blob) return;
