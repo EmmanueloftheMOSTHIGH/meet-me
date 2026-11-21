@@ -2743,6 +2743,28 @@
 .dv-chips{ display:none; flex-wrap:wrap; gap:7px; padding:0 0 16px; }
 .dv-day.open .dv-chips{ display:flex; }
 .dv-chip{ font-size:12px; padding:5px 12px; border-radius:999px; color:var(--ivory); background:var(--card); border:1px solid var(--card-border); }
+/* online now + minutes */
+.dv-chip{ display:inline-flex; align-items:center; gap:7px; }
+.dv-chip.on{ border-color:rgba(110,201,140,0.55); background:rgba(110,201,140,0.08); }
+.dv-dot{ width:7px; height:7px; border-radius:50%; background:#6ec98c; box-shadow:0 0 0 3px rgba(110,201,140,0.2); flex-shrink:0; }
+.dv-dot[hidden], .dv-min:empty{ display:none; }
+.dv-min{ font-size:11px; color:#8ddfa6; }
+.dv-online-now{ display:flex; align-items:center; justify-content:flex-end; gap:6px; margin-top:4px; font-size:12px; letter-spacing:0; text-transform:none; color:#8ddfa6; }
+.dv-online-now:empty{ display:none; }
+
+/* private reply thread: the board grows to fill the sheet instead of staying a thin strip */
+#post-replies-sheet.thread-open:not(.fullscreen) #post-replies-panel{ height:88%; max-height:none; }
+
+/* delete link under each private message */
+.priv-thread-msg-foot{ display:flex; align-items:center; justify-content:space-between; gap:14px; margin-top:4px; }
+.priv-thread-msg-foot .priv-thread-msg-time{ margin-top:0; }
+.priv-del{ font-size:10.5px; color:#8a6a4a; cursor:pointer; padding:4px 0 4px 8px; text-decoration:underline; text-underline-offset:2px; }
+
+/* Your replies inbox */
+.rp-head{ font-family:'Fraunces',serif; font-size:13.5px; color:var(--muted); padding:16px 16px 4px; }
+.rp-unread{ display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--gold); margin-right:7px; vertical-align:middle; }
+.rp-badge{ display:inline-block; min-width:16px; height:16px; line-height:16px; padding:0 5px; margin-left:8px; border-radius:8px; background:var(--gold); color:#1a1408; font-size:10.5px; text-align:center; vertical-align:middle; }
+.rp-del{ display:inline-block; margin-top:8px; font-size:11px; color:var(--muted-dim); text-decoration:underline; text-underline-offset:2px; cursor:pointer; }
 </style>
 <style>
 /* ============ PROFILE VIEW ACTIONS + FOUNDER SEND ============ */
@@ -3383,7 +3405,7 @@
       <div id="yourreplies-back" class="yourposts-style-back">‹</div>
       <div>
         <div style="font-family:'Fraunces',serif; font-size:16px; color:var(--ivory);">Your replies</div>
-        <div style="font-size:11px; color:var(--muted-dim); margin-top:2px;">every post you've replied to — tap one to pick the thread back up</div>
+        <div style="font-size:11px; color:var(--muted-dim); margin-top:2px;">replies you got and replies you sent — tap one to pick the thread back up</div>
       </div>
     </div>
     <div id="yourreplies-feed"></div>
@@ -4559,6 +4581,92 @@ function dailyVisitorsLabel(dayStr, todayStr){
 }
 function dvPeople(n){ return n === 1 ? '1 person' : n + ' people'; }
 
+/* ---- Who is online right now ----
+   Every signed-in person who has really used the app joins one Realtime
+   Presence channel while the app is on screen. The admin sheet reads it:
+   a green dot = connected now, the number = minutes since they joined.
+   Someone who leaves the app for under a minute keeps their running time. */
+const PRESENCE_GRACE_MS = 60 * 1000;
+let appPresenceChannel = null, appPresenceReady = false, appPresenceSince = 0, appPresenceHideTimer = null, dvRefreshTimer = null;
+
+function appPresenceTrack(){
+  if(!appPresenceChannel || !appPresenceReady || !currentUserId) return;
+  if(!appPresenceSince) appPresenceSince = Date.now();
+  try{ appPresenceChannel.track({ u: currentUserId, m: currentMeetNumber || '', since: appPresenceSince }); }catch(e){}
+}
+function ensureAppPresence(){
+  if(!currentUserId || !userHasInteracted || document.hidden) return;
+  if(appPresenceChannel){
+    if(appPresenceReady && !appPresenceSince) appPresenceTrack();
+    return;
+  }
+  appPresenceChannel = sb.channel('app-presence', { config: { presence: { key: currentUserId } } });
+  appPresenceChannel
+    .on('presence', { event: 'sync' }, ()=>{ paintDvPresence(); })
+    .subscribe(status => {
+      if(status === 'SUBSCRIBED'){ appPresenceReady = true; appPresenceTrack(); }
+    });
+}
+document.addEventListener('visibilitychange', ()=>{
+  if(document.hidden){
+    clearTimeout(appPresenceHideTimer);
+    appPresenceHideTimer = setTimeout(()=>{
+      if(!document.hidden || !appPresenceChannel) return;
+      appPresenceSince = 0;
+      try{ appPresenceChannel.untrack(); }catch(e){}
+    }, PRESENCE_GRACE_MS);
+  } else {
+    clearTimeout(appPresenceHideTimer);
+    ensureAppPresence();
+  }
+});
+setInterval(ensureAppPresence, 10000);
+
+function dvOnlineMap(){
+  const map = new Map();
+  if(!appPresenceChannel) return map;
+  let st = {};
+  try{ st = appPresenceChannel.presenceState() || {}; }catch(e){}
+  Object.values(st).forEach(arr => (arr || []).forEach(p => {
+    if(!p || !p.m) return;
+    const prev = map.get(p.m);
+    if(!prev || (p.since && p.since < prev)) map.set(p.m, p.since || Date.now());
+  }));
+  return map;
+}
+function dvFmtMins(since){
+  const m = Math.floor((Date.now() - since) / 60000);
+  if(m < 1) return 'just now';
+  if(m < 60) return m + ' min';
+  const h = Math.floor(m / 60), r = m % 60;
+  return h + 'h ' + String(r).padStart(2, '0') + 'm';
+}
+function paintDvPresence(){
+  const overlay = document.getElementById('daily-visitors-overlay');
+  if(!overlay || !overlay.classList.contains('show')) return;
+  const online = dvOnlineMap();
+  const nowEl = document.getElementById('dv-online-now');
+  if(nowEl) nowEl.innerHTML = online.size ? '<span class="dv-dot"></span>' + online.size + ' online now' : '';
+  const box = document.querySelector('#daily-visitors-list .dv-day[data-today] .dv-chips');
+  if(!box) return;
+  const chips = Array.from(box.querySelectorAll('.dv-chip'));
+  chips.forEach(chip => {
+    const since = online.get(chip.dataset.meet);
+    const dot = chip.querySelector('.dv-dot'), min = chip.querySelector('.dv-min');
+    chip.classList.toggle('on', !!since);
+    if(dot) dot.hidden = !since;
+    if(min) min.textContent = since ? dvFmtMins(since) : '';
+  });
+  // online people first (longest online first), everyone else keeps number order
+  chips.sort((a, b) => {
+    const sa = online.get(a.dataset.meet), sb2 = online.get(b.dataset.meet);
+    if(sa && sb2) return sa - sb2;
+    if(sa) return -1;
+    if(sb2) return 1;
+    return (parseInt(a.dataset.i, 10) || 0) - (parseInt(b.dataset.i, 10) || 0);
+  }).forEach(c => box.appendChild(c));
+}
+
 async function loadDailyVisitors(){
   const summary = document.getElementById('daily-visitors-summary');
   const hero = document.getElementById('daily-visitors-hero');
@@ -4597,7 +4705,7 @@ async function loadDailyVisitors(){
         <div class="dv-hero-num">${todayCount}</div>
         <div class="dv-hero-label">opened today</div>
       </div>
-      <div class="dv-hero-side">Yesterday<b>${yestCount}</b></div>
+      <div class="dv-hero-side">Yesterday<b>${yestCount}</b><div class="dv-online-now" id="dv-online-now"></div></div>
     </div>
     <div class="dv-bars">
       ${chrono.map(d => {
@@ -4617,17 +4725,26 @@ async function loadDailyVisitors(){
     const n = d.names.length;
     const open = (i === 0 && n > 0);
     return `
-      <div class="dv-day ${n === 0 ? 'empty' : ''} ${open ? 'open' : ''}">
+      <div class="dv-day ${n === 0 ? 'empty' : ''} ${open ? 'open' : ''}" ${i === 0 ? 'data-today="1"' : ''}>
         <div class="dv-day-top">
           <span class="dv-day-label">${escapeHtml(dailyVisitorsLabel(d.day, todayStr))}</span>
           <span class="dv-day-right">${n === 0 ? 'no one' : dvPeople(n)}${n ? '<span class="dv-chev">›</span>' : ''}</span>
         </div>
-        ${n ? `<div class="dv-chips">${d.names.map(nm => `<span class="dv-chip">${escapeHtml(nm)}</span>`).join('')}</div>` : ''}
+        ${n ? `<div class="dv-chips">${d.names.map(nm => `<span class="dv-chip" data-meet="${escapeHtml(nm)}"><span class="dv-dot" hidden></span><span class="dv-name">${escapeHtml(nm)}</span><span class="dv-min"></span></span>`).join('')}</div>` : ''}
       </div>`;
   }).join('');
   list.querySelectorAll('.dv-day:not(.empty) .dv-day-top').forEach(top => {
     top.addEventListener('click', ()=> top.parentElement.classList.toggle('open'));
   });
+  list.querySelectorAll('.dv-day[data-today] .dv-chip').forEach((c, i) => { c.dataset.i = i; });
+  ensureAppPresence();
+  paintDvPresence();
+  clearInterval(dvRefreshTimer);
+  dvRefreshTimer = setInterval(()=>{
+    const ov = document.getElementById('daily-visitors-overlay');
+    if(!ov || !ov.classList.contains('show')){ clearInterval(dvRefreshTimer); return; }
+    paintDvPresence();
+  }, 20000);
 }
 
 document.querySelectorAll('.admin-dashboard-filter').forEach(tab=>{
@@ -4720,11 +4837,92 @@ document.getElementById('profile-yourreplies-row').addEventListener('click', ()=
 document.getElementById('yourreplies-back').addEventListener('click', ()=>{
   yourrepliesOverlay.classList.remove('show');
 });
-document.getElementById('yourreplies-feed').addEventListener('click', (e)=>{
+document.getElementById('yourreplies-feed').addEventListener('click', async (e)=>{
   if(e.target.closest('.user-link')) return; // let that open the profile instead
   const row = e.target.closest('.yp-post[data-post-id]');
-  if(row) openPrivateThreadFromNotification(row.dataset.postId);
+  if(!row) return;
+  const del = e.target.closest('.rp-del');
+  if(del){
+    const res = row._row && await deleteReply(row._row);
+    if(res){ showNavToast(res === 'deleted' ? 'Reply deleted.' : 'Reply removed from your view.'); loadYourReplies(); refreshRepliesUnreadDot(); }
+    return;
+  }
+  if(row.dataset.removed) return;               // the post is gone; its message is already shown in full
+  const dot = row.querySelector('.rp-unread'); if(dot) dot.remove();
+  openPrivateThreadFromNotification(row.dataset.postId, row.dataset.otherId);
 });
+
+/* ---- Private replies: delete / hide, and what's unread ---- */
+function repliesKey(kind){ return 'mm_' + kind + ':' + (currentUserId || 'x'); }
+function hiddenReplyIds(){ try{ return new Set(JSON.parse(localStorage.getItem(repliesKey('hidden_replies')) || '[]')); }catch(e){ return new Set(); } }
+function hideReplyLocally(id){
+  try{ const s = hiddenReplyIds(); s.add(String(id)); localStorage.setItem(repliesKey('hidden_replies'), JSON.stringify([...s].slice(-500))); }catch(e){}
+}
+function isReplyHidden(r){ return !!(r && r.id && hiddenReplyIds().has(String(r.id))); }
+function replySeenMap(){
+  let m = {};
+  try{ m = JSON.parse(localStorage.getItem(repliesKey('reply_seen')) || '{}') || {}; }catch(e){}
+  if(!m._init){ m._init = new Date().toISOString(); try{ localStorage.setItem(repliesKey('reply_seen'), JSON.stringify(m)); }catch(e){} }
+  return m;
+}
+function replySeenAt(m, key){
+  const a = Date.parse(m[key] || '') || 0, b = Date.parse(m._init || '') || 0;
+  return Math.max(a, b);
+}
+function markReplyThreadSeen(postId, otherId, rows){
+  if(!postId || !otherId || !currentUserId) return;
+  let latest = 0;
+  (rows || []).forEach(r => { const t = Date.parse(r.created_at || '') || 0; if(t > latest) latest = t; });
+  if(!latest) latest = Date.now();
+  try{
+    const m = replySeenMap();
+    m[postId + ':' + otherId] = new Date(latest).toISOString();
+    localStorage.setItem(repliesKey('reply_seen'), JSON.stringify(m));
+  }catch(e){}
+  refreshRepliesUnreadDot();
+}
+async function refreshRepliesUnreadDot(){
+  if(!currentUserId) return;
+  const label = document.querySelector('#profile-yourreplies-row .profile-row-label');
+  if(!label) return;
+  const { data, error } = await sb.from('replies').select('id, post_id, sender_id, created_at')
+    .eq('receiver_id', currentUserId).neq('sender_id', currentUserId)
+    .order('created_at', { ascending: false }).limit(80);
+  if(error || !data) return;
+  const m = replySeenMap();
+  const unread = new Set();
+  data.forEach(r => {
+    if(isReplyHidden(r)) return;
+    const key = r.post_id + ':' + r.sender_id;
+    if(Date.parse(r.created_at) > replySeenAt(m, key)) unread.add(key);
+  });
+  let b = label.querySelector('.rp-badge');
+  if(!unread.size){ if(b) b.remove(); return; }
+  if(!b){ b = document.createElement('span'); b.className = 'rp-badge'; label.appendChild(b); }
+  b.textContent = unread.size > 9 ? '9+' : String(unread.size);
+}
+
+// Delete one private reply. Your own message is removed for both people when
+// the database allows it; anything else (or if the database refuses) is hidden
+// from your side only.
+async function deleteReply(r){
+  const mine = r.sender_id === currentUserId;
+  const text = r.sticker_url && !r.content ? 'sticker' : String(r.content || '');
+  const ok = await askConfirm({
+    title: 'Delete this reply?',
+    message: mine ? 'It will be removed for both of you.' : 'It will be removed from your view.',
+    okText: 'Delete', danger: true,
+    preview: text.length > 120 ? text.slice(0, 117) + '…' : text
+  });
+  if(!ok) return null;
+  if(mine && r.id){
+    const { data, error } = await sb.from('replies').delete().eq('id', r.id).eq('sender_id', currentUserId).select('id');
+    if(!error && data && data.length) return 'deleted';
+    console.warn('Reply delete not allowed by the database, hiding it locally instead:', error);
+  }
+  if(r.id) hideReplyLocally(r.id);
+  return 'hidden';
+}
 
 async function loadYourReplies(){
   const feed = document.getElementById('yourreplies-feed');
@@ -4733,45 +4931,82 @@ async function loadYourReplies(){
 
   const { data, error } = await sb
     .from('replies')
-    .select('id, content, sticker_url, created_at, sender_id, receiver_id, post_id, posts(id, user_id, content, sticker_url, audio_url, duration_seconds, post_type, category, story_number, users!posts_user_id_fkey(meet_number))')
+    .select('id, content, sticker_url, created_at, sender_id, receiver_id, post_id, users:sender_id(meet_number), posts(id, user_id, content, sticker_url, audio_url, duration_seconds, post_type, category, story_number, users!posts_user_id_fkey(meet_number))')
     .or(`sender_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`)
     .order('created_at', { ascending: false });
   if(error){ console.error('Error loading your replies:', error); feed.innerHTML = ''; return; }
 
-  // Collapse to one row per post -- the post's own thread only ever has
-  // two participants, so the newest row per post_id is also the latest
-  // state of that whole thread. Posts you own are excluded -- those
-  // already live in Your Posts.
-  const byPost = {};
+  const me = currentUserId;
+  const seen = replySeenMap();
+  const inboxByKey = {}, sentByPost = {};
   (data || []).forEach(r => {
-    if(!r.posts || r.posts.user_id === currentUserId || (isMeet8 && r.posts.story_number)) return;
-    if(!byPost[r.post_id]) byPost[r.post_id] = r;
+    if(isReplyHidden(r)) return;
+    const post = r.posts;
+    if(post && isMeet8 && post.story_number) return;
+    const other = r.sender_id === me ? r.receiver_id : r.sender_id;
+    if(!post || post.user_id === me){
+      // replies to you, including ones whose post no longer exists -- newest row per post + person
+      const key = r.post_id + ':' + other;
+      if(!inboxByKey[key]) inboxByKey[key] = { key, other, r };
+    } else if(!sentByPost[r.post_id]){
+      sentByPost[r.post_id] = r;
+    }
   });
-  const threads = Object.values(byPost);
+  const inbox = Object.values(inboxByKey);
+  const sent = Object.values(sentByPost);
 
   feed.innerHTML = '';
-  if(!threads.length){
-    feed.innerHTML = '<div style="text-align:center;padding:26px;font-size:12px;color:var(--muted-dim);">You haven\'t replied to anyone yet — replies you send will show up here.</div>';
+  if(!inbox.length && !sent.length){
+    feed.innerHTML = '<div style="text-align:center;padding:26px;font-size:12px;color:var(--muted-dim);">No replies yet — replies you send or receive will show up here.</div>';
     return;
   }
-  threads.forEach(r => {
-    const post = r.posts;
-    const authorName = post.story_number ? ('Meet ' + post.story_number) : (post.users?.meet_number || ('Meet ' + post.user_id.slice(0,6)));
-    const spaceLabel = post.post_type;
-    const lastFromMe = r.sender_id === currentUserId;
-    const preview = r.sticker_url ? '🏷 sent a sticker' : (r.content || '');
-    const wrap = document.createElement('div');
-    wrap.className = 'yp-post';
-    wrap.dataset.postId = post.id;
-    wrap.innerHTML = `
-      <div class="yp-post-space">${post.story_number ? `<span>${escapeHtml(authorName)}</span>` : `<span class="user-link" data-user-id="${post.user_id}">${escapeHtml(authorName)}</span>`} · ${escapeHtml(spaceLabel)}</div>
-      ${postBodyHtml(post, 'yp-post-body', 100)}
-      <div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--card-border); font-size:12.5px; color:var(--muted-dim);">
-        <span style="color:var(--gold-text);">${lastFromMe ? 'You' : escapeHtml(authorName)}:</span> ${escapeHtml(preview.length > 70 ? preview.slice(0, 67) + '...' : preview)}
-      </div>
-      <div class="yp-post-time">${formatRelativeTime(r.created_at)}</div>`;
-    feed.appendChild(wrap);
-  });
+  const addHead = (t)=>{ const h = document.createElement('div'); h.className = 'rp-head'; h.textContent = t; feed.appendChild(h); };
+  const snip = (r, max)=>{ const p = r.sticker_url && !r.content ? '🏷 sent a sticker' : (r.content || ''); return p.length > max ? p.slice(0, max - 3) + '...' : p; };
+
+  if(inbox.length){
+    addHead('Replies to you');
+    inbox.forEach(({ key, other, r }) => {
+      const post = r.posts;
+      const fromThem = r.sender_id !== me;
+      const who = fromThem ? (r.users?.meet_number || 'Someone') : 'You';
+      const unread = fromThem && Date.parse(r.created_at) > replySeenAt(seen, key);
+      const wrap = document.createElement('div');
+      wrap.className = 'yp-post';
+      wrap.dataset.postId = r.post_id;
+      wrap.dataset.otherId = other;
+      if(!post) wrap.dataset.removed = '1';
+      wrap.innerHTML = `
+        <div class="yp-post-space">${unread ? '<span class="rp-unread"></span>' : ''}${escapeHtml(fromThem ? who + ' replied' : 'You replied')}${post ? ' · ' + escapeHtml(post.post_type) : ''}</div>
+        ${post ? postBodyHtml(post, 'yp-post-body', 100) : '<div class="yp-post-body" style="font-style:italic;color:var(--muted-dim);">This post was removed</div>'}
+        <div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--card-border); font-size:12.5px; color:var(--muted-dim);">
+          <span style="color:var(--gold-text);">${escapeHtml(who)}:</span> ${escapeHtml(snip(r, post ? 70 : 400))}
+        </div>
+        <div class="yp-post-time">${formatRelativeTime(r.created_at)}</div>
+        ${post ? '' : '<span class="rp-del" data-reply-id="' + escapeHtml(String(r.id)) + '">Delete</span>'}`;
+      wrap._row = r;
+      feed.appendChild(wrap);
+    });
+  }
+  if(sent.length){
+    addHead('Replies you sent');
+    sent.forEach(r => {
+      const post = r.posts;
+      const authorName = post.story_number ? ('Meet ' + post.story_number) : (post.users?.meet_number || ('Meet ' + post.user_id.slice(0,6)));
+      const lastFromMe = r.sender_id === me;
+      const wrap = document.createElement('div');
+      wrap.className = 'yp-post';
+      wrap.dataset.postId = post.id;
+      wrap.dataset.otherId = post.user_id;
+      wrap.innerHTML = `
+        <div class="yp-post-space">${post.story_number ? `<span>${escapeHtml(authorName)}</span>` : `<span class="user-link" data-user-id="${post.user_id}">${escapeHtml(authorName)}</span>`} · ${escapeHtml(post.post_type)}</div>
+        ${postBodyHtml(post, 'yp-post-body', 100)}
+        <div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--card-border); font-size:12.5px; color:var(--muted-dim);">
+          <span style="color:var(--gold-text);">${lastFromMe ? 'You' : escapeHtml(authorName)}:</span> ${escapeHtml(snip(r, 70))}
+        </div>
+        <div class="yp-post-time">${formatRelativeTime(r.created_at)}</div>`;
+      feed.appendChild(wrap);
+    });
+  }
 }
 
 // ============================================================
@@ -6224,6 +6459,7 @@ async function openPostRepliesSheet(postId, fullScreen){
   // isn't us is "the other person" for that row.
   const threads = {};
   rows.forEach(r => {
+    if(isReplyHidden(r)) return;
     const otherId = r.sender_id === meId ? r.receiver_id : r.sender_id;
     if(!otherId || otherId === meId) return;
     if(!threads[otherId]) threads[otherId] = { otherId, name: null, rows: [] };
@@ -6281,6 +6517,7 @@ async function loadThreadPostContext(postId){
 
 function openPrivateThreadDetail(otherId, otherName, rows){
   currentThreadOtherId = otherId;
+  markReplyThreadSeen(currentRepliesPostId, otherId, rows);
   loadThreadPostContext(currentRepliesPostId);
   postRepliesSheet.classList.add('thread-open');
   document.getElementById('post-replies-thread-back').style.display = 'inline-block';
@@ -6297,14 +6534,17 @@ function openPrivateThreadDetail(otherId, otherName, rows){
 
 function renderThreadMessages(rows){
   const container = document.getElementById('post-replies-thread-messages');
-  container.innerHTML = (rows || []).map(r => {
+  container.innerHTML = (rows || []).filter(r => !isReplyHidden(r)).map(r => {
     const isMe = r.sender_id === (threadMeId || currentUserId);
     const body = r.sticker_url ? stickerHtml(r.sticker_url, 110) : `<span class="msg-body-text">${escapeHtml(r.content || '')}</span>`;
     return `
       <div class="priv-thread-msg-wrap ${isMe ? 'me' : 'them'}">
         <div class="priv-thread-msg ${isMe ? 'me' : 'them'}">
           ${body}
-          <div class="priv-thread-msg-time">${formatRelativeTime(r.created_at)}</div>
+          <div class="priv-thread-msg-foot">
+            <div class="priv-thread-msg-time">${formatRelativeTime(r.created_at)}</div>
+            ${r.id ? `<span class="priv-del" data-rid="${escapeHtml(String(r.id))}">Delete</span>` : ''}
+          </div>
         </div>
       </div>`;
   }).join('');
@@ -6359,10 +6599,29 @@ async function sendPrivateThreadReply(){
   thread.rows.push(optimistic);
   renderThreadMessages(thread.rows);
   const saved = await sendPrivateReply(currentRepliesPostId, currentThreadOtherId, text);
-  if(!saved) console.error('Private reply failed to save.');
+  if(!saved){ console.error('Private reply failed to save.'); }
+  else if(saved.id){
+    optimistic.id = saved.id;
+    if(saved.created_at) optimistic.created_at = saved.created_at;
+    if(currentThreadOtherId === thread.otherId) renderThreadMessages(thread.rows);
+  }
 }
 
 document.getElementById('post-replies-thread-send').addEventListener('click', sendPrivateThreadReply);
+document.getElementById('post-replies-thread-messages').addEventListener('click', async (e)=>{
+  const del = e.target.closest('.priv-del');
+  if(!del) return;
+  const thread = currentRepliesThreads[currentThreadOtherId];
+  if(!thread) return;
+  const r = thread.rows.find(x => String(x.id) === del.dataset.rid);
+  if(!r) return;
+  const res = await deleteReply(r);
+  if(!res) return;
+  thread.rows = thread.rows.filter(x => x !== r);
+  renderThreadMessages(thread.rows);
+  showNavToast(res === 'deleted' ? 'Reply deleted.' : 'Reply removed from your view.');
+  refreshRepliesUnreadDot();
+});
 document.getElementById('post-replies-thread-input').addEventListener('keydown', (e)=>{ if(e.key === 'Enter') sendPrivateThreadReply(); });
 
 // Entry point for someone who replied to a post and then got a
@@ -13070,6 +13329,17 @@ function renderNotifications(notifs){
     }
     list.appendChild(item);
   });
+  const more = document.createElement('div');
+  more.className = 'notif-item';
+  more.style.cssText = 'justify-content:center; cursor:pointer; color:var(--gold-light); font-size:12.5px;';
+  more.textContent = 'See all your replies';
+  more.addEventListener('click', ()=>{
+    notifOverlay.classList.remove('show');
+    if(!requireSecuredAccount('Your Replies')) return;
+    yourrepliesOverlay.classList.add('show');
+    loadYourReplies();
+  });
+  list.appendChild(more);
 }
 
 // Quietly fetch in the background (no "seen" marking) so the list is already there when the bell is tapped.
@@ -13130,6 +13400,7 @@ function startNotifRealtime(){
   if(!currentUserId || notifChannel) return;
   notifChannel = sb.channel('notifs-' + currentUserId)
     .on('postgres_changes', { event:'INSERT', schema:'public', table:'notifications', filter:'user_id=eq.' + currentUserId }, ()=>{
+      refreshRepliesUnreadDot();
       if(notifOverlay.classList.contains('show')) loadNotifications(); else { notifDot.classList.remove('hide'); prefetchNotifications(); }
     })
     .subscribe();
@@ -18129,6 +18400,7 @@ document.addEventListener('DOMContentLoaded', async function(){
   startGameBannerWatcher();
   setTimeout(maybeShowWeekNudge, 2500);
   await refreshNotifDot();
+  refreshRepliesUnreadDot();
   prefetchNotifications();      // fire-and-forget -- the bell opens with the list already loaded
   startNotifRealtime();
   startLiveLikes();
