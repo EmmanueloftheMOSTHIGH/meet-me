@@ -1385,7 +1385,11 @@
     display:flex; flex-direction:column;
   }
   #notif-overlay.show #notif-panel{ transform:translateY(0); }
-  #notif-panel-header{ margin-bottom:16px; padding-bottom:14px; border-bottom:1px solid var(--card-border); flex-shrink:0; }
+  #notif-panel-header{ margin-bottom:16px; padding-bottom:14px; border-bottom:1px solid var(--card-border); flex-shrink:0; position:relative; }
+  #notif-all-replies{ position:absolute; top:-6px; right:-8px; padding:10px 8px; font-size:12.5px; color:var(--gold-light); cursor:pointer; -webkit-tap-highlight-color:transparent; }
+  #notif-all-replies:active{ opacity:0.6; }
+  #notif-panel-title{ padding-right:84px; }
+  #root:has(#notif-overlay.show) #compose-btn{ display:none !important; }
   #notif-panel-title{ font-family:'Fraunces',serif; font-size:17px; color:var(--ivory); margin-bottom:3px; }
   #notif-panel-sub{ font-size:11.5px; color:var(--muted-dim); line-height:1.4; }
   #notif-list{ overflow-y:auto; display:flex; flex-direction:column; gap:12px; }
@@ -3233,6 +3237,7 @@
   <div id="notif-overlay">
     <div id="notif-panel">
       <div id="notif-panel-header">
+        <div id="notif-all-replies" role="button" tabindex="0">All replies</div>
         <div id="notif-panel-title">Notifications</div>
         <div id="notif-panel-sub">what's come in — quiet, private, no one else sees this</div>
       </div>
@@ -12043,6 +12048,7 @@ let currentDoorRowIsToday = false;
 let doorLoadedDay = null, doorLoadedAt = 0;   // when today's question was last fetched, so a new day or a stale copy gets refreshed
 let doorUsedToday = false;
 let doorSkippedThisSession = false;
+let doorPastTarget = null;                // { id, question } while answering an earlier, unanswered Door question
 let doorPick = null;
 let doorBusy = false;
 let doorMyDays = new Set();
@@ -12119,17 +12125,18 @@ function showDoorFront(){
   document.getElementById('door-front-textarea').value = '';
   document.getElementById('door-line-next').classList.add('disabled');
   document.getElementById('door-front-submit').classList.add('disabled');
-  const lineDue = currentDoorRowIsToday && !doorQuestionHandled();
-  document.getElementById('door-eyebrow').textContent = (doorUsedToday && lineDue) ? "Today's question" : 'Daily check-in';
+  const lineDue = doorPastTarget ? true : (currentDoorRowIsToday && !doorQuestionHandled());
+  document.getElementById('door-eyebrow').textContent = doorPastTarget ? 'Earlier question' : ((doorUsedToday && lineDue) ? "Today's question" : 'Daily check-in');
   const streak = computeDoorStreak();
-  document.getElementById('door-streak').textContent = streak > 0 ? (streak + (streak === 1 ? ' day in a row' : ' days in a row')) : '';
+  document.getElementById('door-streak').textContent = (!doorPastTarget && streak > 0) ? (streak + (streak === 1 ? ' day in a row' : ' days in a row')) : '';
+  document.getElementById('door-line-skip').textContent = doorPastTarget ? 'not now' : 'answer later';
   doorFront.classList.remove('stepped','opening','stage-pick');
 
   // The question comes first. If today's question isn't set, or this
   // person already answered/skipped it earlier today, go straight to the
   // brightness pick.
   if(lineDue){
-    document.getElementById('door-line-title').textContent = currentDoorQuestionText;
+    document.getElementById('door-line-title').textContent = doorPastTarget ? doorPastTarget.question : currentDoorQuestionText;
   } else {
     doorFront.classList.add('stage-pick');
   }
@@ -12139,6 +12146,7 @@ function showDoorFront(){
 }
 
 function hideDoorFront(){
+  doorPastTarget = null;
   doorFront.classList.remove('show');
   document.body.classList.remove('door-open');
   if(typeof updateComposeVisibility === 'function') updateComposeVisibility();
@@ -12149,12 +12157,12 @@ function hideDoorFront(){
 // Answered or skipped, per question (not per day), so a question set or changed later in the day is still offered.
 function doorLineKey(){ return 'door-line-handled-' + (currentDoorQuestionId || localDayStr()); }
 function doorQuestionHandled(){
+  // A question only closes once it has really been answered. Skipping never closes it.
   if(!currentDoorQuestionId) return true;
-  if(doorAnsweredIds.has(currentDoorQuestionId)) return true;
-  try{ return localStorage.getItem(doorLineKey()) === '1'; }catch(e){ return false; }
+  return doorAnsweredIds.has(currentDoorQuestionId);
 }
 function doorLineHandledToday(){ return doorQuestionHandled(); }
-function markDoorLineHandled(){ try{ localStorage.setItem(doorLineKey(), '1'); }catch(e){} }
+function markDoorLineHandled(){ /* no-op: answering is recorded from the post itself */ }
 // Something is still waiting for them today: the mood check-in, or a question they haven't answered.
 function doorQuestionPending(){ return !!currentDoorRowIsToday && !doorQuestionHandled(); }
 function doorPending(){ return !!currentUserId && (!doorUsedToday || doorQuestionPending()); }
@@ -12177,12 +12185,26 @@ document.getElementById('door-front-textarea').addEventListener('input', (e)=>{
 document.getElementById('door-line-next').addEventListener('click', ()=>{
   const line = document.getElementById('door-front-textarea').value.trim();
   if(!line) return;
-  markDoorLineHandled();
-  postDoorLine(line).catch(err => console.error('Door line failed:', err));
+  const past = doorPastTarget;
+  const qid = past ? past.id : (currentDoorRowIsToday ? currentDoorQuestionId : null);
+  postDoorLine(line, past ? past.id : null).catch(err => {
+    // The answer didn't save, so the question must stay open.
+    console.error('Door line failed:', err);
+    if(qid) doorAnsweredIds.delete(qid);
+    updateDoorEntries();
+    showNavToast("Couldn't save your answer. The question is still open.");
+  });
+  if(past){
+    hideDoorFront();
+    showNavToast('Answered.');
+    return;
+  }
   afterDoorLine();
 });
 document.getElementById('door-line-skip').addEventListener('click', ()=>{
-  markDoorLineHandled();
+  // Skipping only moves on. The question stays open until it's answered.
+  if(doorPastTarget){ hideDoorFront(); return; }
+  doorSkippedThisSession = true;
   afterDoorLine();
 });
 
@@ -12248,8 +12270,8 @@ function scoreDoorRouting(text){
   return { score, words, paragraphs };
 }
 
-async function postDoorLine(content){
-  const qid = currentDoorRowIsToday ? currentDoorQuestionId : null;
+async function postDoorLine(content, forcedQid){
+  const qid = forcedQid || (currentDoorRowIsToday ? currentDoorQuestionId : null);
   if(qid){ doorAnsweredIds.add(qid); doorAnswerTextByQ[qid] = content; }
   const { score } = scoreDoorRouting(content);
   if(qid) doorAnswerWhereByQ[qid] = score >= 3 ? 'Spill' : 'Rant';
@@ -12594,18 +12616,19 @@ function renderDoorsArchive(){
   doorsRows.forEach(r => {
     const isToday = r.day === today;
     const answered = r.answers.length > 0;
-    const missed = !r.mood && !answered && !isToday;
+    const missed = !answered && !isToday;
     let chip = '';
     if(r.mood) chip = '<span class="dr-chip">' + escapeHtml(DOOR_MOODS[r.mood] || '') + '</span>';
     else if(answered) chip = '<span class="dr-chip dim">answered</span>';
-    else if(missed) chip = '<span class="dr-chip dim">missed</span>';
+    else if(missed) chip = '<span class="dr-chip dim">unanswered</span>';
     let ans = '';
     r.answers.forEach(a => {
       const where = a.post_type === 'spill' ? 'Spill' : 'Rant';
       const text = a.content ? escapeHtml(a.content) : (a.audio_url ? 'Voice note' : (a.sticker_url ? 'Picture' : ''));
       ans += '<div class="dr-a"><div class="dr-a-label">Your answer · ' + where + '</div><div class="dr-a-text">' + text + '</div></div>';
     });
-    const open = (isToday && doorPending()) ? '<div class="dr-open" data-act="open-today">Open today\'s Door</div>' : '';
+    let open = (isToday && doorPending()) ? '<div class="dr-open" data-act="open-today">Open today\'s Door</div>' : '';
+    if(missed) open = '<div class="dr-open" data-act="answer-past" data-qid="' + escapeHtml(String(r.id)) + '">Answer this</div>';
     html += '<div class="dr-card' + (missed ? ' missed' : '') + '"><div class="dr-top"><span class="dr-date">' + (isToday ? 'Today' : doorDayLabel(r.day)) + '</span>' + chip + '</div>'
       + '<div class="dr-q">' + escapeHtml(r.question) + '</div>' + ans + open + '</div>';
   });
@@ -12627,6 +12650,10 @@ doorsBody.addEventListener('click', (e)=>{
   const act = e.target.closest('[data-act]');
   if(!act) return;
   if(act.dataset.act === 'open-today') openDoorFromEntry();
+  else if(act.dataset.act === 'answer-past'){
+    const row = doorsRows.find(x => String(x.id) === act.dataset.qid);
+    if(row && currentUserId){ doorPastTarget = { id: row.id, question: row.question }; showDoorFront(); }
+  }
   else if(act.dataset.act === 'more') loadDoorsArchive(false);
 });
 
@@ -13307,6 +13334,19 @@ async function fetchNotifications(){
   return notifs;
 }
 
+function openAllReplies(){
+  notifOverlay.classList.remove('show');
+  if(!requireSecuredAccount('Your Replies')) return;
+  yourrepliesOverlay.classList.add('show');
+  loadYourReplies();
+}
+(function(){
+  const link = document.getElementById('notif-all-replies');
+  if(!link) return;
+  link.addEventListener('click', openAllReplies);
+  link.addEventListener('keydown', e=>{ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); openAllReplies(); } });
+})();
+
 function renderNotifications(notifs){
   const list = document.getElementById('notif-list');
   list.innerHTML = '';
@@ -13331,17 +13371,6 @@ function renderNotifications(notifs){
     }
     list.appendChild(item);
   });
-  const more = document.createElement('div');
-  more.className = 'notif-item';
-  more.style.cssText = 'justify-content:center; cursor:pointer; color:var(--gold-light); font-size:12.5px;';
-  more.textContent = 'See all your replies';
-  more.addEventListener('click', ()=>{
-    notifOverlay.classList.remove('show');
-    if(!requireSecuredAccount('Your Replies')) return;
-    yourrepliesOverlay.classList.add('show');
-    loadYourReplies();
-  });
-  list.appendChild(more);
 }
 
 // Quietly fetch in the background (no "seen" marking) so the list is already there when the bell is tapped.
